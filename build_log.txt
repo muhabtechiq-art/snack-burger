@@ -1,0 +1,884 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.1.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :gradle
+WARNING: Unsupported Kotlin plugin version.
+The `embedded-kotlin` and `kotlin-dsl` plugins rely on features of Kotlin `2.2.0` that might work differently than in the requested version `2.2.20`.
+
+> Task :gradle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle:pluginDescriptors UP-TO-DATE
+> Task :gradle:processResources
+
+> Task :gradle:compileKotlin
+.\gradlew : e: Failed connecting to the daemon in 4 retries
+At C:\Users\SmartTouch\AppData\Local\Temp\ps-script-b85cf5db-b4ff-44e6-8d80-ffab18637cd4.ps1:98 char:42
++ ... burger\android; .\gradlew :app:assembleDebug --no-daemon 2>&1 | Out-F ...
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (e: Failed conne...on in 4 retries:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+e: Daemon compilation failed: Could not connect to Kotlin compile daemon
+java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:214)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWo
+rk.kt:159)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:111)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCo
+mpilerRunnerWithWorkers.kt:74)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+
+Failed to compile with Kotlin daemon: java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:214)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWork.kt:159)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:111)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:74)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\Deeplink.kt:13:5: warning: this annotation is 
+currently applied to the value parameter only, but in the future it will also be applied to property.
+exception: - To opt in to applying to both value parameter and property, add 
+'-Xannotation-default-target=param-property' to your compiler arguments.
+exception: - To keep applying to the value parameter only, use the '@param:' annotation target.
+exception: 
+exception: see https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+exception:     @VisibleForTesting
+exception:     ^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\Deeplink.kt:15:5: warning: this annotation is 
+currently applied to the value parameter only, but in the future it will also be applied to property.
+exception: - To opt in to applying to both value parameter and property, add 
+'-Xannotation-default-target=param-property' to your compiler arguments.
+exception: - To keep applying to the value parameter only, use the '@param:' annotation target.
+exception: 
+exception: see https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+exception:     @VisibleForTesting
+exception:     ^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\Deeplink.kt:17:5: warning: this annotation is 
+currently applied to the value parameter only, but in the future it will also be applied to property.
+exception: - To opt in to applying to both value parameter and property, add 
+'-Xannotation-default-target=param-property' to your compiler arguments.
+exception: - To keep applying to the value parameter only, use the '@param:' annotation target.
+exception: 
+exception: see https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+exception:     @VisibleForTesting
+exception:     ^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\Deeplink.kt:19:5: warning: this annotation is 
+currently applied to the value parameter only, but in the future it will also be applied to property.
+exception: - To opt in to applying to both value parameter and property, add 
+'-Xannotation-default-target=param-property' to your compiler arguments.
+exception: - To keep applying to the value parameter only, use the '@param:' annotation target.
+exception: 
+exception: see https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+exception:     @VisibleForTesting
+exception:     ^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\FlutterPlugin.kt:12:8: warning: 'interface 
+ApkVariant : Any, BaseVariant, InstallableVariant, AndroidArtifactVariant, InternalBaseVariant' is deprecated. 
+Deprecated in Java.
+exception: import com.android.build.gradle.api.ApkVariant
+exception:        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\FlutterPlugin.kt:625:69: warning: 'interface 
+ApkVariant : Any, BaseVariant, InstallableVariant, AndroidArtifactVariant, InternalBaseVariant' is deprecated. 
+Deprecated in Java.
+exception:                     val versionCodeIfPresent: Int? = if (variant is ApkVariant) variant.versionCode else 
+null
+exception:                                                                     ^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\FlutterPluginUtils.kt:12:8: warning: 
+'interface BaseVariantOutput : Any, OutputFile' is deprecated. Deprecated in Java.
+exception: import com.android.build.gradle.api.BaseVariantOutput
+exception:        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\plugins\PluginHandler.kt:168:70: warning: 
+unchecked cast of 'NamedDomainObjectContainer<out BuildType>' to 'NamedDomainObjectContainer<BuildType>'.
+exception:                 (getLegacyAndroidExtension(pluginProject).buildTypes as 
+NamedDomainObjectContainer<dslBuildType>)
+exception:                                                                      
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+exception: c:\src\flutter\packages\flutter_tools\gradle\src\main\kotlin\plugins\PluginHandler.kt:169:75: warning: 
+unchecked cast of 'NamedDomainObjectContainer<out BuildType>' to 'NamedDomainObjectContainer<BuildType>'.
+exception:                     .addAll(getLegacyAndroidExtension(project).buildTypes as 
+NamedDomainObjectContainer<dslBuildType>)
+exception:                                                                           
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+> Task :gradle:compileJava NO-SOURCE
+> Task :gradle:compileGroovy NO-SOURCE
+> Task :gradle:classes
+> Task :gradle:jar
+
+> Configure project :app
+WARNING: The option setting 'android.builtInKotlin=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':app' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :cloud_firestore
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':cloud_firestore' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :firebase_core
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':firebase_core' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :flutter_plugin_android_lifecycle
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':flutter_plugin_android_lifecycle' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :flutter_pos_printer_platform
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':flutter_pos_printer_platform' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :flutter_star_prnt
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':flutter_star_prnt' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :geolocator_android
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':geolocator_android' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :image_picker_android
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':image_picker_android' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :network_info_plus
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':network_info_plus' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :package_info_plus
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':package_info_plus' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+
+> Configure project :url_launcher_android
+w: Deprecated 'org.jetbrains.kotlin.android' plugin usage
+The 'org.jetbrains.kotlin.android' plugin in project ':url_launcher_android' is no longer required for Kotlin support since AGP 9.0.
+Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
+See https://kotl.in/gradle/agp-built-in-kotlin for more details.
+
+WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): flutter_pos_printer_platform, 
+flutter_star_prnt, image_picker_android, network_info_plus, package_info_plus, url_launcher_android
+Future versions of Flutter will fail to build if your app uses plugins that apply KGP.
+
+Please check the changelogs of these plugins and upgrade to a version that supports Built-in Kotlin.
+If no such version exists, report the issue to the plugin. If necessary, here is a guide on filing 
+an issue against a plugin: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-develop
+ers#report-incompatible-kotlin-gradle-plugin-usage-to-plugin-authors
+
+If you are a plugin author, please migrate your plugin to Built-in Kotlin using this guide: 
+https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors
+
+> Task :app:DebugMinSdkCheck
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:cleanMergeDebugAssets
+> Task :app:compileFlutterBuildDebug UP-TO-DATE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :cloud_firestore:generateDebugAssets UP-TO-DATE
+> Task :cloud_firestore:preBuild UP-TO-DATE
+> Task :cloud_firestore:preDebugBuild UP-TO-DATE
+> Task :cloud_firestore:mergeDebugAssets UP-TO-DATE
+> Task :firebase_core:generateDebugAssets UP-TO-DATE
+> Task :firebase_core:preBuild UP-TO-DATE
+> Task :firebase_core:preDebugBuild UP-TO-DATE
+> Task :firebase_core:mergeDebugAssets UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:generateDebugAssets UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:preBuild UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:preDebugBuild UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:mergeDebugAssets UP-TO-DATE
+> Task :flutter_pos_printer_platform:generateDebugAssets UP-TO-DATE
+> Task :flutter_pos_printer_platform:preBuild UP-TO-DATE
+> Task :flutter_pos_printer_platform:preDebugBuild UP-TO-DATE
+> Task :flutter_pos_printer_platform:mergeDebugAssets UP-TO-DATE
+> Task :flutter_star_prnt:generateDebugAssets UP-TO-DATE
+> Task :flutter_star_prnt:preBuild UP-TO-DATE
+> Task :flutter_star_prnt:preDebugBuild UP-TO-DATE
+> Task :flutter_star_prnt:mergeDebugAssets UP-TO-DATE
+> Task :geolocator_android:generateDebugAssets UP-TO-DATE
+> Task :geolocator_android:preBuild UP-TO-DATE
+> Task :geolocator_android:preDebugBuild UP-TO-DATE
+> Task :geolocator_android:mergeDebugAssets UP-TO-DATE
+> Task :image_picker_android:generateDebugAssets UP-TO-DATE
+> Task :image_picker_android:preBuild UP-TO-DATE
+> Task :image_picker_android:preDebugBuild UP-TO-DATE
+> Task :image_picker_android:mergeDebugAssets UP-TO-DATE
+> Task :network_info_plus:generateDebugAssets UP-TO-DATE
+> Task :network_info_plus:preBuild UP-TO-DATE
+> Task :network_info_plus:preDebugBuild UP-TO-DATE
+> Task :network_info_plus:mergeDebugAssets UP-TO-DATE
+> Task :package_info_plus:generateDebugAssets UP-TO-DATE
+> Task :package_info_plus:preBuild UP-TO-DATE
+> Task :package_info_plus:preDebugBuild UP-TO-DATE
+> Task :package_info_plus:mergeDebugAssets UP-TO-DATE
+> Task :url_launcher_android:generateDebugAssets UP-TO-DATE
+> Task :url_launcher_android:preBuild UP-TO-DATE
+> Task :url_launcher_android:preDebugBuild UP-TO-DATE
+> Task :url_launcher_android:mergeDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:copyFlutterAssetsDebug
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :cloud_firestore:processDebugNavigationResources UP-TO-DATE
+> Task :firebase_core:processDebugNavigationResources UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:processDebugNavigationResources UP-TO-DATE
+> Task :flutter_pos_printer_platform:processDebugNavigationResources UP-TO-DATE
+> Task :flutter_star_prnt:processDebugNavigationResources UP-TO-DATE
+> Task :geolocator_android:processDebugNavigationResources UP-TO-DATE
+> Task :image_picker_android:processDebugNavigationResources UP-TO-DATE
+> Task :network_info_plus:processDebugNavigationResources UP-TO-DATE
+> Task :package_info_plus:processDebugNavigationResources UP-TO-DATE
+> Task :url_launcher_android:processDebugNavigationResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :cloud_firestore:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :cloud_firestore:generateDebugBuildConfig UP-TO-DATE
+> Task :cloud_firestore:generateDebugResources UP-TO-DATE
+> Task :cloud_firestore:packageDebugResources UP-TO-DATE
+> Task :cloud_firestore:parseDebugLocalResources UP-TO-DATE
+> Task :cloud_firestore:generateDebugRFile UP-TO-DATE
+> Task :firebase_core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :firebase_core:generateDebugBuildConfig UP-TO-DATE
+> Task :firebase_core:generateDebugResources UP-TO-DATE
+> Task :firebase_core:packageDebugResources UP-TO-DATE
+> Task :firebase_core:parseDebugLocalResources UP-TO-DATE
+> Task :firebase_core:generateDebugRFile UP-TO-DATE
+> Task :firebase_core:compileDebugKotlin NO-SOURCE
+> Task :firebase_core:javaPreCompileDebug UP-TO-DATE
+> Task :firebase_core:compileDebugJavaWithJavac UP-TO-DATE
+> Task :firebase_core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :cloud_firestore:compileDebugKotlin NO-SOURCE
+> Task :cloud_firestore:javaPreCompileDebug UP-TO-DATE
+> Task :cloud_firestore:compileDebugJavaWithJavac UP-TO-DATE
+> Task :cloud_firestore:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :flutter_plugin_android_lifecycle:generateDebugResources UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:packageDebugResources UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:parseDebugLocalResources UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:generateDebugRFile UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:compileDebugKotlin NO-SOURCE
+> Task :flutter_plugin_android_lifecycle:javaPreCompileDebug UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:compileDebugJavaWithJavac UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :flutter_pos_printer_platform:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :flutter_pos_printer_platform:generateDebugResources UP-TO-DATE
+> Task :flutter_pos_printer_platform:packageDebugResources UP-TO-DATE
+> Task :flutter_pos_printer_platform:parseDebugLocalResources UP-TO-DATE
+> Task :flutter_pos_printer_platform:generateDebugRFile UP-TO-DATE
+> Task :flutter_star_prnt:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :flutter_star_prnt:generateDebugResources UP-TO-DATE
+> Task :flutter_star_prnt:packageDebugResources UP-TO-DATE
+> Task :flutter_star_prnt:parseDebugLocalResources UP-TO-DATE
+> Task :flutter_star_prnt:generateDebugRFile UP-TO-DATE
+> Task :flutter_star_prnt:javaPreCompileDebug UP-TO-DATE
+> Task :network_info_plus:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :network_info_plus:generateDebugResources UP-TO-DATE
+> Task :network_info_plus:packageDebugResources UP-TO-DATE
+> Task :network_info_plus:parseDebugLocalResources UP-TO-DATE
+> Task :network_info_plus:generateDebugRFile UP-TO-DATE
+> Task :network_info_plus:javaPreCompileDebug UP-TO-DATE
+> Task :flutter_pos_printer_platform:javaPreCompileDebug UP-TO-DATE
+> Task :geolocator_android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :geolocator_android:generateDebugResources UP-TO-DATE
+> Task :geolocator_android:packageDebugResources UP-TO-DATE
+> Task :geolocator_android:parseDebugLocalResources UP-TO-DATE
+> Task :geolocator_android:generateDebugRFile UP-TO-DATE
+> Task :geolocator_android:compileDebugKotlin NO-SOURCE
+> Task :geolocator_android:javaPreCompileDebug UP-TO-DATE
+> Task :geolocator_android:compileDebugJavaWithJavac UP-TO-DATE
+> Task :geolocator_android:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :image_picker_android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :image_picker_android:generateDebugResources UP-TO-DATE
+> Task :image_picker_android:packageDebugResources UP-TO-DATE
+> Task :image_picker_android:parseDebugLocalResources UP-TO-DATE
+> Task :image_picker_android:generateDebugRFile UP-TO-DATE
+> Task :image_picker_android:javaPreCompileDebug UP-TO-DATE
+> Task :package_info_plus:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :package_info_plus:generateDebugResources UP-TO-DATE
+> Task :package_info_plus:packageDebugResources UP-TO-DATE
+> Task :package_info_plus:parseDebugLocalResources UP-TO-DATE
+> Task :package_info_plus:generateDebugRFile UP-TO-DATE
+> Task :package_info_plus:javaPreCompileDebug UP-TO-DATE
+> Task :url_launcher_android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :url_launcher_android:generateDebugBuildConfig UP-TO-DATE
+> Task :url_launcher_android:generateDebugResources UP-TO-DATE
+> Task :url_launcher_android:packageDebugResources UP-TO-DATE
+> Task :url_launcher_android:parseDebugLocalResources UP-TO-DATE
+> Task :url_launcher_android:generateDebugRFile UP-TO-DATE
+> Task :url_launcher_android:javaPreCompileDebug UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :cloud_firestore:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :firebase_core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :geolocator_android:bundleLibRuntimeToJarDebug UP-TO-DATE
+
+> Task :network_info_plus:compileDebugKotlin
+e: Failed connecting to the daemon in 4 retries
+java.lang.RuntimeException: Failed connecting to the daemon in 4 retries
+	at org.jetbrains.kotlin.buildtools.internal.KotlinLoggerMessageCollectorAdapter.report(KotlinLoggerMessageCollectorAda
+pter.kt:19)
+	at org.jetbrains.kotlin.cli.common.messages.MessageCollector.report$default(MessageCollector.kt:12)
+	at org.jetbrains.kotlin.compilerRunner.KotlinCompilerRunnerUtils.newDaemonConnection(KotlinCompilerRunnerUtils.kt:91)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.compileWithDaemon(JvmCompilatio
+nOperationImpl.kt:262)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:152)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:69)
+	at 
+org.jetbrains.kotlin.buildtools.internal.CancellableBuildOperationImpl.executeImpl(CancellableBuildOperationImpl.kt:58)
+	at org.jetbrains.kotlin.buildtools.internal.BuildOperationImpl.execute(BuildOperationImpl.kt:34)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation$lambda$1(KotlinTool
+chainsImpl.kt:70)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation(KotlinToolchainsImp
+l.kt:74)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.performCompilation(BuildToolsApiCompilationW
+ork.kt:172)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.compileInDaemon(BuildToolsApiCompilationWork
+.kt:244)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:285)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+w: Failed to compile with Kotlin daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+
+> Task :flutter_star_prnt:compileDebugKotlin
+e: Failed connecting to the daemon in 4 retries
+java.lang.RuntimeException: Failed connecting to the daemon in 4 retries
+	at org.jetbrains.kotlin.buildtools.internal.KotlinLoggerMessageCollectorAdapter.report(KotlinLoggerMessageCollectorAda
+pter.kt:19)
+	at org.jetbrains.kotlin.cli.common.messages.MessageCollector.report$default(MessageCollector.kt:12)
+	at org.jetbrains.kotlin.compilerRunner.KotlinCompilerRunnerUtils.newDaemonConnection(KotlinCompilerRunnerUtils.kt:91)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.compileWithDaemon(JvmCompilatio
+nOperationImpl.kt:262)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:152)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:69)
+	at 
+org.jetbrains.kotlin.buildtools.internal.CancellableBuildOperationImpl.executeImpl(CancellableBuildOperationImpl.kt:58)
+	at org.jetbrains.kotlin.buildtools.internal.BuildOperationImpl.execute(BuildOperationImpl.kt:34)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation$lambda$1(KotlinTool
+chainsImpl.kt:70)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation(KotlinToolchainsImp
+l.kt:74)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.performCompilation(BuildToolsApiCompilationW
+ork.kt:172)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.compileInDaemon(BuildToolsApiCompilationWork
+.kt:244)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:285)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+w: Failed to compile with Kotlin daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+
+> Task :cloud_firestore:writeDebugAarMetadata UP-TO-DATE
+
+> Task :url_launcher_android:compileDebugKotlin
+e: Failed connecting to the daemon in 4 retries
+java.lang.RuntimeException: Failed connecting to the daemon in 4 retries
+	at org.jetbrains.kotlin.buildtools.internal.KotlinLoggerMessageCollectorAdapter.report(KotlinLoggerMessageCollectorAda
+pter.kt:19)
+	at org.jetbrains.kotlin.cli.common.messages.MessageCollector.report$default(MessageCollector.kt:12)
+	at org.jetbrains.kotlin.compilerRunner.KotlinCompilerRunnerUtils.newDaemonConnection(KotlinCompilerRunnerUtils.kt:91)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.compileWithDaemon(JvmCompilatio
+nOperationImpl.kt:262)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:152)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:69)
+	at 
+org.jetbrains.kotlin.buildtools.internal.CancellableBuildOperationImpl.executeImpl(CancellableBuildOperationImpl.kt:58)
+	at org.jetbrains.kotlin.buildtools.internal.BuildOperationImpl.execute(BuildOperationImpl.kt:34)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation$lambda$1(KotlinTool
+chainsImpl.kt:70)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation(KotlinToolchainsImp
+l.kt:74)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.performCompilation(BuildToolsApiCompilationW
+ork.kt:172)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.compileInDaemon(BuildToolsApiCompilationWork
+.kt:244)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:285)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+w: Failed to compile with Kotlin daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+
+> Task :firebase_core:writeDebugAarMetadata UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:writeDebugAarMetadata UP-TO-DATE
+> Task :flutter_pos_printer_platform:writeDebugAarMetadata UP-TO-DATE
+> Task :flutter_star_prnt:writeDebugAarMetadata UP-TO-DATE
+> Task :geolocator_android:writeDebugAarMetadata UP-TO-DATE
+> Task :image_picker_android:writeDebugAarMetadata UP-TO-DATE
+> Task :network_info_plus:writeDebugAarMetadata UP-TO-DATE
+> Task :package_info_plus:writeDebugAarMetadata UP-TO-DATE
+> Task :url_launcher_android:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :cloud_firestore:extractDeepLinksDebug UP-TO-DATE
+> Task :cloud_firestore:processDebugManifest UP-TO-DATE
+> Task :firebase_core:extractDeepLinksDebug UP-TO-DATE
+> Task :firebase_core:processDebugManifest UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:extractDeepLinksDebug UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:processDebugManifest UP-TO-DATE
+> Task :flutter_pos_printer_platform:extractDeepLinksDebug UP-TO-DATE
+> Task :flutter_pos_printer_platform:processDebugManifest UP-TO-DATE
+> Task :flutter_star_prnt:extractDeepLinksDebug UP-TO-DATE
+> Task :flutter_star_prnt:processDebugManifest UP-TO-DATE
+> Task :geolocator_android:extractDeepLinksDebug UP-TO-DATE
+> Task :geolocator_android:processDebugManifest UP-TO-DATE
+> Task :image_picker_android:extractDeepLinksDebug UP-TO-DATE
+> Task :image_picker_android:processDebugManifest UP-TO-DATE
+> Task :network_info_plus:extractDeepLinksDebug UP-TO-DATE
+> Task :network_info_plus:processDebugManifest UP-TO-DATE
+> Task :package_info_plus:extractDeepLinksDebug UP-TO-DATE
+> Task :package_info_plus:processDebugManifest UP-TO-DATE
+> Task :url_launcher_android:extractDeepLinksDebug UP-TO-DATE
+> Task :url_launcher_android:processDebugManifest UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:outputDebugAppLinkSettings UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :cloud_firestore:compileDebugLibraryResources UP-TO-DATE
+> Task :firebase_core:compileDebugLibraryResources UP-TO-DATE
+> Task :flutter_plugin_android_lifecycle:compileDebugLibraryResources UP-TO-DATE
+> Task :flutter_pos_printer_platform:compileDebugLibraryResources UP-TO-DATE
+> Task :flutter_star_prnt:compileDebugLibraryResources UP-TO-DATE
+> Task :geolocator_android:compileDebugLibraryResources UP-TO-DATE
+> Task :image_picker_android:compileDebugLibraryResources UP-TO-DATE
+> Task :network_info_plus:compileDebugLibraryResources UP-TO-DATE
+> Task :package_info_plus:compileDebugLibraryResources UP-TO-DATE
+> Task :url_launcher_android:compileDebugLibraryResources UP-TO-DATE
+
+> Task :image_picker_android:compileDebugKotlin
+e: Failed connecting to the daemon in 4 retries
+java.lang.RuntimeException: Failed connecting to the daemon in 4 retries
+	at org.jetbrains.kotlin.buildtools.internal.KotlinLoggerMessageCollectorAdapter.report(KotlinLoggerMessageCollectorAda
+pter.kt:19)
+	at org.jetbrains.kotlin.cli.common.messages.MessageCollector.report$default(MessageCollector.kt:12)
+	at org.jetbrains.kotlin.compilerRunner.KotlinCompilerRunnerUtils.newDaemonConnection(KotlinCompilerRunnerUtils.kt:91)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.compileWithDaemon(JvmCompilatio
+nOperationImpl.kt:262)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:152)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:69)
+	at 
+org.jetbrains.kotlin.buildtools.internal.CancellableBuildOperationImpl.executeImpl(CancellableBuildOperationImpl.kt:58)
+	at org.jetbrains.kotlin.buildtools.internal.BuildOperationImpl.execute(BuildOperationImpl.kt:34)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation$lambda$1(KotlinTool
+chainsImpl.kt:70)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation(KotlinToolchainsImp
+l.kt:74)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.performCompilation(BuildToolsApiCompilationW
+ork.kt:172)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.compileInDaemon(BuildToolsApiCompilationWork
+.kt:244)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:285)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+w: Failed to compile with Kotlin daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+
+> Task :package_info_plus:compileDebugKotlin
+> Task :app:processDebugResources UP-TO-DATE
+> Task :cloud_firestore:processDebugJavaRes NO-SOURCE
+> Task :firebase_core:processDebugJavaRes NO-SOURCE
+> Task :flutter_plugin_android_lifecycle:processDebugJavaRes NO-SOURCE
+> Task :geolocator_android:processDebugJavaRes NO-SOURCE
+
+> Task :flutter_star_prnt:compileDebugKotlin
+w: file:///C:/src/projects/snack_burger/packages/flutter_star_prnt/android/src/main/kotlin/io/eddayy/flutter_star_prnt/FlutterStarPrntPlugin.kt:51:54 'fun getFlutterEngine(): FlutterEngine' is deprecated. Deprecated in Java.
+w: file:///C:/src/projects/snack_burger/packages/flutter_star_prnt/android/src/main/kotlin/io/eddayy/flutter_star_prnt/FlutterStarPrntPlugin.kt:53:38 'fun getFlutterEngine(): FlutterEngine' is deprecated. Deprecated in Java.
+w: file:///C:/src/projects/snack_burger/packages/flutter_star_prnt/android/src/main/kotlin/io/eddayy/flutter_star_prnt/FlutterStarPrntPlugin.kt:203:11 Condition is always 'true'.
+w: file:///C:/src/projects/snack_burger/packages/flutter_star_prnt/android/src/main/kotlin/io/eddayy/flutter_star_prnt/FlutterStarPrntPlugin.kt:457:48 'static fun getBitmap(p0: ContentResolver!, p1: Uri!): Bitmap!' is deprecated. Deprecated in Java.
+w: file:///C:/src/projects/snack_burger/packages/flutter_star_prnt/android/src/main/kotlin/io/eddayy/flutter_star_prnt/FlutterStarPrntPlugin.kt:720:9 'constructor(p0: CharSequence!, p1: TextPaint!, p2: Int, p3: Layout.Alignment!, p4: Float, p5: Float, p6: Boolean): StaticLayout' is deprecated. Deprecated in Java.
+
+> Task :firebase_core:bundleLibRuntimeToDirDebug
+
+> Task :package_info_plus:compileDebugKotlin
+e: Failed connecting to the daemon in 4 retries
+java.lang.RuntimeException: Failed connecting to the daemon in 4 retries
+	at org.jetbrains.kotlin.buildtools.internal.KotlinLoggerMessageCollectorAdapter.report(KotlinLoggerMessageCollectorAda
+pter.kt:19)
+	at org.jetbrains.kotlin.cli.common.messages.MessageCollector.report$default(MessageCollector.kt:12)
+	at org.jetbrains.kotlin.compilerRunner.KotlinCompilerRunnerUtils.newDaemonConnection(KotlinCompilerRunnerUtils.kt:91)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.compileWithDaemon(JvmCompilatio
+nOperationImpl.kt:262)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:152)
+	at org.jetbrains.kotlin.buildtools.internal.jvm.operations.JvmCompilationOperationImpl.executeCancellableImpl(JvmCompi
+lationOperationImpl.kt:69)
+	at 
+org.jetbrains.kotlin.buildtools.internal.CancellableBuildOperationImpl.executeImpl(CancellableBuildOperationImpl.kt:58)
+	at org.jetbrains.kotlin.buildtools.internal.BuildOperationImpl.execute(BuildOperationImpl.kt:34)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation$lambda$1(KotlinTool
+chainsImpl.kt:70)
+	at org.jetbrains.kotlin.buildtools.internal.KotlinToolchainsImpl$BuildSessionImpl.executeOperation(KotlinToolchainsImp
+l.kt:74)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.performCompilation(BuildToolsApiCompilationW
+ork.kt:172)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.compileInDaemon(BuildToolsApiCompilationWork
+.kt:244)
+	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:285)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+w: Failed to compile with Kotlin daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists
+If it does not look related to your configuration, please file an issue with logs to https://kotl.in/issue
+
+> Task :app:checkDebugDuplicateClasses FAILED
+> Task :cloud_firestore:bundleLibRuntimeToDirDebug
+w: Detected multiple Kotlin daemon sessions at 
+w: Detected multiple Kotlin daemon sessions at 
+
+[Incubating] Problems report is available at: file:///C:/src/projects/snack_burger/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:checkDebugDuplicateClasses'.
+> A failure occurred while executing com.android.build.gradle.internal.tasks.CheckDuplicatesRunnable
+   > Duplicate class android.support.v4.app.INotificationSideChannel found in modules core-1.18.0.aar -> 
+core-1.18.0-runtime (androidx.core:core:1.18.0) and support-v4-21.0.0.aar -> support-v4-21.0.0-runtime 
+(com.android.support:support-v4:21.0.0)
+     Duplicate class android.support.v4.app.INotificationSideChannel$Stub found in modules core-1.18.0.aar -> 
+core-1.18.0-runtime (androidx.core:core:1.18.0) and support-v4-21.0.0.aar -> support-v4-21.0.0-runtime 
+(com.android.support:support-v4:21.0.0)
+     Duplicate class android.support.v4.app.INotificationSideChannel$Stub$Proxy found in modules core-1.18.0.aar -> 
+core-1.18.0-runtime (androidx.core:core:1.18.0) and support-v4-21.0.0.aar -> support-v4-21.0.0-runtime 
+(com.android.support:support-v4:21.0.0)
+     
+     Learn how to fix dependency resolution errors at https://d.android.com/r/tools/classpath-sync-errors
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.1.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 2m 43s
+161 actionable tasks: 15 executed, 146 up-to-date

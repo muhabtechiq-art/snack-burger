@@ -1,0 +1,4 @@
+-- ⚠️ تم دمج هذا الملف في:
+--    supabase/customer_location_full_setup.sql
+--
+-- نفّذ في Supabase SQL Editor الملف الموحّد مرة واحدة.

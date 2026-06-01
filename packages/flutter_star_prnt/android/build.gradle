@@ -1,0 +1,39 @@
+group 'io.eddayy.flutter_star_prnt'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'io.eddayy.flutter_star_prnt'
+    compileSdk 36
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        minSdk 21
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    lint {
+        disable 'InvalidPackage'
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.annotation:annotation:1.7.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
+    implementation 'com.starmicronics:stario:2.8.0'
+    implementation 'com.starmicronics:starioextension:1.14.0'
+}

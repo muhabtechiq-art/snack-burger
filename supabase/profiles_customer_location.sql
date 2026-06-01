@@ -1,0 +1,5 @@
+-- ⚠️ تم دمج هذا الملف مع customer_profile_location_rpc.sql في:
+--    supabase/customer_location_full_setup.sql
+--
+-- نفّذ في Supabase SQL Editor الملف الموحّد مرة واحدة:
+--    customer_location_full_setup.sql
