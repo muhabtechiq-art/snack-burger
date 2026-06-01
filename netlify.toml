@@ -1,0 +1,16 @@
+# Netlify — منيو سناك برجر (Flutter Web)
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # مجلد النشر بعد `flutter build web` (لا تغيّره)
+  publish = "build/web"
+  # لبناء على خوادم Netlify من GitHub (اختياري). للرفع المحلي فقط استخدم scripts/deploy_netlify.ps1
+  command = "bash scripts/netlify_build.sh"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build.environment]
+  FLUTTER_VERSION = "stable"
