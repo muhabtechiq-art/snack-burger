@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../admin_features/auth/admin_login_screen.dart';
 import '../../admin_features/dashboard/admin_home_screen.dart';
+import '../../admin_features/dashboard/orders_dashboard_screen.dart';
 import '../../admin_features/products/product_form_controller.dart';
 import '../../admin_features/products/product_form_page.dart';
 import '../../admin_features/products/products_admin_screen.dart';
@@ -12,6 +13,7 @@ import '../../core/auth/admin_wrapper.dart';
 import '../../core/auth/auth_middleware.dart';
 import '../../core/auth/auth_notifier.dart';
 import '../../customer_features/menu/customer_menu_screen.dart';
+import '../../customer_features/order_status/order_status_screen.dart';
 
 /// مسارات التطبيق — فصل كامل بين الزبون والإدارة.
 GoRouter createAppRouter(AuthNotifier authNotifier) {
@@ -87,6 +89,19 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
         },
       ),
       GoRoute(
+        path: '/:slug/admin/orders',
+        name: 'admin-orders-dashboard',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          return NoTransitionPage<void>(
+            child: AdminWrapper(
+              slug: slug,
+              child: OrdersDashboardScreen(slug: slug),
+            ),
+          );
+        },
+      ),
+      GoRoute(
         path: '/:slug/admin/reports/closing',
         name: 'end-of-day-report',
         pageBuilder: (context, state) {
@@ -155,6 +170,17 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
                 child: ProductFormPage(slug: slug),
               ),
             ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/:slug/order/:orderId/status',
+        name: 'order-status',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          final orderId = state.pathParameters['orderId'] ?? '';
+          return NoTransitionPage<void>(
+            child: OrderStatusScreen(slug: slug, orderId: orderId),
           );
         },
       ),

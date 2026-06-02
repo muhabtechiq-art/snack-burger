@@ -42,6 +42,8 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
+  # audioplayers_windows (MSVC 14.5x): experimental coroutine headers deprecated (STL1011).
+  target_compile_definitions(${TARGET} PRIVATE "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
 endfunction()
 
@@ -57,6 +59,13 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# Plugins use Flutter's apply_standard_settings from ephemeral; patch known targets.
+foreach(plugin ${FLUTTER_PLUGIN_LIST})
+  set(_plugin_target "${plugin}_plugin")
+  if(TARGET ${_plugin_target})
+    target_compile_definitions(${_plugin_target} PRIVATE "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
+  endif()
+endforeach()
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

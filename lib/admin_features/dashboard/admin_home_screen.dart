@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/active_restaurant_notifier.dart';
@@ -75,26 +76,27 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                           height: 1.5,
                         ),
                       ),
-                      if (pendingCount > 0) ...[
-                        const SizedBox(height: 24),
-                        Container(
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: () =>
+                            context.push('/${widget.slug}/admin/orders'),
+                        icon: const Icon(Icons.notifications_active_rounded),
+                        label: Text(
+                          pendingCount > 0
+                              ? 'عرض $pendingCount طلب معلق (مباشر)'
+                              : 'لوحة الطلبات المعلقة (مباشر)',
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: pendingCount > 0
+                              ? Colors.red.shade700
+                              : AdminPanelColors.gold,
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade700.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '$pendingCount طلب معلق بانتظارك',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
+                            horizontal: 20,
+                            vertical: 14,
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/config/location_feature_flags.dart';
@@ -313,7 +314,7 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
     setState(() => _isSubmitting = true);
     try {
-      await _orderRepository.submitOrder(
+      final orderId = await _orderRepository.submitOrder(
         restaurantId: widget.restaurant.id,
         slug: widget.restaurant.slug,
         customerName: _nameController.text.trim(),
@@ -339,6 +340,17 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
           ),
           margin: const EdgeInsets.all(16),
           duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'متابعة الطلب',
+            textColor: widget.palette.onPrimary,
+            onPressed: () => context.pushNamed(
+              'order-status',
+              pathParameters: {
+                'slug': widget.restaurant.slug,
+                'orderId': orderId,
+              },
+            ),
+          ),
           content: Row(
             children: [
               Icon(Icons.check_circle_rounded, color: widget.palette.onPrimary),

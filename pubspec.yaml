@@ -52,6 +52,9 @@ dependencies:
   pdf: ^3.12.0
   arabic_reshaper: ^0.0.1
   supabase_flutter: ^2.12.4
+  audioplayers: ^6.5.0
+  csv: ^6.0.0
+  universal_html: ^2.2.4
   windows_printer: ^0.2.1
 dependency_overrides:
   flutter_star_prnt:
@@ -85,6 +88,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/sounds/alert.mp3
     - assets/fonts/NotoSansArabic-Regular.ttf
     - assets/fonts/NotoSans-Regular.ttf
   # An image asset can refer to one or more resolution-specific "variants", see

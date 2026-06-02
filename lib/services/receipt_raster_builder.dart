@@ -85,17 +85,18 @@ abstract final class ReceiptRasterBuilder {
         bold: true,
       ),
       _RasterLine('————————————————', align: TextAlign.center),
-      _RasterLine('الأكثر طلباً', fontSize: 18, bold: true),
+      _RasterLine('تفاصيل المبيعات', fontSize: 18, bold: true),
     ];
 
-    if (report.topProducts.isEmpty) {
+    if (report.productLines.isEmpty) {
       lines.add(const _RasterLine('لا توجد مبيعات مسجّلة اليوم'));
     } else {
-      for (var i = 0; i < report.topProducts.length; i++) {
-        final stat = report.topProducts[i];
+      for (final line in report.productLines) {
         lines.add(
           _RasterLine(
-            '${i + 1}. ${stat.name}    x${stat.quantity}',
+            '${line.productName}  x${line.quantitySold}  '
+            '${line.unitPrice.toStringAsFixed(0)}  '
+            '${line.lineTotal.toStringAsFixed(0)}',
           ),
         );
       }

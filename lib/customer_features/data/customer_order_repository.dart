@@ -1,4 +1,5 @@
 import '../../core/config/location_feature_flags.dart';
+import '../../models/delivery_order_model.dart';
 import '../../models/order_model.dart';
 import '../../services/supabase_customer_location_service.dart';
 import '../../services/supabase_order_service.dart';
@@ -6,6 +7,10 @@ import '../../services/supabase_order_service.dart';
 /// مستودع طلبات الزبون — إرسال الطلبات فقط (بدون صلاحيات إدارية).
 class CustomerOrderRepository {
   CustomerOrderRepository();
+
+  Stream<DeliveryOrder?> watchOrderById({required String orderId}) {
+    return SupabaseOrderService.watchOrderById(orderId: orderId);
+  }
 
   Future<String> submitOrder({
     required String restaurantId,

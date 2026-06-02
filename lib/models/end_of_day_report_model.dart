@@ -4,24 +4,28 @@ class EndOfDayReport {
     required this.reportDate,
     required this.orderCount,
     required this.totalSales,
-    required this.topProducts,
+    required this.productLines,
   });
 
   final DateTime reportDate;
   final int orderCount;
   final double totalSales;
 
-  /// الأكثر طلباً — حتى 5 منتجات.
-  final List<TopProductStat> topProducts;
+  /// كل المنتجات المباعة خلال اليوم (بدون حد أقصى).
+  final List<ClosingProductLine> productLines;
 }
 
-/// إحصائية منتج ضمن تقرير الإغلاق.
-class TopProductStat {
-  const TopProductStat({
-    required this.name,
-    required this.quantity,
+/// صف منتج في تقرير الإغلاق.
+class ClosingProductLine {
+  const ClosingProductLine({
+    required this.productName,
+    required this.quantitySold,
+    required this.unitPrice,
   });
 
-  final String name;
-  final int quantity;
+  final String productName;
+  final int quantitySold;
+  final double unitPrice;
+
+  double get lineTotal => quantitySold * unitPrice;
 }

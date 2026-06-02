@@ -9,7 +9,6 @@ import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
 import '../../../models/restaurant_model.dart';
 import '../data/admin_repositories.dart';
-import '../orders/pending_order_actions.dart';
 import 'admin_panel_colors.dart';
 
 /// Drawer إداري — يظهر فقط داخل واجهة الإدارة.
@@ -31,7 +30,6 @@ class AdminDrawer extends StatefulWidget {
 
 class _AdminDrawerState extends State<AdminDrawer> {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
-  final PendingOrderActions _orderActions = PendingOrderActions();
 
   late Stream<List<DeliveryOrder>> _pendingStream;
 
@@ -41,114 +39,6 @@ class _AdminDrawerState extends State<AdminDrawer> {
     _pendingStream = _orderRepository.watchPendingOrders(
       restaurantId: widget.restaurant.id,
       slug: widget.slug,
-    );
-  }
-
-  void _openPendingOrdersSheet(List<DeliveryOrder> pending) {
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context);
-    showModalBottomSheet<void>(
-      context: rootContext,
-      isScrollControlled: true,
-      backgroundColor: Color.lerp(AdminPanelColors.charcoalLight, Colors.black, 0.2),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AdminPanelColors.gold.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'الطلبات المعلقة',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: AdminPanelColors.gold,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (pending.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'لا توجد طلبات معلقة حالياً',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AdminPanelColors.textMuted),
-                    ),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(sheetContext).size.height * 0.55,
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: pending.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final order = pending[index];
-                        return ListTile(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: AdminPanelColors.gold.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          tileColor: AdminPanelColors.charcoal,
-                          title: Text(
-                            order.customerName,
-                            style: const TextStyle(
-                              color: AdminPanelColors.textLight,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '${order.items.length} وجبة — '
-                            '${order.totalPrice.toStringAsFixed(0)} د.ع',
-                            style: const TextStyle(color: AdminPanelColors.textMuted),
-                          ),
-                          trailing: Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            size: 16,
-                            color: AdminPanelColors.gold,
-                          ),
-                          onTap: () {
-                            final hostContext =
-                                Navigator.of(sheetContext, rootNavigator: true)
-                                    .context;
-                            Navigator.pop(sheetContext);
-                            _orderActions.showOrderDialog(
-                              context: hostContext,
-                              order: order,
-                              palette: widget.palette,
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -242,16 +132,18 @@ class _AdminDrawerState extends State<AdminDrawer> {
                       stream: _pendingStream,
                       builder: (context, snapshot) {
                         final count = snapshot.data?.length ?? 0;
-                        final pending = snapshot.data ?? const [];
 
                         return _AdminTile(
                           icon: Icons.notifications_active_rounded,
                           title: 'الطلبات المعلقة',
                           subtitle: count == 0
-                              ? 'لا توجد طلبات جديدة'
+                              ? 'لا توجد طلبات جديدة — بث مباشر'
                               : '$count طلب بانتظار القبول',
                           badge: count > 0 ? '$count' : null,
-                          onTap: () => _openPendingOrdersSheet(pending),
+                          onTap: () {
+                            Navigator.pop(context);
+                            context.push('/${widget.slug}/admin/orders');
+                          },
                         );
                       },
                     ),

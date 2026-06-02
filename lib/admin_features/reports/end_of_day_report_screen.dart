@@ -10,8 +10,9 @@ import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import 'closing_report_csv_exporter.dart';
 
-/// تقرير إغلاق اليوم — مبيعات وطلبات اليوم من Supabase.
+/// تقرير إغلاق اليوم — جدول تفصيلي + تصدير CSV.
 class EndOfDayReportScreen extends StatefulWidget {
   const EndOfDayReportScreen({super.key, required this.slug});
 
@@ -27,6 +28,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
   EndOfDayReport? _report;
   bool _loading = true;
   bool _printing = false;
+  bool _exporting = false;
   String? _error;
 
   @override
@@ -109,6 +111,28 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
     }
   }
 
+  Future<void> _exportCsv() async {
+    final report = _report;
+    if (report == null) return;
+
+    setState(() => _exporting = true);
+    try {
+      ClosingReportCsvExporter.downloadCsv(report);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم بدء تنزيل ملف CSV')),
+      );
+    } catch (e, stack) {
+      debugPrint('[EndOfDayReportScreen] _exportCsv: $e\n$stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   String _formatReportDate(DateTime date) {
     final local = date.toLocal();
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
@@ -162,80 +186,174 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
     }
 
     final report = _report!;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'تقرير يوم ${_formatReportDate(report.reportDate)}',
-          style: const TextStyle(
-            color: AdminPanelColors.gold,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'تقرير يوم ${_formatReportDate(report.reportDate)}',
+                style: const TextStyle(
+                  color: AdminPanelColors.gold,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'يشمل الطلبات المقبولة وقيد التوصيل والمُسلّمة فقط.',
+                style: TextStyle(
+                  color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.receipt_long_rounded,
+                      label: 'عدد الطلبات',
+                      value: '${report.orderCount}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.payments_rounded,
+                      label: 'إجمالي المبيعات',
+                      value: '${report.totalSales.toStringAsFixed(0)} د.ع',
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'يشمل الطلبات المقبولة وقيد التوصيل والمُسلّمة فقط.',
-          style: TextStyle(
-            color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
-            fontSize: 13,
-          ),
-        ),
-        const SizedBox(height: 20),
-        _StatCard(
-          icon: Icons.receipt_long_rounded,
-          label: 'عدد الطلبات',
-          value: '${report.orderCount}',
-        ),
-        const SizedBox(height: 12),
-        _StatCard(
-          icon: Icons.payments_rounded,
-          label: 'إجمالي المبيعات',
-          value: '${report.totalSales.toStringAsFixed(0)} د.ع',
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'المنتجات الأكثر طلباً',
-          style: TextStyle(
-            color: AdminPanelColors.gold,
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (report.topProducts.isEmpty)
-          Text(
-            'لا توجد مبيعات مسجّلة لهذا اليوم.',
-            style: TextStyle(color: AdminPanelColors.textMuted.withValues(alpha: 0.9)),
-          )
-        else
-          ...report.topProducts.map(
-            (stat) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _TopProductRow(stat: stat),
-            ),
-          ),
-        const SizedBox(height: 28),
-        FilledButton.icon(
-          onPressed: _printing ? null : _printReport,
-          style: FilledButton.styleFrom(
-            backgroundColor: AdminPanelColors.gold,
-            foregroundColor: AdminPanelColors.charcoal,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-          icon: _printing
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+        Expanded(
+          child: report.productLines.isEmpty
+              ? Center(
+                  child: Text(
+                    'لا توجد مبيعات مسجّلة لهذا اليوم.',
+                    style: TextStyle(
+                      color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
+                    ),
+                  ),
                 )
-              : const Icon(Icons.print_rounded),
-          label: const Text(
-            'طباعة تقرير الإغلاق',
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SingleChildScrollView(
+                    child: _ProductSalesTable(lines: report.productLines),
+                  ),
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                onPressed: _exporting ? null : _exportCsv,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AdminPanelColors.gold,
+                  foregroundColor: AdminPanelColors.charcoal,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_rounded),
+                label: const Text(
+                  'Export to CSV',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _printing ? null : _printReport,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AdminPanelColors.gold,
+                  side: BorderSide(
+                    color: AdminPanelColors.gold.withValues(alpha: 0.45),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: _printing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.print_rounded),
+                label: const Text(
+                  'طباعة تقرير الإغلاق',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProductSalesTable extends StatelessWidget {
+  const _ProductSalesTable({required this.lines});
+
+  final List<ClosingProductLine> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    return DataTable(
+      headingRowColor: WidgetStateProperty.all(
+        AdminPanelColors.charcoalLight,
+      ),
+      dataRowMinHeight: 44,
+      headingRowHeight: 48,
+      columnSpacing: 24,
+      headingTextStyle: const TextStyle(
+        color: AdminPanelColors.gold,
+        fontWeight: FontWeight.w800,
+        fontSize: 13,
+      ),
+      dataTextStyle: const TextStyle(
+        color: AdminPanelColors.textLight,
+        fontSize: 13,
+      ),
+      columns: const [
+        DataColumn(label: Text('Product Name')),
+        DataColumn(label: Text('Quantity Sold'), numeric: true),
+        DataColumn(label: Text('Unit Price'), numeric: true),
+        DataColumn(label: Text('Total'), numeric: true),
+      ],
+      rows: lines
+          .map(
+            (line) => DataRow(
+              cells: [
+                DataCell(
+                  SizedBox(
+                    width: 220,
+                    child: Text(
+                      line.productName,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ),
+                DataCell(Text('${line.quantitySold}')),
+                DataCell(Text('${line.unitPrice.toStringAsFixed(0)} د.ع')),
+                DataCell(Text('${line.lineTotal.toStringAsFixed(0)} د.ع')),
+              ],
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -254,7 +372,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AdminPanelColors.charcoalLight,
         borderRadius: BorderRadius.circular(14),
@@ -262,71 +380,25 @@ class _StatCard extends StatelessWidget {
           color: AdminPanelColors.gold.withValues(alpha: 0.25),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(icon, color: AdminPanelColors.gold, size: 28),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AdminPanelColors.textMuted,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: AdminPanelColors.textLight,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 22,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TopProductRow extends StatelessWidget {
-  const _TopProductRow({required this.stat});
-
-  final TopProductStat stat;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AdminPanelColors.charcoalLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AdminPanelColors.gold.withValues(alpha: 0.15),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              stat.name,
-              style: const TextStyle(
-                color: AdminPanelColors.textLight,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+          Icon(icon, color: AdminPanelColors.gold, size: 24),
+          const SizedBox(height: 8),
           Text(
-            'x${stat.quantity}',
+            label,
             style: const TextStyle(
-              color: AdminPanelColors.gold,
+              color: AdminPanelColors.textMuted,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AdminPanelColors.textLight,
               fontWeight: FontWeight.w900,
+              fontSize: 18,
             ),
           ),
         ],

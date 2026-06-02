@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,6 +18,7 @@ abstract final class SupabaseOrderService {
   static const String tableName = 'orders';
 
   static SupabaseClient get _client => Supabase.instance.client;
+  static const Duration _streamReconnectDelay = Duration(seconds: 2);
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
@@ -115,35 +118,68 @@ abstract final class SupabaseOrderService {
   }) {
     final normalized = slug.trim().toLowerCase();
 
-    return _client
-        .from(tableName)
-        .stream(primaryKey: const ['id'])
-        .eq('status', DeliveryOrderStatus.pending)
-        .map((rows) {
-      final orders = <DeliveryOrder>[];
-      for (final row in rows) {
+    // بث كل التغييرات ثم فلترة pending محلياً — يزيل الطلب فور تحديث الحالة إلى accepted.
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) {
+        final orders = <DeliveryOrder>[];
+        for (final row in rows) {
+          try {
+            final order = DeliveryOrder.fromSupabase(
+              Map<String, dynamic>.from(row),
+            );
+            if (order.status != DeliveryOrderStatus.pending) {
+              continue;
+            }
+            final orderSlug = order.slug.trim().toLowerCase();
+            final orderRestaurant = order.restaurantId.trim().toLowerCase();
+            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+              orders.add(order);
+              continue;
+            }
+            if (orderSlug == normalized || orderRestaurant == normalized) {
+              orders.add(order);
+            }
+          } catch (e, st) {
+            debugPrint(
+              '[SupabaseOrderService] تخطي صف طلب ${row['id']}: $e\n$st',
+            );
+          }
+        }
+        orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        return orders;
+      },
+      streamTag: 'watchPendingOrders(slug=$normalized)',
+    );
+  }
+
+  /// بث تفاصيل طلب واحد بالمعرّف لدعم شاشة تتبع الزبون.
+  static Stream<DeliveryOrder?> watchOrderById({
+    required String orderId,
+  }) {
+    final normalizedOrderId = orderId.trim();
+    if (normalizedOrderId.isEmpty) {
+      return const Stream<DeliveryOrder?>.empty();
+    }
+
+    return _resilientOrdersStream(
+      sourceFactory: () => _client
+          .from(tableName)
+          .stream(primaryKey: const ['id']).eq('id', normalizedOrderId),
+      transform: (rows) {
+        if (rows.isEmpty) return null;
         try {
-          final order = DeliveryOrder.fromSupabase(
-            Map<String, dynamic>.from(row),
-          );
-          final orderSlug = order.slug.trim().toLowerCase();
-          final orderRestaurant = order.restaurantId.trim().toLowerCase();
-          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-            orders.add(order);
-            continue;
-          }
-          if (orderSlug == normalized || orderRestaurant == normalized) {
-            orders.add(order);
-          }
+          return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(rows.first));
         } catch (e, st) {
           debugPrint(
-            '[SupabaseOrderService] تخطي صف طلب ${row['id']}: $e\n$st',
+            '[SupabaseOrderService] فشل تحويل صف الطلب $normalizedOrderId: $e\n$st',
           );
+          return null;
         }
-      }
-      orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      return orders;
-    }).asBroadcastStream();
+      },
+      streamTag: 'watchOrderById(orderId=$normalizedOrderId)',
+    );
   }
 
   static const Set<String> _closingCountableStatuses = {
@@ -195,33 +231,46 @@ abstract final class SupabaseOrderService {
       }
 
       var totalSales = 0.0;
-      final productCounts = <String, int>{};
+      final lineAggregates = <String, ClosingProductLine>{};
+
       for (final order in orders) {
         totalSales += order.totalPrice;
         for (final item in order.items) {
-          final name = item.name.trim();
+          final name = item.printableName.trim();
           if (name.isEmpty) continue;
-          productCounts[name] = (productCounts[name] ?? 0) + item.quantity;
+
+          final key = '$name|${item.unitPrice}';
+          final existing = lineAggregates[key];
+          if (existing == null) {
+            lineAggregates[key] = ClosingProductLine(
+              productName: name,
+              quantitySold: item.quantity,
+              unitPrice: item.unitPrice,
+            );
+          } else {
+            lineAggregates[key] = ClosingProductLine(
+              productName: name,
+              quantitySold: existing.quantitySold + item.quantity,
+              unitPrice: item.unitPrice,
+            );
+          }
         }
       }
 
-      final topEntries = productCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      final topProducts = topEntries
-          .take(5)
-          .map((e) => TopProductStat(name: e.key, quantity: e.value))
-          .toList();
+      final productLines = lineAggregates.values.toList()
+        ..sort((a, b) => a.productName.compareTo(b.productName));
 
       debugPrint(
         '[SupabaseOrderService] تقرير إغلاق $dayStart — '
-        '${orders.length} طلب، $totalSales د.ع',
+        '${orders.length} طلب، $totalSales د.ع، '
+        '${productLines.length} منتج',
       );
 
       return EndOfDayReport(
         reportDate: dayStart,
         orderCount: orders.length,
         totalSales: totalSales,
-        topProducts: topProducts,
+        productLines: productLines,
       );
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] fetchTodayClosingReport فشل: $e\n$stack');
@@ -243,5 +292,51 @@ abstract final class SupabaseOrderService {
       debugPrint('[SupabaseOrderService] updateOrderStatus فشل: $e\n$stack');
       rethrow;
     }
+  }
+
+  static Stream<T> _resilientOrdersStream<T>({
+    required Stream<List<Map<String, dynamic>>> Function() sourceFactory,
+    required T Function(List<Map<String, dynamic>> rows) transform,
+    required String streamTag,
+  }) {
+    return Stream<T>.multi((controller) {
+      StreamSubscription<List<Map<String, dynamic>>>? subscription;
+      bool closed = false;
+
+      Future<void> subscribe() async {
+        if (closed) return;
+        await subscription?.cancel();
+        subscription = sourceFactory().listen(
+          (rows) {
+            if (closed) return;
+            controller.add(transform(rows));
+          },
+          onError: (Object error, StackTrace stackTrace) async {
+            debugPrint('[SupabaseOrderService] $streamTag error: $error');
+            if (closed) return;
+            await subscription?.cancel();
+            await Future<void>.delayed(_streamReconnectDelay);
+            if (!closed) {
+              unawaited(subscribe());
+            }
+          },
+          onDone: () async {
+            if (closed) return;
+            await Future<void>.delayed(_streamReconnectDelay);
+            if (!closed) {
+              unawaited(subscribe());
+            }
+          },
+          cancelOnError: false,
+        );
+      }
+
+      unawaited(subscribe());
+
+      controller.onCancel = () async {
+        closed = true;
+        await subscription?.cancel();
+      };
+    });
   }
 }
