@@ -4,6 +4,7 @@ abstract final class DeliveryOrderStatus {
 
   static const String pending = 'pending';
   static const String accepted = 'accepted';
+  static const String preparing = 'preparing';
   static const String rejected = 'rejected';
   static const String delivering = 'delivering';
   static const String delivered = 'delivered';
@@ -11,6 +12,7 @@ abstract final class DeliveryOrderStatus {
   static const List<String> all = [
     pending,
     accepted,
+    preparing,
     rejected,
     delivering,
     delivered,

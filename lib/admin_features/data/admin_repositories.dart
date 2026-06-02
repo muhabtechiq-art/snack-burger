@@ -34,12 +34,31 @@ class AdminOrderRepository {
   Stream<List<DeliveryOrder>> watchPendingOrders({
     required String restaurantId,
     required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     final scopedId = resolveRestaurantId(
       restaurantId: restaurantId,
       slug: slug,
     );
-    return SupabaseOrderService.watchPendingOrders(slug: scopedId);
+    return SupabaseOrderService.watchPendingOrders(
+      slug: scopedId,
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
+  Stream<List<DeliveryOrder>> watchActiveOrders({
+    required String restaurantId,
+    required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    final scopedId = resolveRestaurantId(
+      restaurantId: restaurantId,
+      slug: slug,
+    );
+    return SupabaseOrderService.watchActiveOrders(
+      slug: scopedId,
+      onHealthChanged: onHealthChanged,
+    );
   }
 
   Future<void> updateOrderStatus({

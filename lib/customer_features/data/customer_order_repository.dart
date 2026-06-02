@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/config/location_feature_flags.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/order_model.dart';
@@ -8,8 +10,14 @@ import '../../services/supabase_order_service.dart';
 class CustomerOrderRepository {
   CustomerOrderRepository();
 
-  Stream<DeliveryOrder?> watchOrderById({required String orderId}) {
-    return SupabaseOrderService.watchOrderById(orderId: orderId);
+  Stream<DeliveryOrder?> watchOrderById({
+    required String orderId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    return SupabaseOrderService.watchOrderById(
+      orderId: orderId,
+      onHealthChanged: onHealthChanged,
+    );
   }
 
   Future<String> submitOrder({

@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/location_feature_flags.dart';
+import '../core/observability/app_telemetry.dart';
 import '../core/config/restaurant_ids.dart';
+import '../core/config/stability_phase1_flags.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
@@ -18,7 +20,8 @@ abstract final class SupabaseOrderService {
   static const String tableName = 'orders';
 
   static SupabaseClient get _client => Supabase.instance.client;
-  static const Duration _streamReconnectDelay = Duration(seconds: 2);
+  static const Duration _streamReconnectBaseDelay = Duration(seconds: 1);
+  static const Duration _streamReconnectMaxDelay = Duration(seconds: 20);
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
@@ -45,6 +48,7 @@ abstract final class SupabaseOrderService {
     required List<CartItem> items,
     required double totalPrice,
   }) async {
+    final correlationId = AppTelemetry.newCorrelationId(scope: 'order_submit');
     final orderItems = items.map((item) => item.toMap()).toList();
     String? locationCoordinates;
     if (LocationFeatureFlags.enabled) {
@@ -91,6 +95,15 @@ abstract final class SupabaseOrderService {
       'restaurantUuid=${resolvedRestaurantUuid ?? 'null'}, '
       'slug=$normalizedSlug, ${orderItems.length} عنصر، total=$totalPrice',
     );
+    AppTelemetry.logEvent(
+      'order_submit_started',
+      correlationId: correlationId,
+      fields: <String, Object?>{
+        'slug': normalizedSlug,
+        'items_count': orderItems.length,
+        'total_price': totalPrice,
+      },
+    );
 
     try {
       final row = await _client
@@ -105,9 +118,21 @@ abstract final class SupabaseOrderService {
       }
 
       debugPrint('[SupabaseOrderService] تم حفظ الطلب: $id');
+      AppTelemetry.logEvent(
+        'order_submit_succeeded',
+        correlationId: correlationId,
+        fields: <String, Object?>{'order_id': id},
+      );
       return id;
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] submitOrder فشل: $e\n$stack');
+      AppTelemetry.logError(
+        'order_submit_failed',
+        correlationId: correlationId,
+        error: e,
+        stackTrace: stack,
+        fields: <String, Object?>{'slug': normalizedSlug},
+      );
       rethrow;
     }
   }
@@ -115,7 +140,11 @@ abstract final class SupabaseOrderService {
   /// بث الطلبات ذات الحالة `pending`.
   static Stream<List<DeliveryOrder>> watchPendingOrders({
     required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
   }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchPendingOrders(slug: slug);
+    }
     final normalized = slug.trim().toLowerCase();
 
     // بث كل التغييرات ثم فلترة pending محلياً — يزيل الطلب فور تحديث الحالة إلى accepted.
@@ -151,13 +180,20 @@ abstract final class SupabaseOrderService {
         return orders;
       },
       streamTag: 'watchPendingOrders(slug=$normalized)',
+      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
+          ? onHealthChanged
+          : null,
     );
   }
 
   /// بث تفاصيل طلب واحد بالمعرّف لدعم شاشة تتبع الزبون.
   static Stream<DeliveryOrder?> watchOrderById({
     required String orderId,
+    ValueChanged<StreamHealth>? onHealthChanged,
   }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchOrderById(orderId: orderId);
+    }
     final normalizedOrderId = orderId.trim();
     if (normalizedOrderId.isEmpty) {
       return const Stream<DeliveryOrder?>.empty();
@@ -179,13 +215,66 @@ abstract final class SupabaseOrderService {
         }
       },
       streamTag: 'watchOrderById(orderId=$normalizedOrderId)',
+      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
+          ? onHealthChanged
+          : null,
+    );
+  }
+
+  /// بث كل الطلبات النشطة (غير المُسلّمة/الملغية) مع فلترة المطعم.
+  static Stream<List<DeliveryOrder>> watchActiveOrders({
+    required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchActiveOrders(slug: slug);
+    }
+    final normalized = slug.trim().toLowerCase();
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) {
+        final orders = <DeliveryOrder>[];
+        for (final row in rows) {
+          try {
+            final order = DeliveryOrder.fromSupabase(
+              Map<String, dynamic>.from(row),
+            );
+            if (!_activeOrderStatuses.contains(order.status)) continue;
+            final orderSlug = order.slug.trim().toLowerCase();
+            final orderRestaurant = order.restaurantId.trim().toLowerCase();
+            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+              orders.add(order);
+              continue;
+            }
+            if (orderSlug == normalized || orderRestaurant == normalized) {
+              orders.add(order);
+            }
+          } catch (_) {}
+        }
+        orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        return orders;
+      },
+      streamTag: 'watchActiveOrders(slug=$normalized)',
+      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
+          ? onHealthChanged
+          : null,
     );
   }
 
   static const Set<String> _closingCountableStatuses = {
     DeliveryOrderStatus.accepted,
+    DeliveryOrderStatus.preparing,
     DeliveryOrderStatus.delivering,
     DeliveryOrderStatus.delivered,
+  };
+
+  static const Set<String> _activeOrderStatuses = {
+    DeliveryOrderStatus.pending,
+    DeliveryOrderStatus.accepted,
+    DeliveryOrderStatus.preparing,
+    DeliveryOrderStatus.delivering,
   };
 
   /// طلبات اليوم المحلية المقبولة/قيد التوصيل/المُسلّمة — لتقرير الإغلاق.
@@ -283,13 +372,32 @@ abstract final class SupabaseOrderService {
     required String orderId,
     required String status,
   }) async {
+    final correlationId = AppTelemetry.newCorrelationId(scope: 'order_status');
     try {
       await _client.from(tableName).update({
         'status': status,
       }).eq('id', orderId);
       debugPrint('[SupabaseOrderService] تحديث حالة $orderId → $status');
+      AppTelemetry.logEvent(
+        'order_status_updated',
+        correlationId: correlationId,
+        fields: <String, Object?>{
+          'order_id': orderId,
+          'status': status,
+        },
+      );
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] updateOrderStatus فشل: $e\n$stack');
+      AppTelemetry.logError(
+        'order_status_update_failed',
+        correlationId: correlationId,
+        error: e,
+        stackTrace: stack,
+        fields: <String, Object?>{
+          'order_id': orderId,
+          'status': status,
+        },
+      );
       rethrow;
     }
   }
@@ -298,45 +406,195 @@ abstract final class SupabaseOrderService {
     required Stream<List<Map<String, dynamic>>> Function() sourceFactory,
     required T Function(List<Map<String, dynamic>> rows) transform,
     required String streamTag,
+    ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return Stream<T>.multi((controller) {
       StreamSubscription<List<Map<String, dynamic>>>? subscription;
       bool closed = false;
+      int reconnectAttempt = 0;
+      DateTime lastDataAt = DateTime.now();
+      late Future<void> Function() subscribe;
 
-      Future<void> subscribe() async {
+      void publishHealth(StreamHealth health) {
+        onHealthChanged?.call(health);
+      }
+
+      Duration reconnectDelayForAttempt(int attempt) {
+        final seconds = 1 << (attempt - 1).clamp(0, 4);
+        final delay = Duration(seconds: seconds);
+        if (delay > _streamReconnectMaxDelay) return _streamReconnectMaxDelay;
+        if (delay < _streamReconnectBaseDelay) return _streamReconnectBaseDelay;
+        return delay;
+      }
+
+      Future<void> scheduleReconnect(String reason, {Object? error}) async {
+        reconnectAttempt += 1;
+        final delay = reconnectDelayForAttempt(reconnectAttempt);
+        publishHealth(StreamHealth.reconnecting);
+        AppTelemetry.logEvent(
+          'reconnect_attempt',
+          fields: <String, Object?>{
+            'stream': streamTag,
+            'attempt': reconnectAttempt,
+            'delay_ms': delay.inMilliseconds,
+            'reason': reason,
+            if (error != null) 'error': error.toString(),
+          },
+        );
+        await Future<void>.delayed(delay);
+        if (!closed) {
+          unawaited(subscribe());
+        }
+      }
+
+      subscribe = () async {
         if (closed) return;
         await subscription?.cancel();
+        if (reconnectAttempt == 0) {
+          publishHealth(StreamHealth.connecting);
+        }
         subscription = sourceFactory().listen(
           (rows) {
             if (closed) return;
+            reconnectAttempt = 0;
+            lastDataAt = DateTime.now();
+            publishHealth(StreamHealth.live);
             controller.add(transform(rows));
           },
           onError: (Object error, StackTrace stackTrace) async {
             debugPrint('[SupabaseOrderService] $streamTag error: $error');
+            AppTelemetry.logError(
+              'stream_disconnected',
+              error: error,
+              stackTrace: stackTrace,
+              fields: <String, Object?>{
+                'stream': streamTag,
+                'error_kind': _errorKind(error),
+              },
+            );
             if (closed) return;
             await subscription?.cancel();
-            await Future<void>.delayed(_streamReconnectDelay);
-            if (!closed) {
-              unawaited(subscribe());
-            }
+            publishHealth(StreamHealth.error);
+            await scheduleReconnect('on_error', error: error);
           },
           onDone: () async {
             if (closed) return;
-            await Future<void>.delayed(_streamReconnectDelay);
-            if (!closed) {
-              unawaited(subscribe());
+            final idleFor = DateTime.now().difference(lastDataAt);
+            if (idleFor > const Duration(seconds: 30)) {
+              publishHealth(StreamHealth.stale);
             }
+            await scheduleReconnect('on_done');
           },
           cancelOnError: false,
         );
-      }
+      };
 
       unawaited(subscribe());
 
       controller.onCancel = () async {
         closed = true;
+        publishHealth(StreamHealth.disposed);
         await subscription?.cancel();
       };
     });
   }
+
+  static String _errorKind(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('jwt') || raw.contains('auth')) {
+      return 'auth';
+    }
+    if (raw.contains('socket') ||
+        raw.contains('network') ||
+        raw.contains('timeout') ||
+        raw.contains('connection')) {
+      return 'network';
+    }
+    return 'unknown';
+  }
+
+  /// Legacy path kept as strict rollback target.
+  static Stream<List<DeliveryOrder>> _legacyWatchPendingOrders({
+    required String slug,
+  }) {
+    final normalized = slug.trim().toLowerCase();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
+      final orders = <DeliveryOrder>[];
+      for (final row in rows) {
+        try {
+          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
+          if (order.status != DeliveryOrderStatus.pending) continue;
+          final orderSlug = order.slug.trim().toLowerCase();
+          final orderRestaurant = order.restaurantId.trim().toLowerCase();
+          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+            orders.add(order);
+            continue;
+          }
+          if (orderSlug == normalized || orderRestaurant == normalized) {
+            orders.add(order);
+          }
+        } catch (_) {
+          // Legacy path: keep behavior resilient by skipping malformed rows.
+        }
+      }
+      orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      return orders;
+    });
+  }
+
+  static Stream<List<DeliveryOrder>> _legacyWatchActiveOrders({
+    required String slug,
+  }) {
+    final normalized = slug.trim().toLowerCase();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
+      final orders = <DeliveryOrder>[];
+      for (final row in rows) {
+        try {
+          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
+          if (!_activeOrderStatuses.contains(order.status)) continue;
+          final orderSlug = order.slug.trim().toLowerCase();
+          final orderRestaurant = order.restaurantId.trim().toLowerCase();
+          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+            orders.add(order);
+            continue;
+          }
+          if (orderSlug == normalized || orderRestaurant == normalized) {
+            orders.add(order);
+          }
+        } catch (_) {}
+      }
+      orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      return orders;
+    });
+  }
+
+  /// Legacy path kept as strict rollback target.
+  static Stream<DeliveryOrder?> _legacyWatchOrderById({
+    required String orderId,
+  }) {
+    final normalizedOrderId = orderId.trim();
+    if (normalizedOrderId.isEmpty) {
+      return const Stream<DeliveryOrder?>.empty();
+    }
+    return _client
+        .from(tableName)
+        .stream(primaryKey: const ['id']).eq('id', normalizedOrderId)
+        .map((rows) {
+      if (rows.isEmpty) return null;
+      try {
+        return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(rows.first));
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+}
+
+enum StreamHealth {
+  connecting,
+  live,
+  reconnecting,
+  stale,
+  error,
+  disposed,
 }

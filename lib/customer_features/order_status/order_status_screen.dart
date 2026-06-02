@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
+import '../../services/supabase_order_service.dart';
 import '../data/customer_order_repository.dart';
 
 class OrderStatusScreen extends StatefulWidget {
@@ -18,28 +20,82 @@ class OrderStatusScreen extends StatefulWidget {
   State<OrderStatusScreen> createState() => _OrderStatusScreenState();
 }
 
-class _OrderStatusScreenState extends State<OrderStatusScreen> {
+class _OrderStatusScreenState extends State<OrderStatusScreen>
+    with WidgetsBindingObserver {
   final CustomerOrderRepository _repository = CustomerOrderRepository();
   int _retrySeed = 0;
+  String? _streamKey;
+  Stream<DeliveryOrder?>? _orderStream;
+  StreamHealth _streamHealth = StreamHealth.connecting;
+
+  bool get _isLive => _streamHealth == StreamHealth.live;
 
   void _retry() {
-    setState(() => _retrySeed++);
+    setState(() {
+      _retrySeed++;
+      _streamKey = null;
+      _orderStream = null;
+      _streamHealth = StreamHealth.connecting;
+    });
+  }
+
+  void _onHealthChanged(StreamHealth health) {
+    if (!mounted || _streamHealth == health) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks) {
+      setState(() => _streamHealth = health);
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _streamHealth == health) return;
+      setState(() => _streamHealth = health);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _retry();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final stream = _repository.watchOrderById(orderId: widget.orderId);
+    final streamKey = '${widget.orderId}|$_retrySeed';
+    if (_streamKey != streamKey || _orderStream == null) {
+      _streamKey = streamKey;
+      _orderStream = _repository.watchOrderById(
+        orderId: widget.orderId,
+        onHealthChanged: _onHealthChanged,
+      );
+    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF7F3EF),
         appBar: AppBar(
           title: const Text('متابعة حالة الطلب'),
           centerTitle: true,
+          backgroundColor: const Color(0xFFB70F1E),
+          foregroundColor: const Color(0xFFD4AF37),
         ),
         body: StreamBuilder<DeliveryOrder?>(
           key: ValueKey('${widget.orderId}|$_retrySeed'),
-          stream: stream,
+          stream: _orderStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting &&
                 !snapshot.hasData) {
@@ -55,14 +111,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               return _OrderNotFoundState(onRetry: _retry);
             }
 
-            final isLive = snapshot.connectionState == ConnectionState.active;
             return RefreshIndicator(
               onRefresh: () async => _retry(),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _LiveBadge(isLive: isLive),
+                  _LiveBadge(health: _streamHealth),
+                  if (!_isLive) ...[
+                    const SizedBox(height: 10),
+                    _ConnectionWarning(
+                      health: _streamHealth,
+                      onRetry: _retry,
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   _OrderSummaryCard(order: order),
                   const SizedBox(height: 14),
@@ -80,24 +142,80 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 }
 
 class _LiveBadge extends StatelessWidget {
-  const _LiveBadge({required this.isLive});
+  const _LiveBadge({required this.health});
 
-  final bool isLive;
+  final StreamHealth health;
 
   @override
   Widget build(BuildContext context) {
+    final isLive = health == StreamHealth.live;
+    final title = switch (health) {
+      StreamHealth.connecting => 'جاري الاتصال...',
+      StreamHealth.live => 'اتصال مباشر',
+      StreamHealth.reconnecting => 'جاري إعادة الاتصال...',
+      StreamHealth.stale => 'البيانات متأخرة',
+      StreamHealth.error => 'خطأ اتصال',
+      StreamHealth.disposed => 'تم إيقاف التتبع',
+    };
     return Row(
       children: [
         Icon(
           isLive ? Icons.sensors_rounded : Icons.sensors_off_rounded,
-          color: isLive ? Colors.green : Colors.grey,
+          color: isLive ? const Color(0xFFB70F1E) : Colors.grey,
         ),
         const SizedBox(width: 8),
         Text(
-          isLive ? 'اتصال مباشر' : 'جاري إعادة الاتصال...',
+          title,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _ConnectionWarning extends StatelessWidget {
+  const _ConnectionWarning({
+    required this.health,
+    required this.onRetry,
+  });
+
+  final StreamHealth health;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = switch (health) {
+      StreamHealth.reconnecting => 'جاري استعادة الاتصال تلقائياً...',
+      StreamHealth.stale => 'قد تكون الحالة المعروضة قديمة قليلاً.',
+      StreamHealth.error => 'تعذر تحديث حالة الطلب حالياً.',
+      StreamHealth.connecting => 'تجهيز القناة المباشرة للطلب...',
+      StreamHealth.live => '',
+      StreamHealth.disposed => 'انتهت جلسة التتبع.',
+    };
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_tethering_error_rounded, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            child: const Text('إعادة الاتصال'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -109,7 +227,12 @@ class _OrderSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.35)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -139,7 +262,12 @@ class _OrderItemsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.35)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -182,13 +310,26 @@ class _StatusTimeline extends StatelessWidget {
   final String currentStatus;
 
   static const List<_StatusStep> _steps = [
-    _StatusStep(value: DeliveryOrderStatus.pending, label: 'قيد الانتظار'),
-    _StatusStep(value: DeliveryOrderStatus.accepted, label: 'تم القبول'),
-    _StatusStep(value: DeliveryOrderStatus.delivering, label: 'قيد التوصيل'),
-    _StatusStep(value: DeliveryOrderStatus.delivered, label: 'تم التسليم'),
+    _StatusStep(
+      value: DeliveryOrderStatus.pending,
+      label: 'بانتظار التأكيد',
+    ),
+    _StatusStep(
+      value: DeliveryOrderStatus.accepted,
+      label: 'تم قبول الطلب وبدأ التحضير',
+    ),
+    _StatusStep(
+      value: DeliveryOrderStatus.delivering,
+      label: 'خرج الطلب مع الكابتن',
+    ),
+    _StatusStep(
+      value: DeliveryOrderStatus.delivered,
+      label: 'تم التوصيل بنجاح',
+    ),
   ];
 
   int _statusIndex(String status) {
+    if (status == DeliveryOrderStatus.preparing) return 1;
     final index = _steps.indexWhere((step) => step.value == status);
     if (index >= 0) return index;
     return 0;
@@ -197,7 +338,12 @@ class _StatusTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeIndex = _statusIndex(currentStatus);
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.35)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -234,7 +380,7 @@ class _StatusTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = done ? Colors.green : Colors.grey.shade400;
+    final color = done ? const Color(0xFFB70F1E) : Colors.grey.shade400;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
