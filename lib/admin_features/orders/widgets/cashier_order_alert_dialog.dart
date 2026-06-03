@@ -2,83 +2,88 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
-import '../../delivery/delivery_invoice_qr_sheet.dart';
 import 'order_item_receipt_lines.dart';
 
-/// نافذة تنبيه طلب جديد للكاشير.
+/// نافذة عائمة لعرض تفاصيل الطلب — قبول/رفض أو إغلاق فقط.
 class CashierOrderAlertDialog extends StatelessWidget {
   const CashierOrderAlertDialog({
     super.key,
     required this.order,
     required this.palette,
+    required this.onClose,
     required this.onAccept,
     required this.onReject,
     this.isProcessing = false,
+    this.showActions = true,
   });
 
   final DeliveryOrder order;
   final TenantPalette palette;
+  final VoidCallback onClose;
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final bool isProcessing;
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
-    final maxScrollHeight = MediaQuery.sizeOf(context).height * 0.55;
+    final screen = MediaQuery.sizeOf(context);
+    final maxHeight = screen.height * 0.82;
 
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: AlertDialog(
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.notifications_active_rounded, color: palette.accent),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'طلب جديد!',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 560,
+            maxHeight: maxHeight,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxScrollHeight),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long_rounded, color: palette.accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        showActions ? 'طلب جديد' : 'تفاصيل الطلب',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          color: palette.primary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: isProcessing ? null : onClose,
+                      tooltip: 'إغلاق',
+                      icon: const Icon(Icons.close_rounded, size: 26),
+                      color: Colors.grey.shade700,
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
                 child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _InfoRow(label: 'الزبون', value: order.customerName),
                       _InfoRow(label: 'الهاتف', value: order.customerPhone),
                       _InfoRow(label: 'العنوان', value: order.address),
                       if (order.googleMapsUrl != null)
-                        _InfoRow(
+                        const _InfoRow(
                           label: 'الموقع',
-                          value: 'متاح — امسح QR لفتح Google Maps',
+                          value: 'إحداثيات GPS متوفرة',
                         ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => DeliveryInvoiceQrSheet.show(
-                          context: context,
-                          order: order,
-                          palette: palette,
-                        ),
-                        icon: const Icon(Icons.qr_code_2_rounded),
-                        label: const Text('عرض فاتورة التوصيل'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(
-                            color: palette.primary.withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 12),
                       Divider(color: palette.primary.withValues(alpha: 0.12)),
                       const SizedBox(height: 8),
@@ -128,45 +133,60 @@ class CashierOrderAlertDialog extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: isProcessing ? null : onReject,
-                      icon: const Icon(Icons.close_rounded),
-                      label: const Text('رفض الطلب'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red.shade600,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+              if (showActions) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: isProcessing ? null : onReject,
+                          icon: const Icon(Icons.close_rounded),
+                          label: const Text('رفض الطلب'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
                       ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: isProcessing ? null : onAccept,
+                          icon: isProcessing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle_rounded),
+                          label: Text(isProcessing ? 'جاري...' : 'قبول الطلب'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: isProcessing ? null : onClose,
+                      child: const Text('إغلاق'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: isProcessing ? null : onAccept,
-                      icon: isProcessing
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_circle_rounded),
-                      label: Text(isProcessing ? 'جاري...' : 'قبول الطلب'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green.shade600,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
             ],
           ),
         ),

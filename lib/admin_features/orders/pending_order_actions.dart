@@ -66,11 +66,19 @@ class PendingOrderActions {
     VoidCallback? onOrderRemovedFromPending,
     VoidCallback? onOrderAcceptFailed,
   }) async {
+    final showActions = order.isPending;
+
     await showDialog<void>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: !showActions,
       builder: (dialogContext) {
         var isProcessing = false;
+
+        void closeDialog() {
+          if (dialogContext.mounted) {
+            Navigator.of(dialogContext).pop();
+          }
+        }
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -127,6 +135,8 @@ class PendingOrderActions {
               order: order,
               palette: palette,
               isProcessing: isProcessing,
+              showActions: showActions,
+              onClose: closeDialog,
               onReject: handleReject,
               onAccept: handleAccept,
             );

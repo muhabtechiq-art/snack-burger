@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme/tenant_palette.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
-import '../../services/order_invoice_printer.dart';
 import '../../services/supabase_order_service.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
+import '../orders/pending_order_actions.dart';
 import '../orders/pending_orders_notification_coordinator.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
@@ -24,11 +25,11 @@ class OrdersDashboardScreen extends StatefulWidget {
 
 class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
+  final PendingOrderActions _orderActions = PendingOrderActions();
   final PendingOrdersNotificationCoordinator _notifications =
       PendingOrdersNotificationCoordinator();
 
   final Set<String> _locallyRemovedIds = {};
-  final Set<String> _updatingOrderIds = {};
   String? _streamKey;
   Stream<List<DeliveryOrder>>? _ordersStream;
   StreamHealth _streamHealth = StreamHealth.connecting;
@@ -43,58 +44,26 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
     setState(() => _locallyRemovedIds.remove(orderId));
   }
 
-  Future<void> _updateOrderStatus({
+  Future<void> _openOrderDialog({
     required DeliveryOrder order,
-    required String status,
-  }) async {
-    if (_updatingOrderIds.contains(order.id) || order.status == status) return;
-    setState(() => _updatingOrderIds.add(order.id));
-    try {
-      await _orderRepository.updateOrderStatus(orderId: order.id, status: status);
-      if (status == DeliveryOrderStatus.accepted) {
-        // Keep invoice printing behavior on "Accept Order".
-        await _printInvoiceSafely(order);
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم تحديث حالة الطلب إلى ${_statusActionLabel(status)}'),
-          duration: const Duration(milliseconds: 1200),
-        ),
-      );
-      if (status == DeliveryOrderStatus.delivered) {
-        _onOrderRemovedFromPending(order.id);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل تحديث الحالة: $e')),
-      );
-      _onOrderAcceptFailed(order.id);
-    } finally {
-      if (mounted) {
-        setState(() => _updatingOrderIds.remove(order.id));
-      }
-    }
+    required TenantPalette palette,
+  }) {
+    return _orderActions.showOrderDialog(
+      context: context,
+      order: order,
+      palette: palette,
+      onOrderRemovedFromPending: () => _onOrderRemovedFromPending(order.id),
+      onOrderAcceptFailed: () => _onOrderAcceptFailed(order.id),
+    );
   }
 
-  Future<void> _printInvoiceSafely(DeliveryOrder order) async {
-    try {
-      await printOrderInvoice(order);
-    } catch (e, st) {
-      debugPrint('OrdersDashboardScreen print invoice failed: $e\n$st');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم القبول لكن فشلت الطباعة: $e')),
-      );
-    }
-  }
-
-  String _statusActionLabel(String status) => switch (status) {
-        DeliveryOrderStatus.accepted => 'قبول الطلب',
+  String _statusLabel(String status) => switch (status) {
+        DeliveryOrderStatus.pending => 'بانتظار التأكيد',
+        DeliveryOrderStatus.accepted => 'تم القبول',
         DeliveryOrderStatus.preparing => 'جاري التحضير',
         DeliveryOrderStatus.delivering => 'خرج للتوصيل',
         DeliveryOrderStatus.delivered => 'تم التوصيل',
+        DeliveryOrderStatus.rejected => 'مرفوض',
         _ => status,
       };
 
@@ -146,6 +115,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
           }
 
           final streamKey = '${restaurant.id}|${widget.slug}';
+          final palette = TenantPalette.fromRestaurant(restaurant);
           if (_streamKey != streamKey || _ordersStream == null) {
             _streamKey = streamKey;
             _notifications.reset();
@@ -223,10 +193,10 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen> {
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: _PendingOrderCard(
                                   order: order,
-                                  isUpdating: _updatingOrderIds.contains(order.id),
-                                  onStatusSelected: (status) => _updateOrderStatus(
+                                  statusLabel: _statusLabel(order.status),
+                                  onTap: () => _openOrderDialog(
                                     order: order,
-                                    status: status,
+                                    palette: palette,
                                   ),
                                 ),
                               );
@@ -357,219 +327,87 @@ class _ConnectivityHint extends StatelessWidget {
 class _PendingOrderCard extends StatelessWidget {
   const _PendingOrderCard({
     required this.order,
-    required this.onStatusSelected,
-    required this.isUpdating,
+    required this.statusLabel,
+    required this.onTap,
   });
 
   final DeliveryOrder order;
-  final bool isUpdating;
-  final ValueChanged<String> onStatusSelected;
+  final String statusLabel;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AdminPanelColors.charcoalLight,
       borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AdminPanelColors.gold.withValues(alpha: 0.3),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AdminPanelColors.gold.withValues(alpha: 0.3),
+            ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.receipt_long_rounded,
-                  color: AdminPanelColors.gold.withValues(alpha: 0.9),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        order.customerName,
-                        style: const TextStyle(
-                          color: AdminPanelColors.textLight,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${order.items.length} وجبة — '
-                        '${order.totalPrice.toStringAsFixed(0)} د.ع',
-                        style: const TextStyle(
-                          color: AdminPanelColors.textMuted,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        order.customerPhone,
-                        style: TextStyle(
-                          color: AdminPanelColors.goldMuted.withValues(alpha: 0.9),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'لوحة التحكم بالحالة',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: AdminPanelColors.goldMuted,
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
+          child: Row(
+            children: [
+              Icon(
+                Icons.receipt_long_rounded,
+                color: AdminPanelColors.gold.withValues(alpha: 0.9),
               ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AdminPanelColors.charcoal.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AdminPanelColors.gold.withValues(alpha: 0.18),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _StatusActionButton(
-                          label: 'قبول الطلب',
-                          icon: Icons.done_rounded,
-                          selected: order.status == DeliveryOrderStatus.accepted,
-                          onPressed: isUpdating
-                              ? null
-                              : () => onStatusSelected(DeliveryOrderStatus.accepted),
-                        ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      order.customerName,
+                      style: const TextStyle(
+                        color: AdminPanelColors.textLight,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _StatusActionButton(
-                          label: 'جاري التحضير',
-                          icon: Icons.soup_kitchen_rounded,
-                          selected: order.status == DeliveryOrderStatus.preparing,
-                          onPressed: isUpdating
-                              ? null
-                              : () => onStatusSelected(DeliveryOrderStatus.preparing),
-                        ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${order.items.length} وجبة — '
+                      '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                      style: const TextStyle(
+                        color: AdminPanelColors.textMuted,
+                        fontSize: 13,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _StatusActionButton(
-                          label: 'خرج للتوصيل',
-                          icon: Icons.delivery_dining_rounded,
-                          selected: order.status == DeliveryOrderStatus.delivering,
-                          onPressed: isUpdating
-                              ? null
-                              : () => onStatusSelected(DeliveryOrderStatus.delivering),
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      order.customerPhone,
+                      style: TextStyle(
+                        color: AdminPanelColors.goldMuted.withValues(alpha: 0.9),
+                        fontSize: 12,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _StatusActionButton(
-                          label: 'تم التوصيل',
-                          icon: Icons.check_circle_rounded,
-                          selected: order.status == DeliveryOrderStatus.delivered,
-                          onPressed: isUpdating
-                              ? null
-                              : () => onStatusSelected(DeliveryOrderStatus.delivered),
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        color: AdminPanelColors.gold.withValues(alpha: 0.95),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
-                  if (isUpdating) ...[
-                    const SizedBox(height: 10),
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              Icon(
+                Icons.chevron_left_rounded,
+                color: AdminPanelColors.gold.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
         ),
       ),
     );
-  }
-}
-
-class _StatusActionButton extends StatelessWidget {
-  const _StatusActionButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final button = selected
-        ? FilledButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon, size: 15),
-            label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            style: FilledButton.styleFrom(
-              backgroundColor: AdminPanelColors.gold,
-              foregroundColor: Colors.black87,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          )
-        : OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(
-              icon,
-              size: 15,
-              color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
-            ),
-            label: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AdminPanelColors.textLight,
-              side: BorderSide(
-                color: AdminPanelColors.gold.withValues(alpha: 0.35),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              textStyle: const TextStyle(fontSize: 11.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-
-    return SizedBox(height: 40, child: button);
   }
 }
 
