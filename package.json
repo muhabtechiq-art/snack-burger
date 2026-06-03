@@ -1,0 +1,12 @@
+{
+  "name": "snack-burger",
+  "private": true,
+  "description": "GitHub Pages deployment helpers for the Flutter web build",
+  "scripts": {
+    "build:web:gh-pages": "flutter build web --release --base-href \"/snack-burger/\" && node scripts/post_build_gh_pages.js",
+    "deploy:gh-pages": "npm run build:web:gh-pages && gh-pages -d build/web -t true"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
+  }
+}
