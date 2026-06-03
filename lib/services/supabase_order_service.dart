@@ -253,7 +253,7 @@ abstract final class SupabaseOrderService {
             }
           } catch (_) {}
         }
-        orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return orders;
       },
       streamTag: 'watchActiveOrders(slug=$normalized)',
@@ -292,7 +292,8 @@ abstract final class SupabaseOrderService {
           .from(tableName)
           .select()
           .gte('created_at', dayStart.toUtc().toIso8601String())
-          .lt('created_at', dayEnd.toUtc().toIso8601String());
+          .lt('created_at', dayEnd.toUtc().toIso8601String())
+          .order('created_at', ascending: false);
 
       final orders = <DeliveryOrder>[];
       for (final row in rows) {
@@ -349,6 +350,8 @@ abstract final class SupabaseOrderService {
       final productLines = lineAggregates.values.toList()
         ..sort((a, b) => a.productName.compareTo(b.productName));
 
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
       debugPrint(
         '[SupabaseOrderService] تقرير إغلاق $dayStart — '
         '${orders.length} طلب، $totalSales د.ع، '
@@ -360,6 +363,7 @@ abstract final class SupabaseOrderService {
         orderCount: orders.length,
         totalSales: totalSales,
         productLines: productLines,
+        orders: orders,
       );
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] fetchTodayClosingReport فشل: $e\n$stack');
@@ -563,7 +567,7 @@ abstract final class SupabaseOrderService {
           }
         } catch (_) {}
       }
-      orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return orders;
     });
   }

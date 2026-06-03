@@ -1,10 +1,12 @@
+import 'delivery_order_model.dart';
+
 /// ملخص تقرير إغلاق اليوم للمطعم.
-class EndOfDayReport {
-  const EndOfDayReport({
+class EndOfDayReport {  const EndOfDayReport({
     required this.reportDate,
     required this.orderCount,
     required this.totalSales,
     required this.productLines,
+    required this.orders,
   });
 
   final DateTime reportDate;
@@ -13,6 +15,9 @@ class EndOfDayReport {
 
   /// كل المنتجات المباعة خلال اليوم (بدون حد أقصى).
   final List<ClosingProductLine> productLines;
+
+  /// الطلبات الكاملة لليوم — للأرشيف والعرض التفصيلي.
+  final List<DeliveryOrder> orders;
 }
 
 /// صف منتج في تقرير الإغلاق.

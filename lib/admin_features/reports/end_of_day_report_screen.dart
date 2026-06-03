@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme/tenant_palette.dart';
+import '../../models/delivery_order_model.dart';
+import '../../models/delivery_order_status.dart';
 import '../../models/end_of_day_report_model.dart';
 import '../../services/receipt_escpos_printer.dart';
 import '../../state/active_restaurant_notifier.dart';
@@ -11,6 +14,7 @@ import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
 import 'closing_report_csv_exporter.dart';
+import 'widgets/closing_order_detail_dialog.dart';
 
 /// تقرير إغلاق اليوم — جدول تفصيلي + تصدير CSV.
 class EndOfDayReportScreen extends StatefulWidget {
@@ -139,6 +143,35 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
         '${local.day.toString().padLeft(2, '0')}';
   }
 
+  String _formatOrderTime(DateTime value) {
+    final local = value.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _statusLabel(String status) => switch (status.trim().toLowerCase()) {
+        DeliveryOrderStatus.pending => 'معلّق',
+        DeliveryOrderStatus.accepted => 'مقبول',
+        DeliveryOrderStatus.preparing => 'تحضير',
+        DeliveryOrderStatus.delivering => 'توصيل',
+        DeliveryOrderStatus.delivered => 'مُسلّم',
+        DeliveryOrderStatus.rejected => 'مرفوض',
+        _ => status,
+      };
+
+  void _showOrderDetail({
+    required DeliveryOrder order,
+    required TenantPalette palette,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => ClosingOrderDetailDialog(
+        order: order,
+        palette: palette,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdminPageScaffold(
@@ -186,6 +219,10 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
     }
 
     final report = _report!;
+    final palette = TenantPalette.fromRestaurant(
+      context.read<ActiveRestaurantNotifier>().restaurant,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -204,7 +241,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'يشمل الطلبات المقبولة وقيد التوصيل والمُسلّمة فقط.',
+                'اضغط على أي طلب لعرض التفاصيل الكاملة (الزبون، العنوان، GPS، الوجبات).',
                 style: TextStyle(
                   color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
                   fontSize: 13,
@@ -234,22 +271,76 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
           ),
         ),
         Expanded(
-          child: report.productLines.isEmpty
-              ? Center(
-                  child: Text(
-                    'لا توجد مبيعات مسجّلة لهذا اليوم.',
-                    style: TextStyle(
-                      color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
-                    ),
-                  ),
-                )
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SingleChildScrollView(
-                    child: _ProductSalesTable(lines: report.productLines),
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TabBar(
+                  labelColor: AdminPanelColors.gold,
+                  unselectedLabelColor: AdminPanelColors.textMuted,
+                  indicatorColor: AdminPanelColors.gold,
+                  tabs: [
+                    Tab(text: 'الطلبات (${report.orders.length})'),
+                    const Tab(text: 'ملخص المنتجات'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      report.orders.isEmpty
+                          ? Center(
+                              child: Text(
+                                'لا توجد طلبات مسجّلة لهذا اليوم.',
+                                style: TextStyle(
+                                  color: AdminPanelColors.textMuted
+                                      .withValues(alpha: 0.9),
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              itemCount: report.orders.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final order = report.orders[index];
+                                return _ClosingOrderRow(
+                                  order: order,
+                                  timeLabel: _formatOrderTime(order.createdAt),
+                                  statusLabel: _statusLabel(order.status),
+                                  onTap: () => _showOrderDetail(
+                                    order: order,
+                                    palette: palette,
+                                  ),
+                                );
+                              },
+                            ),
+                      report.productLines.isEmpty
+                          ? Center(
+                              child: Text(
+                                'لا توجد مبيعات مسجّلة لهذا اليوم.',
+                                style: TextStyle(
+                                  color: AdminPanelColors.textMuted
+                                      .withValues(alpha: 0.9),
+                                ),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: SingleChildScrollView(
+                                child: _ProductSalesTable(
+                                  lines: report.productLines,
+                                ),
+                              ),
+                            ),
+                    ],
                   ),
                 ),
+              ],
+            ),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -301,6 +392,94 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ClosingOrderRow extends StatelessWidget {
+  const _ClosingOrderRow({
+    required this.order,
+    required this.timeLabel,
+    required this.statusLabel,
+    required this.onTap,
+  });
+
+  final DeliveryOrder order;
+  final String timeLabel;
+  final String statusLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AdminPanelColors.charcoalLight,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AdminPanelColors.gold.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.chevron_left_rounded,
+                color: AdminPanelColors.gold.withValues(alpha: 0.75),
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    order.customerName,
+                    style: const TextStyle(
+                      color: AdminPanelColors.textLight,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${order.customerPhone} • ${order.items.length} وجبة',
+                    style: const TextStyle(
+                      color: AdminPanelColors.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                    style: const TextStyle(
+                      color: AdminPanelColors.gold,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$timeLabel • $statusLabel',
+                    style: TextStyle(
+                      color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
