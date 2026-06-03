@@ -1,11 +1,10 @@
-# Builds Flutter web and publishes to the gh-pages branch on every push to main.
-# One-time setup in GitHub: Settings → Pages → Source → Deploy from branch → gh-pages / root
+# Deploy Flutter Web to GitHub Pages on every push to main.
+# Repo settings → Pages → Deploy from branch → gh-pages / (root)
 name: Deploy Flutter Web to GitHub Pages
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,12 +26,18 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Build for GitHub Pages
-        run: bash scripts/github_pages_build.sh
-        env:
-          GITHUB_PAGES_BASE_HREF: /snack-burger/
+      - name: Install dependencies
+        run: flutter pub get
 
-      - name: Publish to gh-pages branch
+      - name: Build web
+        run: flutter build web --release --base-href /snack-burger/
+
+      - name: Prepare GitHub Pages (SPA + Jekyll)
+        run: |
+          cp build/web/index.html build/web/404.html
+          touch build/web/.nojekyll
+
+      - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
