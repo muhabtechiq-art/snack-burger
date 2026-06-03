@@ -84,6 +84,29 @@ class MenuBanner extends StatelessWidget {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'سناك بركر',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFFFFD700),
+                                height: 1.2,
+                                shadows: [
+                                  Shadow(
+                                    color: const Color(0xFFFFD700)
+                                        .withValues(alpha: 0.45),
+                                    blurRadius: 10,
+                                  ),
+                                  Shadow(
+                                    color: Colors.black.withValues(alpha: 0.28),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1.5),
+                                  ),
+                                ],
+                              ),
+                            ),
                             const SizedBox(height: 8),
                             _BannerLogoMark(palette: palette),
                           ],
