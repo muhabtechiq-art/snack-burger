@@ -13,6 +13,7 @@ import '../../core/auth/admin_wrapper.dart';
 import '../../core/auth/auth_middleware.dart';
 import '../../core/auth/auth_notifier.dart';
 import '../../customer_features/menu/customer_menu_screen.dart';
+import '../../customer_features/my_orders/my_orders_screen.dart';
 import '../../customer_features/order_status/order_status_screen.dart';
 
 /// مسارات التطبيق — فصل كامل بين الزبون والإدارة.
@@ -170,6 +171,16 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
                 child: ProductFormPage(slug: slug),
               ),
             ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/:slug/my-order',
+        name: 'my-orders',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          return NoTransitionPage<void>(
+            child: MyOrdersScreen(slug: slug),
           );
         },
       ),

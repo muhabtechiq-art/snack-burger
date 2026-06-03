@@ -15,6 +15,7 @@ import '../delivery/saved_delivery_location_dialog.dart';
 import '../../../models/order_model.dart';
 import '../../../models/restaurant_model.dart';
 import '../data/customer_order_repository.dart';
+import '../services/customer_last_order_notifier.dart';
 import '../../../state/cart_notifier.dart';
 import '../../../state/delivery_location_notifier.dart';
 
@@ -328,6 +329,10 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
       if (!mounted) return;
 
+      await context.read<CustomerLastOrderNotifier>().recordOrder(orderId);
+
+      if (!mounted) return;
+
       context.read<CartNotifier>().clearCart();
       Navigator.of(context).pop();
 
@@ -341,14 +346,11 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
           margin: const EdgeInsets.all(16),
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'متابعة الطلب',
+            label: 'طلباتي',
             textColor: widget.palette.onPrimary,
             onPressed: () => context.pushNamed(
-              'order-status',
-              pathParameters: {
-                'slug': widget.restaurant.slug,
-                'orderId': orderId,
-              },
+              'my-orders',
+              pathParameters: {'slug': widget.restaurant.slug},
             ),
           ),
           content: Row(

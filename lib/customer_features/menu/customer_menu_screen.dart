@@ -11,9 +11,11 @@ import '../../state/active_restaurant_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
 import 'customer_menu_controller.dart';
+import '../services/customer_last_order_notifier.dart';
 import '../widgets/category_section_header.dart';
 import '../widgets/menu_banner.dart';
 import '../widgets/menu_cart_bar.dart';
+import '../widgets/my_orders_entry_bar.dart';
 import '../widgets/menu_persistent_headers.dart';
 import '../widgets/menu_product_card.dart';
 
@@ -44,11 +46,19 @@ class _CustomerMenuScope extends StatefulWidget {
 class _CustomerMenuScopeState extends State<_CustomerMenuScope> {
   final CartNotifier _cartNotifier = CartNotifier();
   final DeliveryLocationNotifier _locationNotifier = DeliveryLocationNotifier();
+  late final CustomerLastOrderNotifier _lastOrderNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastOrderNotifier = CustomerLastOrderNotifier(slug: widget.slug);
+  }
 
   @override
   void dispose() {
     _cartNotifier.dispose();
     _locationNotifier.dispose();
+    _lastOrderNotifier.dispose();
     super.dispose();
   }
 
@@ -63,6 +73,9 @@ class _CustomerMenuScopeState extends State<_CustomerMenuScope> {
         ChangeNotifierProvider<CartNotifier>.value(value: _cartNotifier),
         ChangeNotifierProvider<DeliveryLocationNotifier>.value(
           value: _locationNotifier,
+        ),
+        ChangeNotifierProvider<CustomerLastOrderNotifier>.value(
+          value: _lastOrderNotifier,
         ),
       ],
       child: _CustomerMenuSlugResolver(
@@ -308,9 +321,33 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
             data: menuTheme,
             child: Scaffold(
               backgroundColor: palette.surfaceTint,
-              bottomNavigationBar: MenuCartBar(
-                palette: palette,
-                restaurant: restaurant,
+              bottomNavigationBar: Consumer2<CartNotifier, CustomerLastOrderNotifier>(
+                builder: (context, cart, lastOrder, _) {
+                  final showMyOrders =
+                      lastOrder.isLoaded && lastOrder.hasOrder;
+                  final showCart = cart.itemCount > 0;
+
+                  if (!showMyOrders && !showCart) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showMyOrders)
+                        MyOrdersEntryBar(
+                          slug: restaurant.slug,
+                          palette: palette,
+                        ),
+                      if (showCart)
+                        MenuCartBar(
+                          palette: palette,
+                          restaurant: restaurant,
+                        ),
+                    ],
+                  );
+                },
               ),
               body: CustomScrollView(
                 controller: _scrollController,
