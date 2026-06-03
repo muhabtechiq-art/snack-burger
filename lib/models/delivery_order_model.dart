@@ -54,7 +54,8 @@ class DeliveryOrder {
     );
   }
 
-  bool get isPending => status == DeliveryOrderStatus.pending;
+  bool get isPending =>
+      status.trim().toLowerCase() == DeliveryOrderStatus.pending;
 
   bool get isDelivering => status == DeliveryOrderStatus.delivering;
 
@@ -126,7 +127,7 @@ class DeliveryOrder {
       ),
       items: items,
       totalPrice: _readDouble(data['total_price'] ?? data['totalPrice']),
-      status: data['status'] as String? ?? DeliveryOrderStatus.pending,
+      status: _readStatus(data['status']),
       createdAt: parseModelDate(data['created_at'] ?? data['createdAt']),
     );
   }
@@ -149,4 +150,10 @@ double _readDouble(dynamic value) {
   if (value == null) return 0;
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString()) ?? 0;
+}
+
+String _readStatus(dynamic raw) {
+  if (raw == null) return DeliveryOrderStatus.pending;
+  final normalized = raw.toString().trim().toLowerCase();
+  return normalized.isEmpty ? DeliveryOrderStatus.pending : normalized;
 }

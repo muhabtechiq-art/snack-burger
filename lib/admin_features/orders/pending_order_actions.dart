@@ -66,11 +66,11 @@ class PendingOrderActions {
     VoidCallback? onOrderRemovedFromPending,
     VoidCallback? onOrderAcceptFailed,
   }) async {
-    final showActions = order.isPending;
+    final actionsEnabled = order.isPending;
 
     await showDialog<void>(
       context: context,
-      barrierDismissible: !showActions,
+      barrierDismissible: !actionsEnabled,
       builder: (dialogContext) {
         var isProcessing = false;
 
@@ -83,7 +83,7 @@ class PendingOrderActions {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             Future<void> handleReject() async {
-              if (isProcessing) return;
+              if (isProcessing || !order.isPending) return;
               setDialogState(() => isProcessing = true);
               try {
                 await rejectOrder(
@@ -107,7 +107,7 @@ class PendingOrderActions {
             }
 
             Future<void> handleAccept() async {
-              if (isProcessing) return;
+              if (isProcessing || !order.isPending) return;
               setDialogState(() => isProcessing = true);
               onOrderRemovedFromPending?.call();
               try {
@@ -135,7 +135,8 @@ class PendingOrderActions {
               order: order,
               palette: palette,
               isProcessing: isProcessing,
-              showActions: showActions,
+              showActions: true,
+              actionsEnabled: actionsEnabled,
               onClose: closeDialog,
               onReject: handleReject,
               onAccept: handleAccept,

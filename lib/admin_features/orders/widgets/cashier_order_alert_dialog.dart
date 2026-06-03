@@ -15,6 +15,7 @@ class CashierOrderAlertDialog extends StatelessWidget {
     required this.onReject,
     this.isProcessing = false,
     this.showActions = true,
+    this.actionsEnabled = true,
   });
 
   final DeliveryOrder order;
@@ -23,12 +24,17 @@ class CashierOrderAlertDialog extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final bool isProcessing;
+  /// يعرض شريط الأزرار في أسفل النافذة.
   final bool showActions;
+  /// يفعّل قبول/رفض — يُعطَّل للطلبات التي ليست «معلّقة».
+  final bool actionsEnabled;
 
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
     final maxHeight = screen.height * 0.82;
+    const headerHeight = 52.0;
+    const footerHeight = 80.0;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -47,30 +53,38 @@ class CashierOrderAlertDialog extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
-                child: Row(
-                  children: [
-                    Icon(Icons.receipt_long_rounded, color: palette.accent),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        showActions ? 'طلب جديد' : 'تفاصيل الطلب',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: palette.primary,
+                child: SizedBox(
+                  height: headerHeight,
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_rounded, color: palette.accent),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          actionsEnabled ? 'طلب جديد' : 'تفاصيل الطلب',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            color: palette.primary,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: isProcessing ? null : onClose,
-                      tooltip: 'إغلاق',
-                      icon: const Icon(Icons.close_rounded, size: 26),
-                      color: Colors.grey.shade700,
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: isProcessing ? null : onClose,
+                        tooltip: 'إغلاق',
+                        icon: const Icon(Icons.close_rounded, size: 26),
+                        color: Colors.grey.shade700,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Flexible(
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: maxHeight -
+                      headerHeight -
+                      (showActions ? footerHeight : 16),
+                ),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Column(
@@ -133,75 +147,114 @@ class CashierOrderAlertDialog extends StatelessWidget {
                   ),
                 ),
               ),
-              if (showActions) ...[
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: isProcessing ? null : onReject,
-                          icon: const Icon(Icons.cancel_rounded, size: 22),
-                          label: const Text(
-                            'رفض الطلب',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.red.shade600,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(52),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: isProcessing ? null : onAccept,
-                          icon: isProcessing
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.check_circle_rounded, size: 22),
-                          label: Text(
-                            isProcessing ? 'جاري...' : 'قبول الطلب',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.green.shade600,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(52),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else
+              if (showActions)
+                _OrderActionFooter(
+                  palette: palette,
+                  isProcessing: isProcessing,
+                  actionsEnabled: actionsEnabled,
+                  onReject: onReject,
+                  onAccept: onAccept,
+                )
+              else
                 const SizedBox(height: 16),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OrderActionFooter extends StatelessWidget {
+  const _OrderActionFooter({
+    required this.palette,
+    required this.isProcessing,
+    required this.actionsEnabled,
+    required this.onReject,
+    required this.onAccept,
+  });
+
+  final TenantPalette palette;
+  final bool isProcessing;
+  final bool actionsEnabled;
+  final VoidCallback onReject;
+  final VoidCallback onAccept;
+
+  bool get _canAct => actionsEnabled && !isProcessing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _canAct ? onReject : null,
+                  icon: const Icon(Icons.cancel_rounded, size: 22),
+                  label: const Text(
+                    'رفض الطلب',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.red.shade200,
+                    disabledForegroundColor: Colors.white70,
+                    minimumSize: const Size.fromHeight(52),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _canAct ? onAccept : null,
+                  icon: isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check_circle_rounded, size: 22),
+                  label: Text(
+                    isProcessing ? 'جاري...' : 'قبول الطلب',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.green.shade200,
+                    disabledForegroundColor: Colors.white70,
+                    minimumSize: const Size.fromHeight(52),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
