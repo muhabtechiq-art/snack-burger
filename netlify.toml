@@ -43,9 +43,9 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Fingerprinted JS chunks (e.g. main.dart.js hash suffix when enabled by build).
+# Fingerprinted JS chunks — hashed filenames only; entry scripts listed below use no-cache.
 [[headers]]
-  for = "/*.js"
+  for = "/assets/*.js"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
