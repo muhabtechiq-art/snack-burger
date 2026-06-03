@@ -1,16 +1,118 @@
-# Netlify — منيو سناك برجر (Flutter Web)
+# Netlify — Snack Burger (Flutter Web)
 # https://docs.netlify.com/configure-builds/file-based-configuration/
 
 [build]
-  # مجلد النشر بعد `flutter build web` (لا تغيّره)
   publish = "build/web"
-  # لبناء على خوادم Netlify من GitHub (اختياري). للرفع المحلي فقط استخدم scripts/deploy_netlify.ps1
   command = "bash scripts/netlify_build.sh"
 
+[build.environment]
+  FLUTTER_VERSION = "stable"
+
+# SPA: all routes serve index.html (menu always resolves client-side).
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-[build.environment]
-  FLUTTER_VERSION = "stable"
+# -----------------------------------------------------------------------------
+# Cache headers (order matters: last matching rule wins for duplicate keys)
+# Long cache first for static/hashed assets; entry HTML/JS last = always fresh.
+# -----------------------------------------------------------------------------
+
+# Flutter asset bundles (filenames include content hashes).
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# CanvasKit WASM/JS (versioned by Flutter SDK path).
+[[headers]]
+  for = "/canvaskit/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# PWA icons and other static images.
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Standalone CSS (if present) — typically fingerprinted in production builds.
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Fingerprinted JS chunks (e.g. main.dart.js hash suffix when enabled by build).
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# -----------------------------------------------------------------------------
+# Entry point + bootstrap files — NEVER cache (mobile browsers must revalidate)
+# -----------------------------------------------------------------------------
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+# Flutter bootstrap (changes every deploy; must not be served stale).
+[[headers]]
+  for = "/flutter.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/flutter_bootstrap.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/main.dart.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/flutter_service_worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
