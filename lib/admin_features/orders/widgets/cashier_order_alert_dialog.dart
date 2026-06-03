@@ -4,7 +4,7 @@ import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
 import 'order_item_receipt_lines.dart';
 
-/// نافذة عائمة لعرض تفاصيل الطلب — قبول/رفض أو إغلاق فقط.
+/// نافذة عائمة لعرض تفاصيل الطلب — قبول/رفض للمطبخ، أو عرض فقط مع زر X.
 class CashierOrderAlertDialog extends StatelessWidget {
   const CashierOrderAlertDialog({
     super.key,
@@ -142,12 +142,22 @@ class CashierOrderAlertDialog extends StatelessWidget {
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: isProcessing ? null : onReject,
-                          icon: const Icon(Icons.close_rounded),
-                          label: const Text('رفض الطلب'),
+                          icon: const Icon(Icons.cancel_rounded, size: 22),
+                          label: const Text(
+                            'رفض الطلب',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.red.shade600,
                             foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(52),
                             padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -157,19 +167,29 @@ class CashierOrderAlertDialog extends StatelessWidget {
                           onPressed: isProcessing ? null : onAccept,
                           icon: isProcessing
                               ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
+                                  width: 20,
+                                  height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.check_circle_rounded),
-                          label: Text(isProcessing ? 'جاري...' : 'قبول الطلب'),
+                              : const Icon(Icons.check_circle_rounded, size: 22),
+                          label: Text(
+                            isProcessing ? 'جاري...' : 'قبول الطلب',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.green.shade600,
                             foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(52),
                             padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -177,16 +197,7 @@ class CashierOrderAlertDialog extends StatelessWidget {
                   ),
                 ),
               ] else
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: isProcessing ? null : onClose,
-                      child: const Text('إغلاق'),
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 16),
             ],
           ),
         ),
