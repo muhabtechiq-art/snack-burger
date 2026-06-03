@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/config/location_feature_flags.dart';
@@ -16,6 +15,7 @@ import '../../../models/order_model.dart';
 import '../../../models/restaurant_model.dart';
 import '../data/customer_order_repository.dart';
 import '../services/customer_last_order_notifier.dart';
+import 'order_confirmation_dialog.dart';
 import '../../../state/cart_notifier.dart';
 import '../../../state/delivery_location_notifier.dart';
 
@@ -88,12 +88,12 @@ class MenuCartBar extends StatelessWidget {
     );
   }
 
-  void _openCartSheet(BuildContext context) {
+  Future<void> _openCartSheet(BuildContext context) async {
     final cart = context.read<CartNotifier>();
     final location = context.read<DeliveryLocationNotifier>();
     location.clear();
 
-    showModalBottomSheet<void>(
+    final orderId = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
@@ -114,6 +114,14 @@ class MenuCartBar extends StatelessWidget {
           ),
         );
       },
+    );
+
+    if (!context.mounted || orderId == null || orderId.isEmpty) return;
+
+    await OrderConfirmationDialog.show(
+      context: context,
+      palette: palette,
+      slug: restaurant.slug,
     );
   }
 }
@@ -334,43 +342,7 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
       if (!mounted) return;
 
       context.read<CartNotifier>().clearCart();
-      Navigator.of(context).pop();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: widget.palette.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'طلباتي',
-            textColor: widget.palette.onPrimary,
-            onPressed: () => context.pushNamed(
-              'my-orders',
-              pathParameters: {'slug': widget.restaurant.slug},
-            ),
-          ),
-          content: Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: widget.palette.onPrimary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'تم إرسال طلبك بنجاح، يرجى انتظار قبول المطعم',
-                  style: TextStyle(
-                    color: widget.palette.onPrimary,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      Navigator.of(context).pop(orderId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
