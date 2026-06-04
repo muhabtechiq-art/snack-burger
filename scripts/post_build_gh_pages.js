@@ -25,13 +25,11 @@ if (fs.existsSync(sourceIndex)) {
 fs.copyFileSync(outIndex, path.join(outDir, '404.html'));
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 
-const customSw = path.join('web', 'flutter_service_worker.js');
+// Service worker معطّل في index.html — احذف الملف المولّد لتفادي تسجيل نسخة قديمة.
 const outSw = path.join(outDir, 'flutter_service_worker.js');
-if (fs.existsSync(customSw)) {
-  fs.copyFileSync(customSw, outSw);
-  console.log('GitHub Pages post-build: applied web/flutter_service_worker.js');
-} else {
-  console.warn('GitHub Pages post-build: missing web/flutter_service_worker.js');
+if (fs.existsSync(outSw)) {
+  fs.unlinkSync(outSw);
+  console.log('GitHub Pages post-build: removed flutter_service_worker.js');
 }
 
 console.log('GitHub Pages post-build: copied 404.html and wrote .nojekyll');

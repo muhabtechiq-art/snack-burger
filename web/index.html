@@ -3,12 +3,14 @@
 <head>
   <!--
     GitHub Pages: flutter build web --release --base-href /snack-burger/
+    Bump meta version on each release to bust main.dart.js cache.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
+  <meta name="snack-burger-asset-version" content="1.1">
 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -17,22 +19,72 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="snack_burger">
-  <link rel="apple-touch-icon" href="/snack-burger/icons/Icon-192.png">
-
-  <link rel="icon" type="image/png" href="/snack-burger/favicon.png"/>
-
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
   <title>snack_burger</title>
-  <link rel="manifest" href="/snack-burger/manifest.json">
-</head>
-<body>
-  <!-- مسارات مطلقة من جذر الموقع — flutter_bootstrap.js يحمّل flutter.js و main.dart.js -->
-  <script src="/snack-burger/flutter_bootstrap.js" defer></script>
+  <link rel="manifest" href="manifest.json">
+
   <script>
     (function () {
-      var el = document.querySelector('script[src="/snack-burger/flutter_bootstrap.js"]');
-      if (!el) return;
-      el.src = '/snack-burger/flutter_bootstrap.js?v=' + Date.now();
+      'use strict';
+
+      /** يقرأ المسار من base href بعد استبدال $FLUTTER_BASE_HREF عند البناء. */
+      function resolveBaseHref() {
+        var baseEl = document.querySelector('base');
+        if (!baseEl || !baseEl.getAttribute('href')) return '/';
+        var raw = baseEl.getAttribute('href').trim();
+        if (raw === '$FLUTTER_BASE_HREF' || raw.indexOf('$') >= 0) {
+          return '/snack-burger/';
+        }
+        try {
+          var url = new URL(raw, window.location.href);
+          var path = url.pathname || '/';
+          return path.endsWith('/') ? path : path + '/';
+        } catch (e) {
+          return raw.endsWith('/') ? raw : raw + '/';
+        }
+      }
+
+      function resolveAssetVersion() {
+        var meta = document.querySelector('meta[name="snack-burger-asset-version"]');
+        if (meta && meta.content) return meta.content.trim();
+        return '1.1';
+      }
+
+      window.__SNACK_BURGER_BASE__ = resolveBaseHref();
+      window.__SNACK_BURGER_ASSET_VERSION__ = resolveAssetVersion();
+
+      /** إلغاء أي Service Worker قديم يعيق التحديث أو يسبب شاشة بيضاء. */
+      function unregisterLegacyServiceWorkers() {
+        if (!('serviceWorker' in navigator)) return Promise.resolve();
+        return navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(
+            regs.map(function (reg) {
+              return reg.unregister();
+            })
+          );
+        });
+      }
+
+      function loadFlutterBootstrap() {
+        var base = window.__SNACK_BURGER_BASE__ || '/';
+        var version = window.__SNACK_BURGER_ASSET_VERSION__ || '1.1';
+        var script = document.createElement('script');
+        script.src =
+          base +
+          'flutter_bootstrap.js?v=' +
+          encodeURIComponent(version) +
+          '&t=' +
+          Date.now();
+        script.defer = true;
+        document.head.appendChild(script);
+      }
+
+      unregisterLegacyServiceWorkers()
+        .catch(function () {})
+        .finally(loadFlutterBootstrap);
     })();
   </script>
-</body>
+</head>
+<body></body>
 </html>

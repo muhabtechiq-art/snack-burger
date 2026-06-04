@@ -16,11 +16,10 @@ if (Test-Path $redirectsSrc) {
   Write-Host "==> Copied _redirects to build/web" -ForegroundColor Green
 }
 
-$swSrc = Join-Path $Root "web\flutter_service_worker.js"
 $swDst = Join-Path $Root "build\web\flutter_service_worker.js"
-if (Test-Path $swSrc) {
-  Copy-Item -Force $swSrc $swDst
-  Write-Host "==> Applied flutter_service_worker.js (skipWaiting + clients.claim)" -ForegroundColor Green
+if (Test-Path $swDst) {
+  Remove-Item -Force $swDst
+  Write-Host "==> Removed flutter_service_worker.js (SW disabled)" -ForegroundColor Green
 }
 
 $out = Join-Path $Root "build\web"
