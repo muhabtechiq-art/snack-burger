@@ -1,31 +1,18 @@
 'use strict';
 
-self.addEventListener('install', () => {
+// تفعيل فوري للنسخة الجديدة — يستبدل worker القديم دون انتظار إغلاق التبويبات.
+self.addEventListener('install', function () {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    (async () => {
-      try {
-        await self.registration.unregister();
-      } catch (e) {
-        console.warn('Failed to unregister the service worker:', e);
-      }
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.claim());
+});
 
-      try {
-        const clients = await self.clients.matchAll({
-          type: 'window',
-        });
-        // Reload clients to ensure they are not using the old service worker.
-        clients.forEach((client) => {
-          if (client.url && 'navigate' in client) {
-            client.navigate(client.url);
-          }
-        });
-      } catch (e) {
-        console.warn('Failed to navigate some service worker clients:', e);
-      }
-    })()
-  );
+self.addEventListener('message', function (event) {
+  var data = event.data;
+  if (!data) return;
+  if (data === 'skipWaiting' || (data && data.type === 'SKIP_WAITING')) {
+    self.skipWaiting();
+  }
 });
