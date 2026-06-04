@@ -78,7 +78,7 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
       serviceWorkerSettings: {
         timeoutMillis: 40000,
         serviceWorkerUrl: 'flutter_service_worker.js?v=' + encoded,
-        serviceWorkerVersion: "3120597563" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
+        serviceWorkerVersion: "1862495538" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
       },
     });
   }
