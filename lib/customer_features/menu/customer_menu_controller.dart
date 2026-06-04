@@ -25,6 +25,7 @@ class CustomerMenuController extends ChangeNotifier {
     if (useMockProducts) {
       _applyProducts(_mockProducts);
       _productsLoading = false;
+      _initialLoadComplete = true;
     }
   }
 
@@ -34,12 +35,14 @@ class CustomerMenuController extends ChangeNotifier {
   final List<ProductModel> _mockProducts;
 
   StreamSubscription<List<ProductModel>>? _productsSubscription;
+  int _bindGeneration = 0;
 
   String? _restaurantId;
 
   List<ProductModel> _products = const [];
   Object? _streamError;
   bool _productsLoading = true;
+  bool _initialLoadComplete = false;
   String _searchQuery = '';
   String? _selectedCategory;
   List<String> _categoryTitles = const [];
@@ -60,7 +63,14 @@ class CustomerMenuController extends ChangeNotifier {
 
   bool get hasProductsError => _streamError != null;
 
-  String? get productsErrorMessage => _streamError == null
+  /// يُعرض فقط بعد انتهاء المحاولة الأولى وفشلها مع عدم وجود منتجات.
+  bool get showProductsError =>
+      hasProductsError &&
+      _initialLoadComplete &&
+      !productsLoading &&
+      !hasProducts;
+
+  String? get productsErrorMessage => !showProductsError
       ? null
       : _mapProductsError(_streamError!);
 
@@ -123,15 +133,55 @@ class CustomerMenuController extends ChangeNotifier {
       _applyProducts(_mockProducts);
       _productsLoading = false;
       _streamError = null;
+      _initialLoadComplete = true;
       if (!_disposed) notifyListeners();
       return;
     }
 
-    _productsSubscription?.cancel();
+    unawaited(_reloadProducts(restaurantId: restaurantId, slug: slug));
+  }
+
+  Future<void> retryProductsLoad() async {
+    final restaurantId = _restaurantId;
+    if (restaurantId == null || restaurantId.isEmpty) return;
+    await _reloadProducts(restaurantId: restaurantId, slug: slug);
+  }
+
+  Future<void> _reloadProducts({
+    required String restaurantId,
+    required String slug,
+  }) async {
+    final generation = ++_bindGeneration;
+
+    await _productsSubscription?.cancel();
     _productsSubscription = null;
     _productsLoading = true;
     _streamError = null;
+    _initialLoadComplete = false;
     if (!_disposed) notifyListeners();
+
+    try {
+      final items = await _productRepository.fetchProductsForRestaurant(
+        restaurantId: restaurantId,
+        slug: slug,
+      );
+      if (_disposed || generation != _bindGeneration) return;
+      _applyProducts(items);
+      _streamError = null;
+    } catch (error, stack) {
+      debugPrint('CustomerMenuController fetch: $error\n$stack');
+      if (_disposed || generation != _bindGeneration) return;
+      if (!hasProducts) {
+        _streamError = error;
+      }
+    }
+
+    if (_disposed || generation != _bindGeneration) return;
+    _initialLoadComplete = true;
+    _productsLoading = false;
+    notifyListeners();
+
+    if (_disposed || generation != _bindGeneration) return;
 
     _productsSubscription = _productRepository
         .watchProductsForRestaurant(
@@ -140,17 +190,21 @@ class CustomerMenuController extends ChangeNotifier {
         )
         .listen(
       (List<ProductModel> items) {
-        if (_disposed) return;
+        if (_disposed || generation != _bindGeneration) return;
         _applyProducts(items);
         _productsLoading = false;
         _streamError = null;
+        _initialLoadComplete = true;
         notifyListeners();
       },
       onError: (Object error, StackTrace stack) {
         debugPrint('CustomerMenuController stream: $error\n$stack');
-        if (_disposed) return;
-        _streamError = error;
+        if (_disposed || generation != _bindGeneration) return;
+        if (!hasProducts) {
+          _streamError = error;
+        }
         _productsLoading = false;
+        _initialLoadComplete = true;
         notifyListeners();
       },
     );
@@ -219,12 +273,13 @@ class CustomerMenuController extends ChangeNotifier {
     if (error is TimeoutException) {
       return 'انتهت مهلة الاتصال. حاول مرة أخرى';
     }
-    return 'تعذّr تحميل المنتجات';
+    return 'تعذّر تحميل المنتجات';
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _bindGeneration++;
     _productsSubscription?.cancel();
     super.dispose();
   }

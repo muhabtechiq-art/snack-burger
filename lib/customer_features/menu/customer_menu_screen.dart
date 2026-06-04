@@ -136,7 +136,6 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
 
   late CustomerMenuController _menuController;
   String? _boundRestaurantId;
-  String? _lastShownErrorMessage;
 
   @override
   void initState() {
@@ -155,18 +154,11 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
 
   void _onMenuControllerChanged() {
     if (!mounted) return;
-
     _syncSectionKeys(_menuController.categories);
+  }
 
-    final message = _menuController.productsErrorMessage;
-    if (message != null && message != _lastShownErrorMessage) {
-      _lastShownErrorMessage = message;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    } else if (message == null) {
-      _lastShownErrorMessage = null;
-    }
+  void _openMyOrders(BuildContext context, String slug) {
+    context.pushNamed('my-orders', pathParameters: {'slug': slug});
   }
 
   void _syncSectionKeys(List<String> titles) {
@@ -322,12 +314,12 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
             child: Scaffold(
               backgroundColor: palette.surfaceTint,
               bottomNavigationBar: Consumer2<CartNotifier, CustomerLastOrderNotifier>(
-                builder: (context, cart, lastOrder, _) {
-                  final showMyOrders =
-                      lastOrder.isLoaded && lastOrder.hasOrder;
+                builder: (context, cart, session, _) {
+                  final showMyOrdersBar =
+                      session.isLoaded && session.canOpenMyOrders;
                   final showCart = cart.itemCount > 0;
 
-                  if (!showMyOrders && !showCart) {
+                  if (!showMyOrdersBar && !showCart) {
                     return const SizedBox.shrink();
                   }
 
@@ -335,7 +327,7 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (showMyOrders)
+                      if (showMyOrdersBar)
                         MyOrdersEntryBar(
                           slug: restaurant.slug,
                           palette: palette,
@@ -355,10 +347,17 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 slivers: [
-                  MenuBanner(
-                    restaurant: restaurant,
-                    palette: palette,
-                    onBack: () => context.go('/'),
+                  Consumer<CustomerLastOrderNotifier>(
+                    builder: (context, session, _) {
+                      return MenuBanner(
+                        restaurant: restaurant,
+                        palette: palette,
+                        onBack: () => context.go('/'),
+                        showMyOrdersButton:
+                            session.isLoaded && session.canOpenMyOrders,
+                        onMyOrders: () => _openMyOrders(context, restaurant.slug),
+                      );
+                    },
                   ),
                   MenuStickyControlsHeader(
                     searchController: _searchController,
@@ -413,10 +412,46 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     required TenantPalette palette,
   }) {
     if (menu.productsLoading && !menu.hasProducts) {
-      return const SliverToBoxAdapter(
+      return SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 48),
-          child: Center(child: CircularProgressIndicator()),
+          padding: const EdgeInsets.symmetric(vertical: 48),
+          child: Center(
+            child: CircularProgressIndicator(color: palette.primary),
+          ),
+        ),
+      );
+    }
+
+    if (menu.showProductsError) {
+      final message =
+          menu.productsErrorMessage ?? 'تعذّر تحميل المنتجات';
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            children: [
+              Icon(
+                Icons.cloud_off_rounded,
+                size: 48,
+                color: palette.primary.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: palette.primary.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: menu.retryProductsLoad,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('إعادة المحاولة'),
+              ),
+            ],
+          ),
         ),
       );
     }

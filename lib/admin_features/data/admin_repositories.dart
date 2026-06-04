@@ -61,6 +61,21 @@ class AdminOrderRepository {
     );
   }
 
+  Stream<List<DeliveryOrder>> watchKitchenDashboardOrders({
+    required String restaurantId,
+    required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    final scopedId = resolveRestaurantId(
+      restaurantId: restaurantId,
+      slug: slug,
+    );
+    return SupabaseOrderService.watchKitchenDashboardOrders(
+      slug: scopedId,
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
   Future<void> updateOrderStatus({
     required String orderId,
     required String status,
@@ -68,6 +83,16 @@ class AdminOrderRepository {
     return SupabaseOrderService.updateOrderStatus(
       orderId: orderId,
       status: status,
+    );
+  }
+
+  Future<void> updateRejectionReason({
+    required String orderId,
+    required String reason,
+  }) {
+    return SupabaseOrderService.updateRejectionReason(
+      orderId: orderId,
+      reason: reason,
     );
   }
 

@@ -21,6 +21,7 @@ class DeliveryOrder {
     required this.totalPrice,
     required this.status,
     required this.createdAt,
+    this.rejectionReason,
   });
 
   final String id;
@@ -43,6 +44,7 @@ class DeliveryOrder {
   final double totalPrice;
   final String status;
   final DateTime createdAt;
+  final String? rejectionReason;
 
   bool get hasLocation => latitude != null && longitude != null;
 
@@ -56,6 +58,12 @@ class DeliveryOrder {
 
   bool get isPending =>
       status.trim().toLowerCase() == DeliveryOrderStatus.pending;
+
+  bool get isRejected =>
+      status.trim().toLowerCase() == DeliveryOrderStatus.rejected;
+
+  bool get needsRejectionReason =>
+      isRejected && (rejectionReason == null || rejectionReason!.trim().isEmpty);
 
   bool get isDelivering => status == DeliveryOrderStatus.delivering;
 
@@ -129,6 +137,9 @@ class DeliveryOrder {
       totalPrice: _readDouble(data['total_price'] ?? data['totalPrice']),
       status: _readStatus(data['status']),
       createdAt: parseModelDate(data['created_at'] ?? data['createdAt']),
+      rejectionReason: _readNullableString(
+        data['rejection_reason'] ?? data['rejectionReason'],
+      ),
     );
   }
 }

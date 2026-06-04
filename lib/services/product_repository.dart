@@ -24,6 +24,14 @@ class ProductRepository {
     return SupabaseProductService.defaultRestaurantId;
   }
 
+  Future<List<ProductModel>> fetchProductsForRestaurant({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
+    return SupabaseProductService.fetchProducts(restaurantId: docId);
+  }
+
   Stream<List<ProductModel>> watchProductsForRestaurant({
     required String restaurantId,
     required String slug,

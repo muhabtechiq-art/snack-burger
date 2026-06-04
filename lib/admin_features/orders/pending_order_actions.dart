@@ -17,16 +17,17 @@ class PendingOrderActions {
   final AdminOrderRepository _orderRepository;
 
   Future<void> rejectOrder({
-    required BuildContext context,
     required DeliveryOrder order,
     VoidCallback? onOrderRemovedFromPending,
+    bool showSnackBar = true,
+    BuildContext? context,
   }) async {
     await _orderRepository.updateOrderStatus(
       orderId: order.id,
       status: DeliveryOrderStatus.rejected,
     );
     onOrderRemovedFromPending?.call();
-    if (context.mounted) {
+    if (showSnackBar && context != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم رفض الطلب')),
       );
@@ -84,24 +85,22 @@ class PendingOrderActions {
           builder: (context, setDialogState) {
             Future<void> handleReject() async {
               if (isProcessing || !order.isPending) return;
-              setDialogState(() => isProcessing = true);
+              onOrderRemovedFromPending?.call();
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
               try {
                 await rejectOrder(
-                  context: dialogContext,
                   order: order,
                   onOrderRemovedFromPending: onOrderRemovedFromPending,
+                  showSnackBar: false,
                 );
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
               } catch (e) {
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                onOrderAcceptFailed?.call();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('تعذّر رفض الطلب: $e')),
                   );
-                }
-                if (context.mounted) {
-                  setDialogState(() => isProcessing = false);
                 }
               }
             }

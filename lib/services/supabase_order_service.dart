@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/observability/app_telemetry.dart';
+import '../core/utils/iraqi_phone_validator.dart';
 import '../core/config/restaurant_ids.dart';
 import '../core/config/stability_phase1_flags.dart';
 import '../core/utils/delivery_coordinates.dart';
@@ -221,6 +223,40 @@ abstract final class SupabaseOrderService {
     );
   }
 
+  /// بث طلبات الزبون حسب رقم الهاتف والمطعم (جدول `orders`).
+  static Stream<List<DeliveryOrder>> watchOrdersByPhone({
+    required String slug,
+    required String phoneNumber,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    final normalizedSlug = slug.trim().toLowerCase();
+    final normalizedPhone = IraqiPhoneValidator.normalize(phoneNumber);
+    if (normalizedPhone.isEmpty) {
+      return const Stream<List<DeliveryOrder>>.empty();
+    }
+
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchOrdersByPhone(
+        slug: normalizedSlug,
+        phoneNumber: normalizedPhone,
+      );
+    }
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) => _filterOrdersByPhoneAndSlug(
+        rows: rows,
+        normalizedSlug: normalizedSlug,
+        normalizedPhone: normalizedPhone,
+      ),
+      streamTag: 'watchOrdersByPhone(slug=$normalizedSlug)',
+      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
+          ? onHealthChanged
+          : null,
+    );
+  }
+
   /// بث كل الطلبات النشطة (غير المُسلّمة/الملغية) مع فلترة المطعم.
   static Stream<List<DeliveryOrder>> watchActiveOrders({
     required String slug,
@@ -276,6 +312,53 @@ abstract final class SupabaseOrderService {
     DeliveryOrderStatus.preparing,
     DeliveryOrderStatus.delivering,
   };
+
+  static const Set<String> _kitchenDashboardStatuses = {
+    DeliveryOrderStatus.pending,
+    DeliveryOrderStatus.rejected,
+  };
+
+  /// بث طلبات المطبخ: معلّقة + مرفوضة (لتبويبي لوحة الإدارة).
+  static Stream<List<DeliveryOrder>> watchKitchenDashboardOrders({
+    required String slug,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchKitchenDashboardOrders(slug: slug);
+    }
+    final normalized = slug.trim().toLowerCase();
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) {
+        final orders = <DeliveryOrder>[];
+        for (final row in rows) {
+          try {
+            final order = DeliveryOrder.fromSupabase(
+              Map<String, dynamic>.from(row),
+            );
+            if (!_kitchenDashboardStatuses.contains(order.status)) continue;
+            final orderSlug = order.slug.trim().toLowerCase();
+            final orderRestaurant = order.restaurantId.trim().toLowerCase();
+            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+              orders.add(order);
+              continue;
+            }
+            if (orderSlug == normalized || orderRestaurant == normalized) {
+              orders.add(order);
+            }
+          } catch (_) {}
+        }
+        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return orders;
+      },
+      streamTag: 'watchKitchenDashboardOrders(slug=$normalized)',
+      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
+          ? onHealthChanged
+          : null,
+    );
+  }
 
   /// طلبات اليوم المحلية المقبولة/قيد التوصيل/المُسلّمة — لتقرير الإغلاق.
   static Future<EndOfDayReport> fetchTodayClosingReport({
@@ -404,6 +487,65 @@ abstract final class SupabaseOrderService {
       );
       rethrow;
     }
+  }
+
+  /// حفظ سبب الرفض لطلب مرفوض.
+  static Future<void> updateRejectionReason({
+    required String orderId,
+    required String reason,
+  }) async {
+    final normalizedId = orderId.trim();
+    final trimmedReason = reason.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError('معرّف الطلب فارغ');
+    }
+    try {
+      await _client.from(tableName).update({
+        'rejection_reason': trimmedReason.isEmpty ? null : trimmedReason,
+      }).eq('id', normalizedId);
+      debugPrint(
+        '[SupabaseOrderService] سبب الرفض $normalizedId → '
+        '${trimmedReason.isEmpty ? "(فارغ)" : trimmedReason}',
+      );
+    } catch (e, stack) {
+      debugPrint('[SupabaseOrderService] updateRejectionReason فشل: $e\n$stack');
+      rethrow;
+    }
+  }
+
+  static bool _orderMatchesSlug(DeliveryOrder order, String normalizedSlug) {
+    final orderSlug = order.slug.trim().toLowerCase();
+    final orderRestaurant = order.restaurantId.trim().toLowerCase();
+    if (orderSlug.isEmpty && orderRestaurant.isEmpty) return true;
+    return orderSlug == normalizedSlug || orderRestaurant == normalizedSlug;
+  }
+
+  static List<DeliveryOrder> _filterOrdersByPhoneAndSlug({
+    required List<Map<String, dynamic>> rows,
+    required String normalizedSlug,
+    required String normalizedPhone,
+  }) {
+    final orders = <DeliveryOrder>[];
+    for (final row in rows) {
+      try {
+        final order = DeliveryOrder.fromSupabase(
+          Map<String, dynamic>.from(row),
+        );
+        final orderPhone = IraqiPhoneValidator.normalize(order.customerPhone);
+        if (orderPhone != normalizedPhone) continue;
+        if (!_orderMatchesSlug(order, normalizedSlug)) continue;
+        if (!CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt)) {
+          continue;
+        }
+        orders.add(order);
+      } catch (e, st) {
+        debugPrint(
+          '[SupabaseOrderService] تخطي صف طلب ${row['id']}: $e\n$st',
+        );
+      }
+    }
+    orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return orders;
   }
 
   static Stream<T> _resilientOrdersStream<T>({
@@ -570,6 +712,45 @@ abstract final class SupabaseOrderService {
       orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return orders;
     });
+  }
+
+  static Stream<List<DeliveryOrder>> _legacyWatchKitchenDashboardOrders({
+    required String slug,
+  }) {
+    final normalized = slug.trim().toLowerCase();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
+      final orders = <DeliveryOrder>[];
+      for (final row in rows) {
+        try {
+          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
+          if (!_kitchenDashboardStatuses.contains(order.status)) continue;
+          final orderSlug = order.slug.trim().toLowerCase();
+          final orderRestaurant = order.restaurantId.trim().toLowerCase();
+          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
+            orders.add(order);
+            continue;
+          }
+          if (orderSlug == normalized || orderRestaurant == normalized) {
+            orders.add(order);
+          }
+        } catch (_) {}
+      }
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return orders;
+    });
+  }
+
+  static Stream<List<DeliveryOrder>> _legacyWatchOrdersByPhone({
+    required String slug,
+    required String phoneNumber,
+  }) {
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _filterOrdersByPhoneAndSlug(
+        rows: rows,
+        normalizedSlug: slug,
+        normalizedPhone: phoneNumber,
+      ),
+    );
   }
 
   /// Legacy path kept as strict rollback target.

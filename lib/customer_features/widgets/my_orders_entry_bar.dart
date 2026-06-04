@@ -60,7 +60,7 @@ class MyOrdersEntryBar extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'عرض تفاصيل آخر طلب',
+                      'عرض كل طلباتك',
                       style: TextStyle(
                         color: palette.onPrimary.withValues(alpha: 0.88),
                         fontSize: 12,

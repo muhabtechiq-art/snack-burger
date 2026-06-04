@@ -11,6 +11,8 @@ class MenuBanner extends StatelessWidget {
     required this.restaurant,
     required this.palette,
     required this.onBack,
+    this.onMyOrders,
+    this.showMyOrdersButton = false,
   });
 
   static const double expandedHeight = MenuHeaderMetrics.bannerExpandedHeight;
@@ -20,6 +22,8 @@ class MenuBanner extends StatelessWidget {
   final RestaurantModel restaurant;
   final TenantPalette palette;
   final VoidCallback onBack;
+  final VoidCallback? onMyOrders;
+  final bool showMyOrdersButton;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +36,23 @@ class MenuBanner extends StatelessWidget {
       backgroundColor: _bannerBackgroundTop(palette),
       foregroundColor: palette.onPrimary,
       leading: const SizedBox.shrink(),
-      actions: const [],
+      actions: [
+        if (showMyOrdersButton && onMyOrders != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 8),
+            child: TextButton.icon(
+              onPressed: onMyOrders,
+              icon: Icon(Icons.receipt_long_rounded, color: palette.onPrimary),
+              label: Text(
+                'طلباتي',
+                style: TextStyle(
+                  color: palette.onPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         centerTitle: false,
         title: null,

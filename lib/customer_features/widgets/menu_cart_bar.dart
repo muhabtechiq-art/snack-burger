@@ -14,6 +14,7 @@ import '../delivery/saved_delivery_location_dialog.dart';
 import '../../../models/order_model.dart';
 import '../../../models/restaurant_model.dart';
 import '../data/customer_order_repository.dart';
+import '../services/customer_order_session.dart';
 import '../services/customer_last_order_notifier.dart';
 import 'order_confirmation_dialog.dart';
 import '../../../state/cart_notifier.dart';
@@ -88,24 +89,27 @@ class MenuCartBar extends StatelessWidget {
     );
   }
 
-  Future<void> _openCartSheet(BuildContext context) async {
-    final cart = context.read<CartNotifier>();
-    final location = context.read<DeliveryLocationNotifier>();
-    location.clear();
+  Future<void> _openCartSheet(BuildContext parentContext) async {
+    final cart = parentContext.read<CartNotifier>();
+    final location = parentContext.read<DeliveryLocationNotifier>();
+    final customerSession = parentContext.read<CustomerLastOrderNotifier>();
 
     final orderId = await showModalBottomSheet<String>(
-      context: context,
+      context: parentContext,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) {
+      builder: (_) {
         return MultiProvider(
           providers: [
             ChangeNotifierProvider<CartNotifier>.value(value: cart),
             ChangeNotifierProvider<DeliveryLocationNotifier>.value(
               value: location,
+            ),
+            ChangeNotifierProvider<CustomerLastOrderNotifier>.value(
+              value: customerSession,
             ),
           ],
           child: _CartOrderSheet(
@@ -116,10 +120,12 @@ class MenuCartBar extends StatelessWidget {
       },
     );
 
-    if (!context.mounted || orderId == null || orderId.isEmpty) return;
+    location.clear();
+
+    if (!parentContext.mounted || orderId == null || orderId.isEmpty) return;
 
     await OrderConfirmationDialog.show(
-      context: context,
+      context: parentContext,
       palette: palette,
       slug: restaurant.slug,
     );
@@ -157,8 +163,23 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
     super.initState();
     _phoneController.addListener(_onPhoneFieldChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_restoreSessionPhone());
       _onPhoneFieldChanged();
     });
+  }
+
+  Future<void> _restoreSessionPhone() async {
+    final saved = await CustomerOrderSession.getCustomerPhone(
+      widget.restaurant.slug,
+    );
+    if (!mounted || saved == null || saved.isEmpty) return;
+    if (_phoneController.text.trim().isEmpty) {
+      _phoneController.text = saved;
+    }
+  }
+
+  void _closeSheet() {
+    Navigator.of(context).pop();
   }
 
   @override
@@ -297,14 +318,16 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
   }
 
   Future<void> _submitOrder({
+    required BuildContext sheetContext,
     required CartNotifier cart,
     required DeliveryLocationNotifier location,
+    required CustomerLastOrderNotifier customerSession,
   }) async {
     if (!_formKey.currentState!.validate() || _isSubmitting) return;
 
     if (LocationFeatureFlags.enabled) {
       if (!location.hasLocation) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(sheetContext).showSnackBar(
           const SnackBar(
             content: Text(LocationFeatureFlags.locationRequiredMessage),
           ),
@@ -312,7 +335,7 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
         return;
       }
       if (!location.hasAcceptableLocation) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(sheetContext).showSnackBar(
           const SnackBar(
             content: Text(LocationFeatureFlags.weakSignalMessage),
           ),
@@ -323,11 +346,14 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
     setState(() => _isSubmitting = true);
     try {
+      final normalizedPhone =
+          IraqiPhoneValidator.normalize(_phoneController.text);
+
       final orderId = await _orderRepository.submitOrder(
         restaurantId: widget.restaurant.id,
         slug: widget.restaurant.slug,
         customerName: _nameController.text.trim(),
-        customerPhone: IraqiPhoneValidator.normalize(_phoneController.text),
+        customerPhone: normalizedPhone,
         address: _addressController.text.trim(),
         latitude: LocationFeatureFlags.enabled ? location.latitude : null,
         longitude: LocationFeatureFlags.enabled ? location.longitude : null,
@@ -335,17 +361,20 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
         totalPrice: cart.totalPrice,
       );
 
-      if (!mounted) return;
+      if (!sheetContext.mounted) return;
 
-      await context.read<CustomerLastOrderNotifier>().recordOrder(orderId);
+      await customerSession.recordOrder(
+        orderId: orderId,
+        phoneNumber: normalizedPhone,
+      );
 
-      if (!mounted) return;
+      if (!sheetContext.mounted) return;
 
-      context.read<CartNotifier>().clearCart();
-      Navigator.of(context).pop(orderId);
+      cart.clearCart();
+      Navigator.of(sheetContext).pop(orderId);
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!sheetContext.mounted) return;
+      ScaffoldMessenger.of(sheetContext).showSnackBar(
         SnackBar(content: Text('تعذّر إرسال الطلب: $e')),
       );
     } finally {
@@ -366,36 +395,60 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: SafeArea(
-            child: Consumer2<CartNotifier, DeliveryLocationNotifier>(
-              builder: (context, cart, location, _) {
-                return Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
+            child: Builder(
+              builder: (_) {
+                return Consumer3<
+                    CartNotifier,
+                    DeliveryLocationNotifier,
+                    CustomerLastOrderNotifier>(
+                  builder: (sheetContext, cart, location, customerSession, _) {
+                    return Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
                               Center(
                                 child: Container(
                                   width: 40,
                                   height: 4,
-                                  margin: const EdgeInsets.only(bottom: 16),
+                                  margin: const EdgeInsets.only(bottom: 12),
                                   decoration: BoxDecoration(
                                     color: widget.palette.primary.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                 ),
                               ),
-                              Text(
-                                'سلة المشتريات',
-                                textAlign: TextAlign.right,
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.w900,
+                              Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: _isSubmitting ? null : _closeSheet,
+                                    tooltip: 'إغلاق',
+                                    icon: Icon(
+                                      Icons.close_rounded,
                                       color: widget.palette.primary,
                                     ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'سلة المشتريات',
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(sheetContext)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w900,
+                                            color: widget.palette.primary,
+                                          ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 48),
+                                ],
                               ),
                               const SizedBox(height: 14),
                               _SectionCard(
@@ -549,8 +602,10 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
                                 onPressed: _isSubmitting
                                     ? null
                                     : () => _submitOrder(
+                                          sheetContext: sheetContext,
                                           cart: cart,
                                           location: location,
+                                          customerSession: customerSession,
                                         ),
                                 icon: _isSubmitting
                                     ? SizedBox(
@@ -585,8 +640,10 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
