@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../admin_features/orders/widgets/order_item_receipt_lines.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
 import '../../services/supabase_order_service.dart';
@@ -278,24 +279,13 @@ class _OrderItemsCard extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             ),
             const SizedBox(height: 10),
-            for (final item in order.items) ...[
-              Row(
-                children: [
-                  Text(
-                    '${item.lineTotal.toStringAsFixed(0)} د.ع',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const Spacer(),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      '${item.quantity}x ${item.printableName}',
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
+            for (var i = 0; i < order.items.length; i++) ...[
+              OrderItemReceiptLines(
+                item: order.items[i],
+                primaryColor: const Color(0xFF8B0000),
+                compact: true,
               ),
-              const Divider(height: 18),
+              if (i < order.items.length - 1) const Divider(height: 18),
             ],
           ],
         ),

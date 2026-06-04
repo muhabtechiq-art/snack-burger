@@ -17,14 +17,14 @@ String buildWebInvoiceHtml(DeliveryOrder order) {
       <tr>
         <td class="item-name">${_escapeHtml(item.name)}</td>
         <td class="item-qty">${item.quantity}</td>
-        <td class="item-price">${item.lineTotal.toStringAsFixed(0)}</td>
+        <td class="item-price">${item.baseLineTotal.toStringAsFixed(0)}</td>
       </tr>''');
     for (final addon in item.selectedAddons) {
       rows.writeln('''
       <tr class="addon-row">
         <td class="item-name addon-name">+ ${_escapeHtml(addon.name)}</td>
         <td class="item-qty">${addon.quantity}</td>
-        <td class="item-price">${addon.lineTotal.toStringAsFixed(0)}</td>
+        <td class="item-price">${item.receiptAddonLineTotal(addon).toStringAsFixed(0)}</td>
       </tr>''');
     }
   }

@@ -50,6 +50,26 @@ class CartItem {
 
   double get lineTotal => quantity * unitPrice;
 
+  /// مجموع إضافات وجبة واحدة (قبل ضرب كمية السطر).
+  double get addonsTotalPerUnit =>
+      selectedAddons.fold(0.0, (sum, addon) => sum + addon.lineTotal);
+
+  /// السعر الأساسي للوجبة الواحدة بدون الإضافات.
+  double get resolvedBaseUnitPrice {
+    if (selectedAddons.isEmpty) return unitPrice;
+    final inferred = unitPrice - addonsTotalPerUnit;
+    if (inferred > 0) return inferred;
+    if (baseUnitPrice > 0 && baseUnitPrice <= unitPrice) return baseUnitPrice;
+    return unitPrice;
+  }
+
+  /// إجمالي سعر الوجبة الأساسية فقط في الفاتورة.
+  double get baseLineTotal => quantity * resolvedBaseUnitPrice;
+
+  /// إجمالي سطر الإضافة في الفاتورة (مع كمية الوجبة).
+  double receiptAddonLineTotal(CartItemAddon addon) =>
+      quantity * addon.lineTotal;
+
   Map<String, dynamic> toMap() => <String, dynamic>{
         'lineId': lineId,
         'productId': productId,

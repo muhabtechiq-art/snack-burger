@@ -160,14 +160,14 @@ abstract final class ReceiptRasterBuilder {
       lines.add(
         _RasterLine(
           '${item.name}    x${item.quantity}    '
-          '${item.lineTotal.toStringAsFixed(0)} د.ع',
+          '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
         ),
       );
       for (final addon in item.selectedAddons) {
         lines.add(
           _RasterLine(
             '  + ${addon.name}    x${addon.quantity}    '
-            '${addon.lineTotal.toStringAsFixed(0)} د.ع',
+            '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
           ),
         );
       }

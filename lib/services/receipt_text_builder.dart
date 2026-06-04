@@ -32,10 +32,14 @@ abstract final class ReceiptTextBuilder {
       ..writeln(_separator());
 
     for (final item in order.items) {
-      buffer.writeln(_itemLine(item.name, item.quantity, item.lineTotal));
+      buffer.writeln(_itemLine(item.name, item.quantity, item.baseLineTotal));
       for (final addon in item.selectedAddons) {
         buffer.writeln(
-          _addonLine(addon.name, addon.quantity, addon.lineTotal),
+          _addonLine(
+            addon.name,
+            addon.quantity,
+            item.receiptAddonLineTotal(addon),
+          ),
         );
       }
     }

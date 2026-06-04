@@ -225,7 +225,7 @@ abstract final class ReceiptPdfPrinter {
         _line(
           fonts,
           '${item.name}  x${item.quantity}  '
-          '${item.lineTotal.toStringAsFixed(0)} د.ع',
+          '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
         ),
       );
       for (final addon in item.selectedAddons) {
@@ -233,7 +233,7 @@ abstract final class ReceiptPdfPrinter {
           _line(
             fonts,
             '  + ${addon.name}  x${addon.quantity}  '
-            '${addon.lineTotal.toStringAsFixed(0)} د.ع',
+            '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
           ),
         );
       }

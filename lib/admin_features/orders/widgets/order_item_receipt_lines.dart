@@ -37,7 +37,7 @@ class OrderItemReceiptLines extends StatelessWidget {
             Text('x${item.quantity}'),
             const SizedBox(width: 12),
             Text(
-              '${item.lineTotal.toStringAsFixed(0)} د.ع',
+              '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: color,
@@ -74,7 +74,7 @@ class OrderItemReceiptLines extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${addon.lineTotal.toStringAsFixed(0)} د.ع',
+                      '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
                       style: TextStyle(
                         fontSize: compact ? 12 : 13,
                         fontWeight: FontWeight.w700,

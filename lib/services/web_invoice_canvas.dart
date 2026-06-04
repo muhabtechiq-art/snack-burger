@@ -100,11 +100,29 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
     ctx.fillText('${item.quantity}', _receiptWidth * 0.55, y);
     ctx.textAlign = 'left';
     ctx.fillText(
-      item.lineTotal.toStringAsFixed(0),
+      item.baseLineTotal.toStringAsFixed(0),
       _pad + 70,
       y,
     );
     y += 26;
+
+    for (final addon in item.selectedAddons) {
+      ctx.textAlign = 'right';
+      ctx.fillText(
+        '+ ${addon.name}',
+        _receiptWidth - _pad,
+        y,
+      );
+      ctx.textAlign = 'center';
+      ctx.fillText('${addon.quantity}', _receiptWidth * 0.55, y);
+      ctx.textAlign = 'left';
+      ctx.fillText(
+        item.receiptAddonLineTotal(addon).toStringAsFixed(0),
+        _pad + 70,
+        y,
+      );
+      y += 22;
+    }
   }
 
   y += 6;
