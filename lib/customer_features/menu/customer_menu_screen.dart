@@ -15,8 +15,8 @@ import '../services/customer_last_order_notifier.dart';
 import '../widgets/category_section_header.dart';
 import '../widgets/menu_banner.dart';
 import '../widgets/menu_cart_bar.dart';
-import '../widgets/my_orders_entry_bar.dart';
 import '../widgets/menu_persistent_headers.dart';
+import 'customer_menu_drawer.dart';
 import '../widgets/menu_product_card.dart';
 
 /// واجهة المنيو للزبون — عرض وطلب فقط (بدون أي عناصر إدارية).
@@ -130,6 +130,7 @@ class _CustomerMenuBody extends StatefulWidget {
 }
 
 class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final Map<String, GlobalKey> _sectionKeys = {};
@@ -157,8 +158,8 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     _syncSectionKeys(_menuController.categories);
   }
 
-  void _openMyOrders(BuildContext context, String slug) {
-    context.pushNamed('my-orders', pathParameters: {'slug': slug});
+  void _openMenuDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
   }
 
   void _syncSectionKeys(List<String> titles) {
@@ -312,32 +313,20 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
           return Theme(
             data: menuTheme,
             child: Scaffold(
+              key: _scaffoldKey,
               backgroundColor: palette.surfaceTint,
-              bottomNavigationBar: Consumer2<CartNotifier, CustomerLastOrderNotifier>(
-                builder: (context, cart, session, _) {
-                  final showMyOrdersBar =
-                      session.isLoaded && session.canOpenMyOrders;
-                  final showCart = cart.itemCount > 0;
-
-                  if (!showMyOrdersBar && !showCart) {
+              drawer: CustomerMenuDrawer(
+                restaurant: restaurant,
+                palette: palette,
+              ),
+              bottomNavigationBar: Consumer<CartNotifier>(
+                builder: (context, cart, _) {
+                  if (cart.itemCount == 0) {
                     return const SizedBox.shrink();
                   }
-
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (showMyOrdersBar)
-                        MyOrdersEntryBar(
-                          slug: restaurant.slug,
-                          palette: palette,
-                        ),
-                      if (showCart)
-                        MenuCartBar(
-                          palette: palette,
-                          restaurant: restaurant,
-                        ),
-                    ],
+                  return MenuCartBar(
+                    palette: palette,
+                    restaurant: restaurant,
                   );
                 },
               ),
@@ -347,17 +336,11 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 slivers: [
-                  Consumer<CustomerLastOrderNotifier>(
-                    builder: (context, session, _) {
-                      return MenuBanner(
-                        restaurant: restaurant,
-                        palette: palette,
-                        onBack: () => context.go('/'),
-                        showMyOrdersButton:
-                            session.isLoaded && session.canOpenMyOrders,
-                        onMyOrders: () => _openMyOrders(context, restaurant.slug),
-                      );
-                    },
+                  MenuBanner(
+                    restaurant: restaurant,
+                    palette: palette,
+                    onBack: () => context.go('/'),
+                    onOpenMenu: _openMenuDrawer,
                   ),
                   MenuStickyControlsHeader(
                     searchController: _searchController,
