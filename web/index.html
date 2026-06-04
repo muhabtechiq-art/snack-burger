@@ -2,20 +2,7 @@
 <html>
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-
-    GitHub Pages (project site): use /snack-burger/ — see package.json and
-    scripts/github_pages_build.sh. Local dev / Netlify root deploy uses `/`.
+    GitHub Pages: flutter build web --release --base-href /snack-burger/
   -->
   <base href="$FLUTTER_BASE_HREF">
 
@@ -23,35 +10,28 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
-  <!-- Ask browsers and intermediates to revalidate the shell on every visit. -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="snack_burger">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" href="/snack-burger/icons/Icon-192.png">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="/snack-burger/favicon.png"/>
 
   <title>snack_burger</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/snack-burger/manifest.json">
 </head>
 <body>
-  <!--
-    Cache-busted bootstrap loader: always fetches a fresh flutter_bootstrap.js
-    (which then reads version.json and busts main.dart.js + service worker).
-    See web/flutter_bootstrap.js and docs/web_cache_busting.md
-  -->
+  <!-- مسارات مطلقة من جذر الموقع — flutter_bootstrap.js يحمّل flutter.js و main.dart.js -->
+  <script src="/snack-burger/flutter_bootstrap.js" defer></script>
   <script>
     (function () {
-      var script = document.createElement('script');
-      script.src = 'flutter_bootstrap.js?v=' + Date.now();
-      script.async = true;
-      document.body.appendChild(script);
+      var el = document.querySelector('script[src="/snack-burger/flutter_bootstrap.js"]');
+      if (!el) return;
+      el.src = '/snack-burger/flutter_bootstrap.js?v=' + Date.now();
     })();
   </script>
 </body>

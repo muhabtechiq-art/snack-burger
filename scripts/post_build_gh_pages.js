@@ -1,16 +1,28 @@
-// Post-build steps for GitHub Pages (SPA routing + Jekyll bypass).
+// Post-build steps for GitHub Pages (SPA routing + Jekyll bypass + absolute asset paths).
 const fs = require('fs');
 const path = require('path');
 
 const outDir = path.join('build', 'web');
-const indexHtml = path.join(outDir, 'index.html');
+const ghBase = process.env.GITHUB_PAGES_BASE_HREF || '/snack-burger/';
 
-if (!fs.existsSync(indexHtml)) {
+const sourceIndex = path.join('web', 'index.html');
+const outIndex = path.join(outDir, 'index.html');
+
+if (!fs.existsSync(outIndex)) {
   console.error('Missing build/web/index.html — run flutter build web first.');
   process.exit(1);
 }
 
-fs.copyFileSync(indexHtml, path.join(outDir, '404.html'));
+if (fs.existsSync(sourceIndex)) {
+  let html = fs.readFileSync(sourceIndex, 'utf8');
+  html = html.replace(/\$FLUTTER_BASE_HREF/g, ghBase);
+  fs.writeFileSync(outIndex, html, 'utf8');
+  console.log('GitHub Pages post-build: applied web/index.html (absolute /snack-burger/ paths)');
+} else {
+  console.warn('GitHub Pages post-build: missing web/index.html — using Flutter output');
+}
+
+fs.copyFileSync(outIndex, path.join(outDir, '404.html'));
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 
 const customSw = path.join('web', 'flutter_service_worker.js');
