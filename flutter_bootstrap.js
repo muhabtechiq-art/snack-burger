@@ -172,7 +172,7 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
       serviceWorkerSettings: {
         timeoutMillis: 40000,
         serviceWorkerUrl: 'flutter_service_worker.js?v=' + encoded,
-        serviceWorkerVersion: "2776418829" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
+        serviceWorkerVersion: "639785507" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
       },
       onEntrypointLoaded: function () {
         probeRemoteVersion();
