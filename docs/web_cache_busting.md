@@ -4,12 +4,16 @@
 
 1. **`web/index.html`** loads `flutter_bootstrap.js?v=<timestamp>` on every visit so the bootstrap is never served from a stale browser cache (important on GitHub Pages, which has no custom cache headers).
 
-2. **`web/flutter_bootstrap.js`** (processed at build time):
+2. **`web/flutter_service_worker.js`** (copied into `build/web/` after each build):
+   - `skipWaiting()` on install and `clients.claim()` on activate so a new deploy takes control immediately.
+   - Handles `SKIP_WAITING` messages from the bootstrap loader.
+
+3. **`web/flutter_bootstrap.js`** (processed at build time):
    - Fetches **`version.json`** with `cache: 'no-store'` and a timestamp query param.
    - Builds a tag from `version` + `build_number` in `pubspec.yaml` (e.g. `1.0.0+1`).
    - Appends `?v=<tag>` to **`main.dart.js`** and **`flutter_service_worker.js`** so each deploy gets unique URLs.
 
-3. **`netlify.toml`** sets `Cache-Control: no-cache` on `index.html`, `flutter_bootstrap.js`, `main.dart.js`, `flutter_service_worker.js`, and `version.json`. Hashed assets under `/assets/` stay long-cached.
+4. **`netlify.toml`** sets `Cache-Control: no-cache` on `index.html`, `flutter_bootstrap.js`, `main.dart.js`, `flutter_service_worker.js`, and `version.json`. Hashed assets under `/assets/` stay long-cached.
 
 ## After each release
 

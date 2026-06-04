@@ -32,10 +32,8 @@ jobs:
       - name: Build web
         run: flutter build web --release --base-href /snack-burger/
 
-      - name: Prepare GitHub Pages (SPA + Jekyll)
-        run: |
-          cp build/web/index.html build/web/404.html
-          touch build/web/.nojekyll
+      - name: Prepare GitHub Pages (SPA + Jekyll + service worker)
+        run: node scripts/post_build_gh_pages.js
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

@@ -14,3 +14,7 @@ flutter build web --release
 if [ -f web/_redirects ]; then
   cp web/_redirects build/web/_redirects
 fi
+
+if [ -f web/flutter_service_worker.js ]; then
+  cp web/flutter_service_worker.js build/web/flutter_service_worker.js
+fi

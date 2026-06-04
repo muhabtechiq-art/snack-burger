@@ -12,4 +12,14 @@ if (!fs.existsSync(indexHtml)) {
 
 fs.copyFileSync(indexHtml, path.join(outDir, '404.html'));
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
+
+const customSw = path.join('web', 'flutter_service_worker.js');
+const outSw = path.join(outDir, 'flutter_service_worker.js');
+if (fs.existsSync(customSw)) {
+  fs.copyFileSync(customSw, outSw);
+  console.log('GitHub Pages post-build: applied web/flutter_service_worker.js');
+} else {
+  console.warn('GitHub Pages post-build: missing web/flutter_service_worker.js');
+}
+
 console.log('GitHub Pages post-build: copied 404.html and wrote .nojekyll');
