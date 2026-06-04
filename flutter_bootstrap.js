@@ -39,6 +39,9 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
 (function () {
   'use strict';
 
+  var initialVersionTag = null;
+  var silentReloadScheduled = false;
+
   function buildCacheTag(versionJson) {
     if (
       versionJson &&
@@ -72,13 +75,107 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
     return encoded;
   }
 
+  function scheduleSilentReload() {
+    if (silentReloadScheduled) return;
+    silentReloadScheduled = true;
+    window.setTimeout(function () {
+      window.location.reload();
+    }, 250);
+  }
+
+  function bindServiceWorkerAutoReload() {
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      scheduleSilentReload();
+    });
+
+    navigator.serviceWorker.ready
+      .then(function (registration) {
+        registration.addEventListener('updatefound', function () {
+          var newWorker = registration.installing;
+          if (!newWorker) return;
+
+          newWorker.addEventListener('statechange', function () {
+            if (
+              newWorker.state === 'installed' &&
+              navigator.serviceWorker.controller
+            ) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+
+        return registration.update();
+      })
+      .catch(function (error) {
+        console.warn('[snack_burger] service worker update check failed:', error);
+      });
+  }
+
+  function probeRemoteVersion() {
+    if (initialVersionTag == null) return;
+
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('version.json HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (json) {
+        var remoteTag = buildCacheTag(json);
+        if (remoteTag === initialVersionTag) return;
+
+        if (!('serviceWorker' in navigator)) {
+          scheduleSilentReload();
+          return;
+        }
+
+        return navigator.serviceWorker.getRegistration().then(function (registration) {
+          if (!registration) {
+            scheduleSilentReload();
+            return;
+          }
+
+          return registration.update().then(function () {
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              return;
+            }
+            scheduleSilentReload();
+          });
+        });
+      })
+      .catch(function (error) {
+        console.warn('[snack_burger] background version probe failed:', error);
+      });
+  }
+
+  function bindBackgroundUpdateChecks() {
+    window.addEventListener('focus', probeRemoteVersion);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') {
+        probeRemoteVersion();
+      }
+    });
+  }
+
   function startApp(tag) {
+    initialVersionTag = tag;
     var encoded = applyCacheTag(tag);
+
+    bindServiceWorkerAutoReload();
+    bindBackgroundUpdateChecks();
+
     _flutter.loader.load({
       serviceWorkerSettings: {
         timeoutMillis: 40000,
         serviceWorkerUrl: 'flutter_service_worker.js?v=' + encoded,
-        serviceWorkerVersion: "982385590" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
+        serviceWorkerVersion: "694872943" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
+      },
+      onEntrypointLoaded: function () {
+        probeRemoteVersion();
       },
     });
   }
