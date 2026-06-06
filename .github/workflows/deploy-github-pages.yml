@@ -1,48 +1,49 @@
-# Deploy Flutter Web to GitHub Pages on every push to main.
-# Repo settings → Pages → Deploy from branch → gh-pages / (root)
-name: Deploy Flutter Web to GitHub Pages
-
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-
-concurrency:
-  group: github-pages
-  cancel-in-progress: true
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build web
-        run: |
-          flutter build web --release \
-            --base-href /snack-burger/ \
-            --no-wasm-dry-run \
-            --pwa-strategy=none
-
-      - name: Prepare GitHub Pages (SPA + Jekyll + index.html)
-        run: bash scripts/post_build_gh_pages.sh
-
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
-          publish_branch: gh-pages
-          commit_message: 'deploy: GitHub Pages (${{ github.sha }})'
+# Deploy Flutter Web to GitHub Pages on every push to main.
+# Repo settings → Pages → Deploy from branch → gh-pages / (root)
+
+name: Deploy Flutter Web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web
+        run: >
+          flutter build web --release
+          --base-href /snack-burger/
+          --no-wasm-dry-run
+          --pwa-strategy=none
+
+      - name: Prepare GitHub Pages (SPA + Jekyll + index.html)
+        run: bash scripts/post_build_gh_pages.sh
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          publish_branch: gh-pages
+          commit_message: 'deploy: GitHub Pages (${{ github.sha }})'
