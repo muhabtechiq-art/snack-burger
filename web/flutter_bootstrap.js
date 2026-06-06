@@ -63,17 +63,33 @@
     return encoded;
   }
 
+  function showBootstrapError(message) {
+    var el = document.getElementById('snack-burger-loading');
+    if (!el) return;
+    el.innerHTML =
+      '<p style="color:#b00020;font-family:sans-serif;text-align:center;padding:24px">' +
+      message +
+      '</p>';
+  }
+
   function startApp(tag) {
     applyCacheTag(tag);
 
-    _flutter.loader.load({
-      onEntrypointLoaded: function () {
-        console.info('[snack_burger] Flutter app loaded (v=' + tag + ')');
-      },
-    });
+    _flutter.loader
+      .load({
+        onEntrypointLoaded: function () {
+          console.info('[snack_burger] Flutter app loaded (v=' + tag + ')');
+          var loading = document.getElementById('snack-burger-loading');
+          if (loading) loading.remove();
+        },
+      })
+      .catch(function (error) {
+        console.error('[snack_burger] Flutter loader failed:', error);
+        showBootstrapError('تعذّر تحميل التطبيق. حدّث الصفحة (Ctrl+Shift+R).');
+      });
   }
 
-  window.addEventListener('load', function () {
+  function runBootstrap() {
     fetch(assetUrl('version.json') + '?t=' + Date.now(), { cache: 'no-store' })
       .then(function (response) {
         if (!response.ok) {
@@ -88,5 +104,12 @@
         console.warn('[snack_burger] version.json fetch failed:', error);
         startApp(resolveVersionTag(null));
       });
-  });
+  }
+
+  // Do not wait for window "load" — dynamic scripts often miss that event.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runBootstrap);
+  } else {
+    runBootstrap();
+  }
 })();

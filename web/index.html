@@ -10,7 +10,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
-  <meta name="snack-burger-asset-version" content="1.1">
+  <meta name="snack-burger-asset-version" content="1.2">
 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -28,7 +28,6 @@
     (function () {
       'use strict';
 
-      /** يقرأ المسار من base href بعد استبدال $FLUTTER_BASE_HREF عند البناء. */
       function resolveBaseHref() {
         var baseEl = document.querySelector('base');
         if (!baseEl || !baseEl.getAttribute('href')) return '/';
@@ -48,43 +47,26 @@
       function resolveAssetVersion() {
         var meta = document.querySelector('meta[name="snack-burger-asset-version"]');
         if (meta && meta.content) return meta.content.trim();
-        return '1.1';
+        return '1.2';
       }
 
       window.__SNACK_BURGER_BASE__ = resolveBaseHref();
       window.__SNACK_BURGER_ASSET_VERSION__ = resolveAssetVersion();
 
-      /** إلغاء أي Service Worker قديم يعيق التحديث أو يسبب شاشة بيضاء. */
-      function unregisterLegacyServiceWorkers() {
-        if (!('serviceWorker' in navigator)) return Promise.resolve();
-        return navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(
-            regs.map(function (reg) {
-              return reg.unregister();
-            })
-          );
-        });
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (reg) {
+            return reg.unregister();
+          }));
+        }).catch(function () {});
       }
-
-      function loadFlutterBootstrap() {
-        var base = window.__SNACK_BURGER_BASE__ || '/';
-        var version = window.__SNACK_BURGER_ASSET_VERSION__ || '1.1';
-        var script = document.createElement('script');
-        script.src =
-          base +
-          'flutter_bootstrap.js?v=' +
-          encodeURIComponent(version) +
-          '&t=' +
-          Date.now();
-        script.defer = true;
-        document.head.appendChild(script);
-      }
-
-      unregisterLegacyServiceWorkers()
-        .catch(function () {})
-        .finally(loadFlutterBootstrap);
     })();
   </script>
+  <script defer src="flutter_bootstrap.js?v=1.2"></script>
 </head>
-<body></body>
+<body>
+  <div id="snack-burger-loading" style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;color:#555">
+    جاري التحميل…
+  </div>
+</body>
 </html>
