@@ -4,20 +4,20 @@ import 'package:provider/provider.dart';
 
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/theme/tenant_palette.dart';
-import '../../models/order_model.dart';
 import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
 import 'customer_menu_controller.dart';
+import 'customer_menu_drawer.dart';
 import '../services/customer_last_order_notifier.dart';
 import '../widgets/category_section_header.dart';
 import '../widgets/menu_banner.dart';
 import '../widgets/menu_cart_bar.dart';
 import '../widgets/menu_persistent_headers.dart';
-import 'customer_menu_drawer.dart';
 import '../widgets/menu_product_card.dart';
+import '../widgets/product_detail_dialog.dart';
 
 /// واجهة المنيو للزبون — عرض وطلب فقط (بدون أي عناصر إدارية).
 class CustomerMenuScreen extends StatelessWidget {
@@ -203,15 +203,16 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
   ) async {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => _ProductDetailDialog(
+      builder: (dialogContext) => ProductDetailDialog(
         product: product,
         palette: TenantPalette.fromRestaurant(
           context.read<ActiveRestaurantNotifier>().restaurant!,
         ),
-        onAdd: (selectedAddons) {
+        onAdd: ({required selectedAddons, selectedVariant}) {
           context.read<CartNotifier>().addProduct(
             product,
             selectedAddons: selectedAddons,
+            selectedVariant: selectedVariant,
           );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -228,7 +229,7 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     BuildContext context,
     ProductModel product,
   ) async {
-    if (!product.hasAddons) {
+    if (!product.requiresConfiguration) {
       _addToCart(context, product);
       return;
     }
@@ -517,160 +518,6 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
           ),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
-      ],
-    );
-  }
-}
-
-class _ProductDetailDialog extends StatefulWidget {
-  const _ProductDetailDialog({
-    required this.product,
-    required this.palette,
-    required this.onAdd,
-  });
-
-  final ProductModel product;
-  final TenantPalette palette;
-  final ValueChanged<List<CartItemAddon>> onAdd;
-
-  @override
-  State<_ProductDetailDialog> createState() => _ProductDetailDialogState();
-}
-
-class _ProductDetailDialogState extends State<_ProductDetailDialog> {
-  final Map<int, int> _addonQuantities = <int, int>{};
-
-  @override
-  Widget build(BuildContext context) {
-    final product = widget.product;
-    final selectedAddons = _addonQuantities.keys
-        .where((i) => (_addonQuantities[i] ?? 0) > 0)
-        .map(
-          (i) => CartItemAddon(
-            name: product.addons[i].name,
-            price: product.addons[i].price,
-            quantity: _addonQuantities[i] ?? 0,
-          ),
-        )
-        .toList(growable: false);
-    final addonsTotal = selectedAddons.fold<double>(
-      0,
-      (sum, addon) => sum + addon.lineTotal,
-    );
-    final finalPrice = product.price + addonsTotal;
-
-    return AlertDialog(
-      title: Text(product.name, textAlign: TextAlign.right),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if ((product.description ?? '').trim().isNotEmpty)
-              Text(product.description!, textAlign: TextAlign.right),
-            const SizedBox(height: 10),
-            Text(
-              'السعر الأساسي: ${product.price.toStringAsFixed(0)} د.ع',
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            if (product.addons.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
-                'الإضافات',
-                textAlign: TextAlign.right,
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              ...product.addons.asMap().entries.map((entry) {
-                final index = entry.key;
-                final addon = entry.value;
-                final quantity = _addonQuantities[index] ?? 0;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: quantity > 0
-                            ? () {
-                                setState(() {
-                                  final next = quantity - 1;
-                                  if (next <= 0) {
-                                    _addonQuantities.remove(index);
-                                  } else {
-                                    _addonQuantities[index] = next;
-                                  }
-                                });
-                              }
-                            : null,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      SizedBox(
-                        width: 28,
-                        child: Text(
-                          '$quantity',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _addonQuantities[index] = quantity + 1;
-                          });
-                        },
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              addon.name,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              '+${addon.price.toStringAsFixed(0)} د.ع',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: widget.palette.primary.withValues(alpha: 0.75),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              'الإجمالي: ${finalPrice.toStringAsFixed(0)} د.ع',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                color: widget.palette.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('إغلاق'),
-        ),
-        FilledButton(
-          onPressed: () {
-            widget.onAdd(selectedAddons);
-            Navigator.of(context).pop();
-          },
-          child: const Text('إضافة إلى السلة'),
-        ),
       ],
     );
   }

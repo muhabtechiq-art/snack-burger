@@ -22,10 +22,23 @@ class CartNotifier extends ChangeNotifier {
   void addProduct(
     ProductModel product, {
     List<CartItemAddon> selectedAddons = const [],
+    CartItemVariant? selectedVariant,
   }) {
+    final basePrice = product.resolveBasePrice(
+      selectedVariant: selectedVariant == null
+          ? null
+          : ProductVariant(
+              name: selectedVariant.name,
+              price: selectedVariant.price,
+            ),
+    );
     final unitPrice =
-        product.price + selectedAddons.fold(0.0, (sum, addon) => sum + addon.lineTotal);
-    final lineId = _buildLineId(product.id, selectedAddons);
+        basePrice + selectedAddons.fold(0.0, (sum, addon) => sum + addon.lineTotal);
+    final lineId = _buildLineId(
+      product.id,
+      selectedAddons,
+      selectedVariant: selectedVariant,
+    );
     final existing = _items[lineId];
     if (existing != null) {
       _items[lineId] = CartItem(
@@ -35,6 +48,7 @@ class CartNotifier extends ChangeNotifier {
         quantity: existing.quantity + 1,
         baseUnitPrice: existing.baseUnitPrice,
         unitPrice: existing.unitPrice,
+        selectedVariant: existing.selectedVariant,
         selectedAddons: existing.selectedAddons,
       );
     } else {
@@ -43,8 +57,9 @@ class CartNotifier extends ChangeNotifier {
         productId: product.id,
         name: product.name,
         quantity: 1,
-        baseUnitPrice: product.price,
+        baseUnitPrice: basePrice,
         unitPrice: unitPrice,
+        selectedVariant: selectedVariant,
         selectedAddons: List<CartItemAddon>.unmodifiable(selectedAddons),
       );
     }
@@ -61,6 +76,7 @@ class CartNotifier extends ChangeNotifier {
       quantity: existing.quantity + 1,
       baseUnitPrice: existing.baseUnitPrice,
       unitPrice: existing.unitPrice,
+      selectedVariant: existing.selectedVariant,
       selectedAddons: existing.selectedAddons,
     );
     notifyListeners();
@@ -79,6 +95,7 @@ class CartNotifier extends ChangeNotifier {
         quantity: existing.quantity - 1,
         baseUnitPrice: existing.baseUnitPrice,
         unitPrice: existing.unitPrice,
+        selectedVariant: existing.selectedVariant,
         selectedAddons: existing.selectedAddons,
       );
     }
@@ -117,7 +134,11 @@ class CartNotifier extends ChangeNotifier {
 
     final nextUnitPrice = existing.baseUnitPrice +
         nextAddons.fold<double>(0, (sum, addon) => sum + addon.lineTotal);
-    final nextLineId = _buildLineId(existing.productId, nextAddons);
+    final nextLineId = _buildLineId(
+      existing.productId,
+      nextAddons,
+      selectedVariant: existing.selectedVariant,
+    );
 
     _items.remove(lineId);
     final duplicate = _items[nextLineId];
@@ -129,6 +150,7 @@ class CartNotifier extends ChangeNotifier {
         quantity: duplicate.quantity + existing.quantity,
         baseUnitPrice: duplicate.baseUnitPrice,
         unitPrice: duplicate.unitPrice,
+        selectedVariant: duplicate.selectedVariant,
         selectedAddons: duplicate.selectedAddons,
       );
     } else {
@@ -139,14 +161,25 @@ class CartNotifier extends ChangeNotifier {
         quantity: existing.quantity,
         baseUnitPrice: existing.baseUnitPrice,
         unitPrice: nextUnitPrice,
+        selectedVariant: existing.selectedVariant,
         selectedAddons: List<CartItemAddon>.unmodifiable(nextAddons),
       );
     }
     notifyListeners();
   }
 
-  String _buildLineId(String productId, List<CartItemAddon> addons) {
-    if (addons.isEmpty) return productId;
+  String _buildLineId(
+    String productId,
+    List<CartItemAddon> addons, {
+    CartItemVariant? selectedVariant,
+  }) {
+    final parts = <String>[productId];
+    if (selectedVariant != null) {
+      parts.add(
+        'v:${selectedVariant.name.trim().toLowerCase()}:${selectedVariant.price.toStringAsFixed(2)}',
+      );
+    }
+    if (addons.isEmpty) return parts.join('|');
     final normalized = addons
         .map(
           (e) =>
@@ -154,6 +187,7 @@ class CartNotifier extends ChangeNotifier {
         )
         .toList()
       ..sort();
-    return '$productId|${normalized.join('|')}';
+    parts.addAll(normalized);
+    return parts.join('|');
   }
 }

@@ -31,6 +31,8 @@ class ProductFormController extends ChangeNotifier {
   final TextEditingController priceController = TextEditingController();
   final TextEditingController categoryController = TextEditingController();
   final List<ProductAddonDraft> _addonDrafts = [];
+  final List<ProductVariantDraft> _variantDrafts = [];
+  bool _useMultipleSizes = false;
 
   XFile? _pickedImageFile;
   Uint8List? _webImage;
@@ -71,6 +73,55 @@ class ProductFormController extends ChangeNotifier {
 
   List<ProductAddonDraft> get addonDrafts =>
       List<ProductAddonDraft>.unmodifiable(_addonDrafts);
+
+  bool get useMultipleSizes => _useMultipleSizes;
+
+  List<ProductVariantDraft> get variantDrafts =>
+      List<ProductVariantDraft>.unmodifiable(_variantDrafts);
+
+  void setUseMultipleSizes(bool value) {
+    if (_useMultipleSizes == value) return;
+    _useMultipleSizes = value;
+    if (value) {
+      if (_variantDrafts.isEmpty) {
+        _variantDrafts.add(ProductVariantDraft());
+      }
+    } else {
+      for (final draft in _variantDrafts) {
+        draft.dispose();
+      }
+      _variantDrafts.clear();
+    }
+    notifyListeners();
+  }
+
+  void addVariantDraft() {
+    _variantDrafts.add(ProductVariantDraft());
+    notifyListeners();
+  }
+
+  void removeVariantDraftAt(int index) {
+    if (index < 0 || index >= _variantDrafts.length) return;
+    final removed = _variantDrafts.removeAt(index);
+    removed.dispose();
+    notifyListeners();
+  }
+
+  /// تحقق من إعدادات السعر قبل الحفظ (خارج FormState).
+  String? validatePricingConfiguration() {
+    if (_useMultipleSizes) {
+      try {
+        final variants = _buildVariants();
+        if (variants.isEmpty) {
+          return 'أضف حجماً واحداً على الأقل مع اسم وسعر';
+        }
+      } on FormatException catch (e) {
+        return _mapVariantBuildError(e.message);
+      }
+      return null;
+    }
+    return ProductFormValidators.validatePositivePrice(priceController.text);
+  }
 
   void clearError() {
     if (_errorMessage == null) return;
@@ -147,6 +198,14 @@ class ProductFormController extends ChangeNotifier {
       _categoryOptions = _mergeCategoryOptions(_categoryOptions, product.category);
       _existingImageUrl = product.imageUrl;
       _replaceAddonsFromProduct(product.addons);
+      if (product.hasVariants) {
+        _useMultipleSizes = true;
+        _replaceVariantsFromProduct(product.variants);
+        priceController.clear();
+      } else {
+        _useMultipleSizes = false;
+        _clearVariantDrafts();
+      }
       notifyListeners();
     } catch (e, st) {
       debugPrint('ProductFormController.loadProductForEdit: $e\n$st');
@@ -189,11 +248,24 @@ class ProductFormController extends ChangeNotifier {
   /// يبني نموذج المنتج من قيم الحقول الحالية.
   ProductModel buildProductModel({required String restaurantId}) {
     final description = descriptionController.text.trim();
-    final price = ProductFormValidators.parsePositivePrice(
-      priceController.text,
-    );
-    if (price == null) {
-      throw FormatException('Invalid price');
+    final variants = _useMultipleSizes ? _buildVariants() : const <ProductVariant>[];
+    final double price;
+
+    if (_useMultipleSizes) {
+      if (variants.isEmpty) {
+        throw const FormatException('Variant required');
+      }
+      price = variants.map((v) => v.price).reduce(
+            (a, b) => a < b ? a : b,
+          );
+    } else {
+      final parsed = ProductFormValidators.parsePositivePrice(
+        priceController.text,
+      );
+      if (parsed == null) {
+        throw const FormatException('Invalid price');
+      }
+      price = parsed;
     }
 
     final addons = _buildAddons();
@@ -206,6 +278,7 @@ class ProductFormController extends ChangeNotifier {
       price: price,
       category: categoryController.text.trim(),
       addons: addons,
+      variants: variants,
       imageUrl: _existingImageUrl,
       createdAt: DateTime.now().toUtc(),
     );
@@ -241,6 +314,58 @@ class ProductFormController extends ChangeNotifier {
       addons.add(ProductAddon(name: name, price: price));
     }
     return addons;
+  }
+
+  List<ProductVariant> _buildVariants() {
+    final variants = <ProductVariant>[];
+    for (final draft in _variantDrafts) {
+      final name = draft.nameController.text.trim();
+      final priceRaw = draft.priceController.text.trim();
+      if (name.isEmpty && priceRaw.isEmpty) {
+        continue;
+      }
+      if (name.isEmpty) {
+        throw const FormatException('Variant name required');
+      }
+      final price = ProductFormValidators.parsePositivePrice(priceRaw);
+      if (price == null) {
+        throw const FormatException('Variant price invalid');
+      }
+      variants.add(ProductVariant(name: name, price: price));
+    }
+    return variants;
+  }
+
+  void _replaceVariantsFromProduct(List<ProductVariant> variants) {
+    _clearVariantDrafts();
+    _variantDrafts.addAll(
+      variants.map(
+        (variant) => ProductVariantDraft(
+          name: variant.name,
+          price: variant.price.toStringAsFixed(0),
+        ),
+      ),
+    );
+  }
+
+  void _clearVariantDrafts() {
+    for (final draft in _variantDrafts) {
+      draft.dispose();
+    }
+    _variantDrafts.clear();
+  }
+
+  String _mapVariantBuildError(String message) {
+    if (message.contains('Variant name')) {
+      return 'اسم الحجم مطلوب';
+    }
+    if (message.contains('Variant price')) {
+      return 'سعر الحجم غير صالح';
+    }
+    if (message.contains('Variant required')) {
+      return 'أضف حجماً واحداً على الأقل';
+    }
+    return 'تحقق من أحجام المنتج';
   }
 
   void _replaceAddonsFromProduct(List<ProductAddon> addons) {
@@ -365,6 +490,11 @@ class ProductFormController extends ChangeNotifier {
           return 'لا توجد صلاحية لحفظ الإضافات — '
               'فعّل سياسات INSERT/DELETE على product_addons';
         }
+        if (error.message.contains('product_variants') ||
+            error.message.contains('الأحجام')) {
+          return 'لا توجد صلاحية لحفظ الأحجام — '
+              'فعّل سياسات INSERT/DELETE على product_variants';
+        }
         return 'لا توجد صلاحية لحفظ المنتج';
       }
       if (error.code == 'PGRST204') {
@@ -412,6 +542,15 @@ class ProductFormController extends ChangeNotifier {
       if (msg.contains('Addon price')) {
         return 'سعر الإضافة غير صالح';
       }
+      if (msg.contains('Variant name')) {
+        return 'اسم الحجم مطلوب';
+      }
+      if (msg.contains('Variant price')) {
+        return 'سعر الحجم غير صالح';
+      }
+      if (msg.contains('Variant required')) {
+        return 'أضف حجماً واحداً على الأقل';
+      }
       return 'السعر غير صالح';
     }
     if (error is StateError) {
@@ -453,7 +592,22 @@ class ProductFormController extends ChangeNotifier {
     for (final draft in _addonDrafts) {
       draft.dispose();
     }
+    _clearVariantDrafts();
     super.dispose();
+  }
+}
+
+class ProductVariantDraft {
+  ProductVariantDraft({String name = '', String price = ''})
+      : nameController = TextEditingController(text: name),
+        priceController = TextEditingController(text: price);
+
+  final TextEditingController nameController;
+  final TextEditingController priceController;
+
+  void dispose() {
+    nameController.dispose();
+    priceController.dispose();
   }
 }
 

@@ -391,7 +391,9 @@ class _PriceBadge extends StatelessWidget {
         border: Border.all(color: palette.accent.withValues(alpha: 0.28)),
       ),
       child: Text(
-        '${product.price.toStringAsFixed(0)} د.ع',
+        product.hasVariants
+            ? 'من ${product.displayPrice.toStringAsFixed(0)} د.ع'
+            : '${product.displayPrice.toStringAsFixed(0)} د.ع',
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

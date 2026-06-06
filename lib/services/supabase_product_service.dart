@@ -12,6 +12,7 @@ abstract final class SupabaseProductService {
 
   static const String tableName = 'products';
   static const String addonsTableName = 'product_addons';
+  static const String variantsTableName = 'product_variants';
 
   static const String defaultRestaurantId = 'snack_burger';
 
@@ -24,7 +25,9 @@ abstract final class SupabaseProductService {
       debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
       final rows = await _client.from(tableName).select();
       final products = _parseAndFilter(rows, restaurantId);
-      return _attachAddonsToProducts(products);
+      return _attachVariantsToProducts(
+        await _attachAddonsToProducts(products),
+      );
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
       rethrow;
@@ -39,7 +42,9 @@ abstract final class SupabaseProductService {
         .stream(primaryKey: const ['id'])
         .asyncMap((rows) async {
           final products = _parseAndFilter(rows, restaurantId);
-          return _attachAddonsToProducts(products);
+          return _attachVariantsToProducts(
+            await _attachAddonsToProducts(products),
+          );
         })
         .asBroadcastStream();
   }
@@ -73,7 +78,8 @@ abstract final class SupabaseProductService {
       if (product == null) return null;
 
       final withAddons = await _attachAddonsToProducts([product]);
-      return withAddons.isEmpty ? product : withAddons.first;
+      final enriched = await _attachVariantsToProducts(withAddons);
+      return enriched.isEmpty ? product : enriched.first;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProductById فشل: $e\n$stack');
       rethrow;
@@ -110,8 +116,9 @@ abstract final class SupabaseProductService {
       restaurantId: restaurantId,
     );
 
+    String? savedId;
     try {
-      final savedId = await _trySaveViaRpc(
+      savedId = await _trySaveViaRpc(
         payload: payload,
         addons: product.addons,
       );
@@ -119,7 +126,6 @@ abstract final class SupabaseProductService {
         '[SupabaseProductService] تم حفظ المنتج (RPC): $savedId '
         'addons=${product.addons.length}',
       );
-      return savedId;
     } on PostgrestException catch (e) {
       if (!_isRpcUnavailable(e)) rethrow;
       debugPrint(
@@ -127,11 +133,22 @@ abstract final class SupabaseProductService {
       );
     }
 
-    return _saveProductWithClientRollback(
+    savedId ??= await _saveProductWithClientRollback(
       payload: payload,
       addons: product.addons,
       resolvedImageUrl: resolvedImageUrl,
     );
+
+    await _saveProductVariants(
+      productId: savedId,
+      variants: product.variants,
+    );
+
+    debugPrint(
+      '[SupabaseProductService] تم حفظ المنتج: $savedId '
+      'variants=${product.variants.length}',
+    );
+    return savedId;
   }
 
   /// payload المنتج — منفصل عن الإضافات؛ لا يُغيّر حقول الحفظ الأساسية.
@@ -385,6 +402,88 @@ abstract final class SupabaseProductService {
     );
   }
 
+  /// يستبدل أحجام المنتج في `product_variants` بعد حفظ المنتج.
+  static Future<void> _saveProductVariants({
+    required String productId,
+    required List<ProductVariant> variants,
+  }) async {
+    final serializedProductId =
+        ProductIdGenerator.serializeForSupabase(productId);
+
+    try {
+      await _client
+          .from(variantsTableName)
+          .delete()
+          .eq('product_id', serializedProductId);
+    } on PostgrestException catch (e, st) {
+      debugPrint(
+        '[SupabaseProductService] delete variants فشل: ${e.code} ${e.message}\n$st',
+      );
+      if (e.code == '42501') {
+        throw PostgrestException(
+          message:
+              'لا توجد صلاحية لحذف الأحجام — فعّل سياسات DELETE على product_variants',
+          code: e.code,
+          details: e.details,
+          hint: e.hint,
+        );
+      }
+      if (e.code == 'PGRST205' || e.message.contains('product_variants')) {
+        debugPrint(
+          '[SupabaseProductService] جدول product_variants غير موجود — تخطّي حفظ الأحجام',
+        );
+        return;
+      }
+      rethrow;
+    }
+
+    final validVariants = variants
+        .where((variant) => variant.name.trim().isNotEmpty)
+        .toList(growable: false);
+
+    if (validVariants.isEmpty) {
+      debugPrint(
+        '[SupabaseProductService] لا أحجام لحفظها للمنتج $productId',
+      );
+      return;
+    }
+
+    final rows = validVariants
+        .asMap()
+        .entries
+        .map(
+          (entry) => <String, dynamic>{
+            'product_id': serializedProductId,
+            'name': entry.value.name.trim(),
+            'price': entry.value.price,
+            'sort_order': entry.key + 1,
+          },
+        )
+        .toList(growable: false);
+
+    try {
+      await _client.from(variantsTableName).insert(rows);
+    } on PostgrestException catch (e, st) {
+      debugPrint(
+        '[SupabaseProductService] insert variants فشل: ${e.code} ${e.message}\n$st',
+      );
+      if (e.code == '42501') {
+        throw PostgrestException(
+          message:
+              'لا توجد صلاحية لحفظ الأحجام — فعّل سياسات INSERT على product_variants',
+          code: e.code,
+          details: e.details,
+          hint: e.hint,
+        );
+      }
+      rethrow;
+    }
+
+    debugPrint(
+      '[SupabaseProductService] حُفظت ${rows.length} أحجام للمنتج $productId',
+    );
+  }
+
   /// يُحمّل الإضافات من `product_addons` ويربطها بالمنتجات (للبث المباشر).
   static Future<List<ProductModel>> _attachAddonsToProducts(
     List<ProductModel> products,
@@ -417,6 +516,7 @@ abstract final class SupabaseProductService {
               imageUrl: product.imageUrl,
               category: product.category,
               addons: addonsByProduct[_asString(product.id)] ?? const [],
+              variants: product.variants,
               isAvailable: product.isAvailable,
               createdAt: product.createdAt,
             ),
@@ -446,6 +546,91 @@ abstract final class SupabaseProductService {
 
     for (final addons in grouped.values) {
       addons.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+    }
+
+    return grouped;
+  }
+
+  /// يُحمّل الأحجام/المتغيرات من `product_variants` ويربطها بالمنتجات.
+  static Future<List<ProductModel>> _attachVariantsToProducts(
+    List<ProductModel> products,
+  ) async {
+    if (products.isEmpty) return products;
+
+    final productIds =
+        products.map((p) => p.id).where((id) => id.isNotEmpty).toList();
+    if (productIds.isEmpty) return products;
+
+    try {
+      final rows = await _client
+          .from(variantsTableName)
+          .select()
+          .inFilter(
+            'product_id',
+            productIds
+                .map(ProductIdGenerator.serializeForSupabase)
+                .toList(growable: false),
+          );
+
+      final variantsByProduct = _groupVariantsByProductId(rows);
+      return products
+          .map(
+            (product) {
+              final fromTable = variantsByProduct[_asString(product.id)];
+              final variants = (fromTable != null && fromTable.isNotEmpty)
+                  ? fromTable
+                  : product.variants;
+              return ProductModel(
+                id: product.id,
+                restaurantId: product.restaurantId,
+                name: product.name,
+                description: product.description,
+                price: product.price,
+                imageUrl: product.imageUrl,
+                category: product.category,
+                addons: product.addons,
+                variants: variants,
+                isAvailable: product.isAvailable,
+                createdAt: product.createdAt,
+              );
+            },
+          )
+          .toList(growable: false);
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[SupabaseProductService] _attachVariantsToProducts: ${e.message}',
+      );
+      return products;
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseProductService] _attachVariantsToProducts فشل: $e\n$stack',
+      );
+      return products;
+    }
+  }
+
+  static Map<String, List<ProductVariant>> _groupVariantsByProductId(
+    dynamic rows,
+  ) {
+    final grouped = <String, List<ProductVariant>>{};
+    if (rows is! List) return grouped;
+
+    for (final entry in rows) {
+      if (entry is! Map) continue;
+      final map = Map<String, dynamic>.from(entry);
+      final productId = _asString(map['product_id']);
+      if (productId.isEmpty) continue;
+
+      final variant = ProductVariant.fromMap(map);
+      if (variant.name.isEmpty) continue;
+
+      grouped.putIfAbsent(productId, () => <ProductVariant>[]).add(variant);
+    }
+
+    for (final variants in grouped.values) {
+      variants.sort(
         (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
       );
     }
@@ -531,6 +716,7 @@ abstract final class SupabaseProductService {
           ? _asString(normalized['category'])
           : 'general',
       addons: _parseAddonsFromRow(normalized),
+      variants: _parseVariantsFromRow(normalized),
       isAvailable: normalized['is_available'] as bool? ??
           normalized['isAvailable'] as bool? ??
           true,
@@ -546,6 +732,14 @@ abstract final class SupabaseProductService {
       return ProductAddon.listFromDynamic(nested);
     }
     return ProductAddon.listFromDynamic(row['addons']);
+  }
+
+  static List<ProductVariant> _parseVariantsFromRow(Map<String, dynamic> row) {
+    final nested = row['product_variants'];
+    if (nested is List && nested.isNotEmpty) {
+      return ProductVariant.listFromDynamic(nested);
+    }
+    return ProductVariant.listFromDynamic(row['variants']);
   }
 
   static bool _isExplicitlyUnavailable(Map<String, dynamic> data) {

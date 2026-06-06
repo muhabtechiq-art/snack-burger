@@ -95,6 +95,7 @@ class ProductRepository {
       price: product.price,
       category: product.category,
       addons: product.addons,
+      variants: product.variants,
       imageUrl: imageUrl ?? product.imageUrl,
       isAvailable: product.isAvailable,
       createdAt: product.createdAt,

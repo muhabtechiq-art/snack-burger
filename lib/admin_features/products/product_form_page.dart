@@ -112,6 +112,14 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
     if (_saveLocked || controller.isBusy) return;
     if (!_formKey.currentState!.validate()) return;
 
+    final pricingError = controller.validatePricingConfiguration();
+    if (pricingError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(pricingError)),
+      );
+      return;
+    }
+
     final restaurant = tenant.restaurant;
     if (restaurant == null) return;
 
@@ -215,22 +223,7 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: controller.priceController,
-                  textAlign: TextAlign.right,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                  ],
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'السعر (د.ع)',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: ProductFormValidators.validatePositivePrice,
-                ),
+                _PricingSection(controller: controller),
                 const SizedBox(height: 16),
                 ProductCategoryField(
                   key: ValueKey(
@@ -281,6 +274,152 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
           ),
         );
       },
+    );
+  }
+}
+
+class _PricingSection extends StatelessWidget {
+  const _PricingSection({required this.controller});
+
+  final ProductFormController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'منتج بأحجام متعددة',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                controller.useMultipleSizes
+                    ? 'أدخل سعر كل حجم (صغير، وسط، كبير...)'
+                    : 'سعر ثابت واحد للمنتج',
+                textAlign: TextAlign.right,
+              ),
+              value: controller.useMultipleSizes,
+              onChanged: controller.setUseMultipleSizes,
+            ),
+            if (controller.useMultipleSizes) ...[
+              const SizedBox(height: 8),
+              _VariantsSection(controller: controller),
+            ] else ...[
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: controller.priceController,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                ],
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'السعر (د.ع)',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (controller.useMultipleSizes) return null;
+                  return ProductFormValidators.validatePositivePrice(value);
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VariantsSection extends StatelessWidget {
+  const _VariantsSection({required this.controller});
+
+  final ProductFormController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'الأحجام (Variants)',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: controller.addVariantDraft,
+              icon: const Icon(Icons.add),
+              label: const Text('إضافة حجم'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (controller.variantDrafts.isEmpty)
+          const Text(
+            'أضف حجماً واحداً على الأقل. مثال: صغير 5000، كبير 7000.',
+            textAlign: TextAlign.right,
+          )
+        else
+          ...controller.variantDrafts.asMap().entries.map((entry) {
+            final i = entry.key;
+            final draft = entry.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => controller.removeVariantDraftAt(i),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'حذف الحجم',
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: draft.nameController,
+                      textAlign: TextAlign.right,
+                      decoration: const InputDecoration(
+                        labelText: 'اسم الحجم',
+                        hintText: 'مثال: وسط',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: draft.priceController,
+                      textAlign: TextAlign.right,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'السعر',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+      ],
     );
   }
 }

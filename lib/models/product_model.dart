@@ -11,6 +11,7 @@ class ProductModel {
     this.imageUrl,
     required this.category,
     this.addons = const [],
+    this.variants = const [],
     this.isAvailable = true,
     required this.createdAt,
   });
@@ -23,10 +24,32 @@ class ProductModel {
   final String? imageUrl;
   final String category;
   final List<ProductAddon> addons;
+  final List<ProductVariant> variants;
   final bool isAvailable;
   final DateTime createdAt;
 
   bool get hasAddons => addons.isNotEmpty;
+
+  bool get hasVariants => variants.isNotEmpty;
+
+  /// يحتاج المودال عند وجود أحجام أو إضافات.
+  bool get requiresConfiguration => hasVariants || hasAddons;
+
+  /// سعر العرض في القائمة — أقل حجم أو السعر الثابت.
+  double get displayPrice {
+    if (!hasVariants) return price;
+    return variants.map((v) => v.price).reduce(
+          (a, b) => a < b ? a : b,
+        );
+  }
+
+  /// السعر الأساسي للوجبة حسب الحجم المختار (إن وُجد).
+  double resolveBasePrice({ProductVariant? selectedVariant}) {
+    if (hasVariants) {
+      return selectedVariant?.price ?? variants.first.price;
+    }
+    return price;
+  }
 
   /// خريطة جاهزة للحفظ في Firestore (يُفضَّل تخزين `createdAt` كـ Timestamp في الطبقة الخدمية).
   Map<String, dynamic> toMap() {
@@ -39,6 +62,7 @@ class ProductModel {
       'imageUrl': imageUrl,
       'category': category,
       'addons': addons.map((e) => e.toMap()).toList(),
+      'variants': variants.map((e) => e.toMap()).toList(),
       'isAvailable': isAvailable,
       'createdAt': createdAt.toUtc().toIso8601String(),
     };
@@ -60,9 +84,49 @@ class ProductModel {
       ]),
       category: map['category'] as String? ?? 'general',
       addons: ProductAddon.listFromDynamic(map['addons']),
+      variants: ProductVariant.listFromDynamic(
+        map['variants'] ?? map['product_variants'],
+      ),
       isAvailable: map['isAvailable'] as bool? ?? true,
       createdAt: parseModelDate(map['createdAt']),
     );
+  }
+}
+
+class ProductVariant {
+  const ProductVariant({
+    required this.name,
+    required this.price,
+  });
+
+  final String name;
+  final double price;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'name': name,
+        'price': price,
+      };
+
+  factory ProductVariant.fromMap(Map<String, dynamic> map) {
+    return ProductVariant(
+      name: (map['name'] as String? ?? map['label'] as String? ?? '').trim(),
+      price: _readDouble(map['price']),
+    );
+  }
+
+  static List<ProductVariant> listFromDynamic(dynamic raw) {
+    if (raw is! List) return const [];
+    final parsed = <ProductVariant>[];
+    for (final entry in raw) {
+      if (entry is Map<String, dynamic>) {
+        final variant = ProductVariant.fromMap(entry);
+        if (variant.name.isNotEmpty) parsed.add(variant);
+      } else if (entry is Map) {
+        final variant = ProductVariant.fromMap(Map<String, dynamic>.from(entry));
+        if (variant.name.isNotEmpty) parsed.add(variant);
+      }
+    }
+    return parsed;
   }
 }
 

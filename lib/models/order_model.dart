@@ -1,4 +1,4 @@
-import 'product_model.dart' show parseModelDate;
+import 'product_model.dart' show ProductVariant, parseModelDate;
 
 /// حالة الطلب.
 enum OrderStatus {
@@ -31,6 +31,7 @@ class CartItem {
     required this.quantity,
     required this.baseUnitPrice,
     required this.unitPrice,
+    this.selectedVariant,
     this.selectedAddons = const [],
   });
 
@@ -40,13 +41,20 @@ class CartItem {
   final int quantity;
   final double baseUnitPrice;
   final double unitPrice;
+  final CartItemVariant? selectedVariant;
   final List<CartItemAddon> selectedAddons;
 
   String get addonsLabel => selectedAddons.map((e) => e.name).join('، ');
   String get addonsSummary =>
       selectedAddons.map((e) => '${e.name} x${e.quantity}').join('، ');
-  String get printableName =>
-      selectedAddons.isEmpty ? name : '$name (+$addonsSummary)';
+  String get printableName {
+    var label = name;
+    if (selectedVariant != null) {
+      label = '$label (${selectedVariant!.name})';
+    }
+    if (selectedAddons.isEmpty) return label;
+    return '$label (+$addonsSummary)';
+  }
 
   double get lineTotal => quantity * unitPrice;
 
@@ -77,6 +85,7 @@ class CartItem {
         'quantity': quantity,
         'baseUnitPrice': baseUnitPrice,
         'unitPrice': unitPrice,
+        if (selectedVariant != null) 'selectedVariant': selectedVariant!.toMap(),
         'selectedAddons': selectedAddons.map((e) => e.toMap()).toList(),
         'addons': selectedAddons.map((e) => e.toMap()).toList(),
       };
@@ -92,10 +101,48 @@ class CartItem {
           (map['unitPrice'] as num?)?.toDouble() ??
           0,
       unitPrice: (map['unitPrice'] as num?)?.toDouble() ?? 0,
+      selectedVariant: _parseSelectedVariant(map),
       selectedAddons: CartItemAddon.listFromDynamic(
         map['selectedAddons'] ?? map['addons'] ?? map['add_ons'],
       ),
     );
+  }
+}
+
+CartItemVariant? _parseSelectedVariant(Map<String, dynamic> map) {
+  final raw = map['selectedVariant'] ?? map['variant'];
+  if (raw is Map<String, dynamic>) {
+    return CartItemVariant.fromMap(raw);
+  }
+  if (raw is Map) {
+    return CartItemVariant.fromMap(Map<String, dynamic>.from(raw));
+  }
+  return null;
+}
+
+class CartItemVariant {
+  const CartItemVariant({
+    required this.name,
+    required this.price,
+  });
+
+  final String name;
+  final double price;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'name': name,
+        'price': price,
+      };
+
+  factory CartItemVariant.fromMap(Map<String, dynamic> map) {
+    return CartItemVariant(
+      name: (map['name'] as String? ?? '').trim(),
+      price: (map['price'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  factory CartItemVariant.fromProductVariant(ProductVariant variant) {
+    return CartItemVariant(name: variant.name, price: variant.price);
   }
 }
 
