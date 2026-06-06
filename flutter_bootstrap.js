@@ -110,18 +110,24 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
   function startApp(tag) {
     applyCacheTag(tag);
 
-    _flutter.loader
-      .load({
-        onEntrypointLoaded: function () {
-          console.info('[snack_burger] Flutter app loaded (v=' + tag + ')');
-          var loading = document.getElementById('snack-burger-loading');
-          if (loading) loading.remove();
-        },
-      })
-      .catch(function (error) {
-        console.error('[snack_burger] Flutter loader failed:', error);
-        showBootstrapError('تعذّر تحميل التطبيق. حدّث الصفحة (Ctrl+Shift+R).');
-      });
+    _flutter.loader.load({
+      onEntrypointLoaded: function (engineInitializer) {
+        engineInitializer
+          .initializeEngine()
+          .then(function (appRunner) {
+            return appRunner.runApp();
+          })
+          .then(function () {
+            console.info('[snack_burger] Flutter app loaded (v=' + tag + ')');
+            var loading = document.getElementById('snack-burger-loading');
+            if (loading) loading.remove();
+          })
+          .catch(function (error) {
+            console.error('[snack_burger] Flutter engine failed:', error);
+            showBootstrapError('تعذّر تحميل التطبيق. حدّث الصفحة (Ctrl+Shift+R).');
+          });
+      },
+    });
   }
 
   function runBootstrap() {
