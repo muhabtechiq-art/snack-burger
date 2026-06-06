@@ -2,43 +2,40 @@
 
 ## How updates reach users
 
-1. **`web/index.html`** loads `flutter_bootstrap.js?v=<timestamp>` on every visit so the bootstrap is never served from a stale browser cache (important on GitHub Pages, which has no custom cache headers).
+1. **`web/index.html`** (copied into `build/web/` after each build):
+   - Unregisters all legacy service workers on load.
+   - Resolves paths from `<base href="$FLUTTER_BASE_HREF">` (→ `/snack-burger/` on GitHub Pages).
+   - Loads `flutter_bootstrap.js` with `?v=` from meta `snack-burger-asset-version` (default `1.1`).
 
-2. **`web/flutter_service_worker.js`** (copied into `build/web/` after each build):
-   - `skipWaiting()` on install and `clients.claim()` on activate so a new deploy takes control immediately.
-   - Handles `SKIP_WAITING` messages from the bootstrap loader.
+2. **`web/flutter_bootstrap.js`** (processed at build time):
+   - Does **not** register a service worker.
+   - Fetches **`version.json`** with `cache: 'no-store'`.
+   - Appends `?v=<version>` to **`main.dart.js`** (meta tag, or `version` + `build_number` from `pubspec.yaml`).
 
-3. **`web/flutter_bootstrap.js`** (processed at build time):
-   - Fetches **`version.json`** with `cache: 'no-store'` and a timestamp query param.
-   - Builds a tag from `version` + `build_number` in `pubspec.yaml` (e.g. `1.0.0+1`).
-   - Appends `?v=<tag>` to **`main.dart.js`** and **`flutter_service_worker.js`** so each deploy gets unique URLs.
+3. Post-build **removes** `flutter_service_worker.js` from `build/web/`.
 
-4. **`netlify.toml`** sets `Cache-Control: no-cache` on `index.html`, `flutter_bootstrap.js`, `main.dart.js`, `flutter_service_worker.js`, and `version.json`. Hashed assets under `/assets/` stay long-cached.
+4. **`netlify.toml`** sets `Cache-Control: no-cache` on entry HTML/JS files. Hashed assets under `/assets/` stay long-cached.
 
 ## After each release
 
-Bump the version in **`pubspec.yaml`** so `version.json` changes, for example:
+Bump **both**:
 
-```yaml
-version: 1.0.1+2
-```
+- `pubspec.yaml` (updates `version.json` at build time), e.g. `version: 1.0.2+3`
+- `<meta name="snack-burger-asset-version" content="1.2">` in `web/index.html` when you need to force clients off an old `main.dart.js` cache
 
-Then rebuild and deploy. Users get the new `version.json` tag and load fresh JS without a hard refresh.
+Then rebuild and deploy.
 
 ## Local build
 
-```bash
-flutter build web --release
-# GitHub Pages subpath:
+```powershell
 flutter build web --release --base-href /snack-burger/
+.\scripts\post_build_gh_pages.ps1
 ```
 
-## Optional: disable the service worker
+Or run the all-in-one script:
 
-If you still see stale builds in some browsers, you can disable the PWA service worker entirely:
-
-```bash
-flutter build web --release --pwa-strategy=none
+```powershell
+.\scripts\github_pages_build.ps1
 ```
 
-Add that flag to `scripts/netlify_build.sh` and `.github/workflows/deploy-github-pages.yml` if needed.
+On CI (Linux), `node scripts/post_build_gh_pages.js` is used instead.
