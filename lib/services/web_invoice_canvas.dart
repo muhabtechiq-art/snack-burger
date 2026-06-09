@@ -92,7 +92,7 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
     ctx.textAlign = 'right';
     final nameLines = _wrapText(
       ctx,
-      item.name,
+      item.displayName,
       _receiptWidth * 0.48,
     );
     ctx.fillText(nameLines.first, _receiptWidth - _pad, y);

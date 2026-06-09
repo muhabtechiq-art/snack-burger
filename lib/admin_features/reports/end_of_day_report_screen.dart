@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/tenant_palette.dart';
+import '../../core/utils/safe_execute.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
 import '../../models/end_of_day_report_model.dart';
@@ -98,21 +99,21 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
     }
 
     setState(() => _printing = true);
-    try {
-      await ReceiptEscPosPrinter.printEndOfDayReport(report);
-      if (!mounted) return;
+    final printed = await safeExecuteVoid(
+      () => ReceiptEscPosPrinter.printEndOfDayReport(report),
+      tag: 'printEndOfDayReport',
+    );
+    if (!mounted) return;
+    if (printed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم إرسال تقرير الإغلاق للطابعة')),
       );
-    } catch (e, stack) {
-      debugPrint('[EndOfDayReportScreen] _printReport: $e\n$stack');
-      if (!mounted) return;
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّرت الطباعة: $e')),
+        const SnackBar(content: Text('تعذّرت الطباعة. راجع سجل الأخطاء.')),
       );
-    } finally {
-      if (mounted) setState(() => _printing = false);
     }
+    if (mounted) setState(() => _printing = false);
   }
 
   Future<void> _exportCsv() async {

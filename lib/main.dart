@@ -12,6 +12,8 @@ import 'core/auth/auth_notifier.dart';
 import 'core/observability/app_telemetry.dart';
 import 'core/router/app_router.dart';
 import 'dev/snack_burger_product_seeder.dart';
+import 'core/config/restaurant_ids.dart';
+import 'services/order_realtime_notification_service.dart';
 import 'services/windows_printer_bridge.dart';
 import 'state/active_restaurant_notifier.dart';
 
@@ -60,6 +62,9 @@ Future<void> main() async {
 
   final tenantNotifier = ActiveRestaurantNotifier();
   final authNotifier = AuthNotifier();
+  await authNotifier.waitUntilReady();
+  await _startOrderRealtimeNotificationsIfAdmin(authNotifier);
+
   final router = createAppRouter(authNotifier);
 
   runZonedGuarded(
@@ -86,4 +91,26 @@ Future<void> main() async {
       );
     },
   );
+}
+
+Future<void> _startOrderRealtimeNotificationsIfAdmin(
+  AuthNotifier authNotifier,
+) async {
+  if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
+
+  final service = OrderRealtimeNotificationService.instance;
+  await service.initialize();
+
+  Future<void> sync() async {
+    if (authNotifier.isAdminAuthorized) {
+      await service.start(slug: RestaurantIds.snackBurgerSlug);
+    } else {
+      await service.stop();
+    }
+  }
+
+  authNotifier.addListener(() {
+    unawaited(sync());
+  });
+  await sync();
 }

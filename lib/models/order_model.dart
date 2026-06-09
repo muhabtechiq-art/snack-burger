@@ -47,11 +47,17 @@ class CartItem {
   String get addonsLabel => selectedAddons.map((e) => e.name).join('، ');
   String get addonsSummary =>
       selectedAddons.map((e) => '${e.name} x${e.quantity}').join('، ');
+
+  /// اسم العرض للفاتورة: «اسم المنتج + الحجم» (مثال: بيتزا صغير).
+  String get displayName {
+    final base = name.trim();
+    final variantName = selectedVariant?.name.trim() ?? '';
+    if (variantName.isEmpty) return base;
+    return '$base $variantName';
+  }
+
   String get printableName {
-    var label = name;
-    if (selectedVariant != null) {
-      label = '$label (${selectedVariant!.name})';
-    }
+    final label = displayName;
     if (selectedAddons.isEmpty) return label;
     return '$label (+$addonsSummary)';
   }
@@ -82,26 +88,40 @@ class CartItem {
         'lineId': lineId,
         'productId': productId,
         'name': name,
+        'displayName': displayName,
+        'itemName': displayName,
         'quantity': quantity,
         'baseUnitPrice': baseUnitPrice,
         'unitPrice': unitPrice,
-        if (selectedVariant != null) 'selectedVariant': selectedVariant!.toMap(),
+        if (selectedVariant != null) ...<String, dynamic>{
+          'selectedVariant': selectedVariant!.toMap(),
+          'variant': selectedVariant!.toMap(),
+        },
         'selectedAddons': selectedAddons.map((e) => e.toMap()).toList(),
         'addons': selectedAddons.map((e) => e.toMap()).toList(),
       };
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
+    final selectedVariant = _parseSelectedVariant(map);
+    final baseName = (map['name'] as String? ?? '').trim();
+    final displayName = (map['displayName'] as String? ??
+            map['itemName'] as String? ??
+            '')
+        .trim();
+
     return CartItem(
       lineId: map['lineId'] as String? ?? (map['productId'] as String? ?? ''),
       productId: map['productId'] as String? ?? '',
-      name: map['name'] as String? ?? '',
+      name: baseName.isNotEmpty
+          ? baseName
+          : (displayName.isNotEmpty ? displayName : ''),
       quantity: (map['quantity'] as num?)?.toInt() ?? 0,
       baseUnitPrice:
           (map['baseUnitPrice'] as num?)?.toDouble() ??
           (map['unitPrice'] as num?)?.toDouble() ??
           0,
       unitPrice: (map['unitPrice'] as num?)?.toDouble() ?? 0,
-      selectedVariant: _parseSelectedVariant(map),
+      selectedVariant: selectedVariant,
       selectedAddons: CartItemAddon.listFromDynamic(
         map['selectedAddons'] ?? map['addons'] ?? map['add_ons'],
       ),

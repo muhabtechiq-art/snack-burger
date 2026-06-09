@@ -140,10 +140,20 @@ class ProductFormController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
 
     try {
-      final categories = await _productRepository.fetchDistinctCategories(
-        restaurantId: restaurantId,
-        slug: slug,
-      );
+      final categories = await _productRepository
+          .fetchDistinctCategories(
+            restaurantId: restaurantId,
+            slug: slug,
+          )
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              debugPrint(
+                'ProductFormController.loadCategoryOptions: timed out',
+              );
+              return const <String>[];
+            },
+          );
       if (_disposed) return;
 
       _categoryOptions = _mergeCategoryOptions(
@@ -184,12 +194,29 @@ class ProductFormController extends ChangeNotifier {
     if (!isEditing) return;
 
     try {
-      final product = await _productRepository.fetchProductById(
-        restaurantId: restaurantId,
-        slug: slug,
-        productId: productId!,
-      );
-      if (_disposed || product == null) return;
+      final product = await _productRepository
+          .fetchProductById(
+            restaurantId: restaurantId,
+            slug: slug,
+            productId: productId!,
+          )
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              debugPrint('ProductFormController.loadProductForEdit: timed out');
+              return null;
+            },
+          );
+      if (_disposed) return;
+
+      if (product == null) {
+        _clearStaleProductState();
+        _setError(
+          'المنتج غير موجود — ربما حُذف بعد تصفير قاعدة البيانات',
+        );
+        notifyListeners();
+        return;
+      }
 
       nameController.text = product.name;
       descriptionController.text = product.description ?? '';
@@ -210,30 +237,55 @@ class ProductFormController extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('ProductFormController.loadProductForEdit: $e\n$st');
       if (_disposed) return;
-      _setError('تعذّr تحميل بيانات المنتج');
+      _clearStaleProductState();
+      _setError('تعذّر تحميل بيانات المنتج');
     }
+  }
+
+  void _clearStaleProductState() {
+    _existingImageUrl = null;
+    _pickedImageFile = null;
+    _webImage = null;
+  }
+
+  void clearBrokenExistingImage() {
+    if (_existingImageUrl == null) return;
+    _existingImageUrl = null;
+    notifyListeners();
   }
 
   /// يختار صورة من المعرض ويحدّث المعاينة.
   Future<void> pickFromGallery() async {
-    _setPickingImage(true);
+    if (_pickingImage || _uploadingImage || _disposed) return;
+
     try {
       final file = await _imageService.pickProductImageFromGallery();
       if (file == null || _disposed) return;
 
-      final bytes = await _imageService.readFileBytes(file);
-      if (_disposed) return;
+      _setPickingImage(true);
+      try {
+        final bytes = await _imageService.readFileBytes(file);
+        if (_disposed) return;
 
-      if (bytes == null) {
+        if (bytes == null) {
         _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
-        return;
-      }
+          return;
+        }
 
-      _pickedImageFile = file;
-      _webImage = bytes;
-      notifyListeners();
-    } finally {
-      _setPickingImage(false);
+        _pickedImageFile = file;
+        _webImage = bytes;
+        _existingImageUrl = null;
+        clearError();
+        notifyListeners();
+      } finally {
+        if (!_disposed) _setPickingImage(false);
+      }
+    } catch (e, st) {
+      debugPrint('ProductFormController.pickFromGallery: $e\n$st');
+      if (!_disposed) {
+        _setPickingImage(false);
+        _setError('تعذّر اختيار الصورة. حاول مرة أخرى');
+      }
     }
   }
 
@@ -468,7 +520,7 @@ class ProductFormController extends ChangeNotifier {
       throw ProductFormSaveException(msg, cause: e);
     } catch (e, st) {
       debugPrint('ProductFormController.saveProduct unexpected: $e\n$st');
-      const msg = 'تعذّr حفظ المنتج. حاول مرة أخرى';
+      const msg = 'تعذّر حفظ المنتج. حاول مرة أخرى';
       _setError(msg);
       throw ProductFormSaveException(msg, cause: e);
     } finally {
@@ -511,11 +563,11 @@ class ProductFormController extends ChangeNotifier {
       if (error.code == '400' || error.code == '22P02') {
         final detail = error.message.trim();
         if (detail.isNotEmpty && detail.length < 120) {
-          return 'تعذّr حفظ المنتج: $detail';
+          return 'تعذّر حفظ المنتج: $detail';
         }
-        return 'تعذّr حفظ المنتج — تحقق من نوع الحقول في Supabase';
+        return 'تعذّر حفظ المنتج — تحقق من نوع الحقول في Supabase';
       }
-      return 'تعذّr حفظ المنتج. حاول مرة أخرى';
+      return 'تعذّر حفظ المنتج. حاول مرة أخرى';
     }
     if (error is StorageException) {
       debugPrint(
@@ -529,7 +581,7 @@ class ProductFormController extends ChangeNotifier {
       if (error.statusCode == '404') {
         return 'تعذّر رفع الصورة: تأكد من إنشاء bucket باسم product-images في Supabase';
       }
-      return 'تعذّr رفع الصورة. حاول مرة أخرى';
+      return 'تعذّر رفع الصورة. حاول مرة أخرى';
     }
     if (error is TimeoutException) {
       return 'انتهت مهلة الاتصال. حاول مرة أخرى';
@@ -556,7 +608,7 @@ class ProductFormController extends ChangeNotifier {
     if (error is StateError) {
       return 'جاري الحفظ بالفعل';
     }
-    return 'تعذّr حفظ المنتج. حاول مرة أخرى';
+    return 'تعذّر حفظ المنتج. حاول مرة أخرى';
   }
 
   void _setError(String message) {

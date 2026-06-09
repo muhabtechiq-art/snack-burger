@@ -62,7 +62,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّr حذف المنتج: $e')),
+        SnackBar(content: Text('تعذّر حذف المنتج: $e')),
       );
     } finally {
       if (mounted) {
@@ -115,7 +115,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
                 if (snapshot.hasError) {
                   return Center(
                     child: Text(
-                      'تعذّr التحميل: ${snapshot.error}',
+                      'تعذّر التحميل: ${snapshot.error}',
                       style: const TextStyle(color: AdminPanelColors.textMuted),
                     ),
                   );

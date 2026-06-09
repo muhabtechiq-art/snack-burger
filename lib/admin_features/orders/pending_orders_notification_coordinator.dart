@@ -1,4 +1,5 @@
 import '../../models/delivery_order_model.dart';
+import '../../services/order_realtime_notification_service.dart';
 import 'order_notification_player.dart';
 
 /// يكتشف الطلبات المعلقة الجديدة ويشغّل التنبيه مرة واحدة لكل طلب.
@@ -33,7 +34,10 @@ class PendingOrdersNotificationCoordinator {
 
       if (isNew && notYetAlerted && isRecent) {
         _alertedOrderIds.add(order.id);
-        OrderNotificationPlayer.playNewPendingOrder();
+        // على الجوال: التنبيه يأتي من OrderRealtimeNotificationService فقط.
+        if (!OrderRealtimeNotificationService.instance.handlesAlerts) {
+          OrderNotificationPlayer.playNewPendingOrder();
+        }
       }
     }
 

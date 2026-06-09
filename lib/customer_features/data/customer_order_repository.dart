@@ -32,6 +32,24 @@ class CustomerOrderRepository {
     );
   }
 
+  /// يحفظ موقع التوصيل بعد إرسال الطلب إذا كانت ميزة الموقع مفعّلة.
+  Future<void> _syncCustomerLocationIfEnabled({
+    required String customerPhone,
+    required String address,
+    double? latitude,
+    double? longitude,
+  }) async {
+    if (!LocationFeatureFlags.enabled) return;
+    if (latitude == null || longitude == null) return;
+
+    await SupabaseCustomerLocationService.updateCustomerLocation(
+      phoneNumber: customerPhone,
+      latitude: latitude,
+      longitude: longitude,
+      address: address,
+    );
+  }
+
   Future<String> submitOrder({
     required String restaurantId,
     required String slug,
@@ -55,16 +73,12 @@ class CustomerOrderRepository {
       totalPrice: totalPrice,
     );
 
-    if (LocationFeatureFlags.enabled &&
-        latitude != null &&
-        longitude != null) {
-      await SupabaseCustomerLocationService.updateCustomerLocation(
-        phoneNumber: customerPhone,
-        latitude: latitude,
-        longitude: longitude,
-        address: address,
-      );
-    }
+    await _syncCustomerLocationIfEnabled(
+      customerPhone: customerPhone,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+    );
 
     return orderId;
   }

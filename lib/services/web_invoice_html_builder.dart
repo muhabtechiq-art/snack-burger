@@ -15,7 +15,7 @@ String buildWebInvoiceHtml(DeliveryOrder order) {
   for (final item in order.items) {
     rows.writeln('''
       <tr>
-        <td class="item-name">${_escapeHtml(item.name)}</td>
+        <td class="item-name">${_escapeHtml(item.displayName)}</td>
         <td class="item-qty">${item.quantity}</td>
         <td class="item-price">${item.baseLineTotal.toStringAsFixed(0)}</td>
       </tr>''');

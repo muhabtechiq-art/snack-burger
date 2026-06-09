@@ -8,6 +8,8 @@ enum ReceiptCharset { cp864, cp1256 }
 
 /// ترميز نص الفاتورة لطابعات ESC/POS (CP864 أو Windows-1256).
 abstract final class ReceiptTextEncoder {
+  static const _logTag = 'ReceiptTextEncoder';
+
   static Future<Uint8List> encode(
     String text, {
     ReceiptCharset charset = ReceiptCharset.cp864,
@@ -19,7 +21,7 @@ abstract final class ReceiptTextEncoder {
       bytes[i] = _encodeRune(runes[i], charset);
     }
     debugPrint(
-      '[ReceiptTextEncoder] $charset "$text" → '
+      '$_logTag: $charset "$text" → '
       '${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
     );
     return bytes;

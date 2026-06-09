@@ -8,9 +8,9 @@ abstract final class PrinterPreferences {
 
   static Future<String> getWindowsPrinterName() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_windowsPrinterKey)?.trim().isNotEmpty == true
-        ? prefs.getString(_windowsPrinterKey)!.trim()
-        : PrinterConfig.windowsSpoolerPrinterName;
+    final saved = prefs.getString(_windowsPrinterKey)?.trim();
+    if (saved != null && saved.isNotEmpty) return saved;
+    return PrinterConfig.windowsSpoolerPrinterName;
   }
 
   static Future<void> setWindowsPrinterName(String name) async {

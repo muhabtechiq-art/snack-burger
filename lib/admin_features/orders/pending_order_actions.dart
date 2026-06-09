@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
+import '../../../core/utils/safe_execute.dart';
 import '../../../models/delivery_order_model.dart';
 import '../../../models/delivery_order_status.dart';
 import '../../../services/order_invoice_printer.dart';
@@ -53,11 +54,10 @@ class PendingOrderActions {
   }
 
   Future<void> _printSilently(DeliveryOrder order) async {
-    try {
-      await printOrderInvoice(order);
-    } catch (e, st) {
-      debugPrint('PendingOrderActions silent print: $e\n$st');
-    }
+    await safeExecuteVoid(
+      () => printOrderInvoice(order),
+      tag: 'PendingOrderActions.print',
+    );
   }
 
   Future<void> showOrderDialog({

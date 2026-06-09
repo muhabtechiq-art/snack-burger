@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/config/location_feature_flags.dart';
 import '../../../core/utils/iraqi_phone_validator.dart';
+import '../../../core/utils/safe_execute.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/saved_delivery_location_model.dart';
 import '../../../services/supabase_customer_location_service.dart';
@@ -345,23 +346,32 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
     }
 
     setState(() => _isSubmitting = true);
+    final normalizedPhone =
+        IraqiPhoneValidator.normalize(_phoneController.text);
     try {
-      final normalizedPhone =
-          IraqiPhoneValidator.normalize(_phoneController.text);
-
-      final orderId = await _orderRepository.submitOrder(
-        restaurantId: widget.restaurant.id,
-        slug: widget.restaurant.slug,
-        customerName: _nameController.text.trim(),
-        customerPhone: normalizedPhone,
-        address: _addressController.text.trim(),
-        latitude: LocationFeatureFlags.enabled ? location.latitude : null,
-        longitude: LocationFeatureFlags.enabled ? location.longitude : null,
-        items: cart.items,
-        totalPrice: cart.totalPrice,
+      final orderId = await safeExecute(
+        () => _orderRepository.submitOrder(
+          restaurantId: widget.restaurant.id,
+          slug: widget.restaurant.slug,
+          customerName: _nameController.text.trim(),
+          customerPhone: normalizedPhone,
+          address: _addressController.text.trim(),
+          latitude: LocationFeatureFlags.enabled ? location.latitude : null,
+          longitude: LocationFeatureFlags.enabled ? location.longitude : null,
+          items: cart.items,
+          totalPrice: cart.totalPrice,
+        ),
+        tag: 'submitOrder',
       );
 
       if (!sheetContext.mounted) return;
+
+      if (orderId == null) {
+        ScaffoldMessenger.of(sheetContext).showSnackBar(
+          const SnackBar(content: Text('تعذّر إرسال الطلب. حاول مرة أخرى')),
+        );
+        return;
+      }
 
       await customerSession.recordOrder(
         orderId: orderId,
@@ -372,11 +382,6 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
       cart.clearCart();
       Navigator.of(sheetContext).pop(orderId);
-    } catch (e) {
-      if (!sheetContext.mounted) return;
-      ScaffoldMessenger.of(sheetContext).showSnackBar(
-        SnackBar(content: Text('تعذّر إرسال الطلب: $e')),
-      );
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -730,7 +735,7 @@ class _CartLineItem extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                item.name,
+                item.displayName,
                 textAlign: TextAlign.right,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,

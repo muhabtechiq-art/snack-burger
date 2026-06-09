@@ -11,19 +11,51 @@ class ImagePickUploadService {
   ImagePickUploadService({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
 
   static const String bucketName = 'product-images';
+  static const String _logTag = 'ImagePickUploadService';
+
+  static final RegExp _pathSegmentPattern = RegExp(r'[^\w\-]');
+  static final RegExp _fileNamePattern = RegExp(r'[^\w.\-]');
+  static final RegExp _outerSlashesPattern = RegExp(r'^/+|/+$');
 
   final ImagePicker _picker;
 
   SupabaseClient get _supabase => Supabase.instance.client;
+
+  static void _log(
+    String method,
+    String message, {
+    Object? error,
+    StackTrace? stack,
+  }) {
+    if (error == null) {
+      debugPrint('$_logTag.$method: $message');
+      return;
+    }
+    debugPrint('$_logTag.$method: $message\n$error${stack != null ? '\n$stack' : ''}');
+  }
+
+  static String _sanitizePathSegment(String value, RegExp pattern) {
+    return value.trim().replaceAll(pattern, '_');
+  }
+
+  static String _stripOuterSlashes(String path) {
+    return path.trim().replaceAll(_outerSlashesPattern, '');
+  }
+
+  static bool _isClipboardLikeText(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.contains('copied') || lower.contains('clipboard');
+  }
 
   static String productImageStoragePath({
     required String restaurantId,
     required String productId,
     required String fileName,
   }) {
-    final safeRestaurant = restaurantId.trim().replaceAll(RegExp(r'[^\w\-]'), '_');
-    final safeProduct = productId.trim().replaceAll(RegExp(r'[^\w\-]'), '_');
-    final safeName = fileName.trim().replaceAll(RegExp(r'[^\w.\-]'), '_');
+    final safeRestaurant =
+        _sanitizePathSegment(restaurantId, _pathSegmentPattern);
+    final safeProduct = _sanitizePathSegment(productId, _pathSegmentPattern);
+    final safeName = _sanitizePathSegment(fileName, _fileNamePattern);
 
     if (safeRestaurant.isEmpty || safeProduct.isEmpty) {
       throw const ImageUploadException('مسار التخزين غير صالح');
@@ -40,7 +72,7 @@ class ImagePickUploadService {
     required String uploadedKey,
     required String fallbackPath,
   }) {
-    var key = uploadedKey.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    var key = _stripOuterSlashes(uploadedKey);
     final bucketPrefix = '$bucketName/';
 
     if (key.startsWith(bucketPrefix)) {
@@ -52,7 +84,7 @@ class ImagePickUploadService {
 
   /// يبني الرابط العام من Supabase بعد الرفع — لا يستخدم الحافظة أو نصوص يدوية.
   String getPublicUrlForStoragePath(String storagePath) {
-    final path = storagePath.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    final path = _stripOuterSlashes(storagePath);
     if (path.isEmpty) {
       throw const ImageUploadException('مسار الصورة فارغ بعد الرفع');
     }
@@ -64,7 +96,6 @@ class ImagePickUploadService {
   /// يتحقق أن الرابط HTTP حقيقي وليس نص إشعار أو لصق خاطئ.
   static String validatePublicUrl(String url) {
     final trimmed = url.trim();
-    final lower = trimmed.toLowerCase();
 
     if (trimmed.isEmpty) {
       throw const ImageUploadException('تعذّر الحصول على رابط الصورة العام');
@@ -72,7 +103,7 @@ class ImagePickUploadService {
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       throw const ImageUploadException('رابط الصورة غير صالح');
     }
-    if (lower.contains('copied') || lower.contains('clipboard')) {
+    if (_isClipboardLikeText(trimmed)) {
       throw const ImageUploadException(
         'رابط الصورة غير صالح — يُجلب تلقائياً من Supabase بعد الرفع',
       );
@@ -83,28 +114,42 @@ class ImagePickUploadService {
 
   Future<XFile?> pickProductImageFromGallery() async {
     try {
-      return await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-        maxWidth: 2048,
-        maxHeight: 2048,
-      );
+      return await _picker
+          .pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 85,
+            maxWidth: 2048,
+            maxHeight: 2048,
+          )
+          .timeout(
+            const Duration(minutes: 2),
+            onTimeout: () {
+              _log('pickProductImageFromGallery', 'timed out');
+              return null;
+            },
+          );
     } catch (e, st) {
-      debugPrint('ImagePickUploadService.pickProductImageFromGallery: $e\n$st');
+      _log('pickProductImageFromGallery', 'failed', error: e, stack: st);
       return null;
     }
   }
 
   Future<Uint8List?> readFileBytes(XFile file) async {
     try {
-      final bytes = await file.readAsBytes();
+      final bytes = await file.readAsBytes().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          _log('readFileBytes', 'timed out');
+          return Uint8List(0);
+        },
+      );
       if (bytes.isEmpty) {
-        debugPrint('ImagePickUploadService.readFileBytes: empty file');
+        _log('readFileBytes', 'empty file');
         return null;
       }
       return bytes;
     } catch (e, st) {
-      debugPrint('ImagePickUploadService.readFileBytes: $e\n$st');
+      _log('readFileBytes', 'failed', error: e, stack: st);
       return null;
     }
   }
@@ -122,9 +167,7 @@ class ImagePickUploadService {
     required String productId,
   }) {
     final trimmed = originalName.trim();
-    if (trimmed.isNotEmpty &&
-        !trimmed.toLowerCase().contains('copied') &&
-        !trimmed.toLowerCase().contains('clipboard')) {
+    if (trimmed.isNotEmpty && !_isClipboardLikeText(trimmed)) {
       return trimmed;
     }
     return '$productId.jpg';
@@ -171,26 +214,28 @@ class ImagePickUploadService {
 
       final publicUrl = getPublicUrlForStoragePath(normalizedPath);
 
-      debugPrint('[ImagePickUploadService] uploaded path: $normalizedPath');
-      debugPrint('[ImagePickUploadService] publicUrl: $publicUrl');
+      _log('uploadProductImage', 'uploaded path: $normalizedPath');
+      _log('uploadProductImage', 'publicUrl: $publicUrl');
 
       return publicUrl;
     } on StorageException catch (e, st) {
-      debugPrint(
-        'ImagePickUploadService.uploadProductImage Storage: '
-        'status=${e.statusCode} message=${e.message} error=${e.error}\n$st',
+      _log(
+        'uploadProductImage',
+        'Storage status=${e.statusCode} message=${e.message} error=${e.error}',
+        error: e,
+        stack: st,
       );
       rethrow;
     } on ImageUploadException {
       rethrow;
     } on TimeoutException catch (e, st) {
-      debugPrint('ImagePickUploadService.uploadProductImage timeout: $e\n$st');
+      _log('uploadProductImage', 'timeout', error: e, stack: st);
       throw ImageUploadException(
         'انتهت مهلة رفع الصورة. حاول مرة أخرى',
         cause: e,
       );
     } catch (e, st) {
-      debugPrint('ImagePickUploadService.uploadProductImage: $e\n$st');
+      _log('uploadProductImage', 'failed', error: e, stack: st);
       throw ImageUploadException(
         'تعذّر رفع الصورة. حاول مرة أخرى',
         cause: e,

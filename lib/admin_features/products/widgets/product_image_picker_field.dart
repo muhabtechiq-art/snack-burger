@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/utils/safe_execute.dart';
+import 'product_image_preview.dart';
 
 /// اختيار صورة وجبة من المعرض مع معاينة فورية (Web/Mobile).
 class ProductImagePickerField extends StatelessWidget {
@@ -10,6 +14,7 @@ class ProductImagePickerField extends StatelessWidget {
     required this.existingImageUrl,
     required this.onPickPressed,
     this.onClear,
+    this.onExistingImageFailed,
     this.isLoading = false,
     this.loadingLabel,
   });
@@ -18,12 +23,34 @@ class ProductImagePickerField extends StatelessWidget {
   final String? existingImageUrl;
   final VoidCallback onPickPressed;
   final VoidCallback? onClear;
+  final VoidCallback? onExistingImageFailed;
   final bool isLoading;
   final String? loadingLabel;
 
-  bool get _hasPreview =>
-      previewBytes != null ||
-      (existingImageUrl != null && existingImageUrl!.trim().isNotEmpty);
+  bool get _hasLocalPreview => previewBytes != null && previewBytes!.isNotEmpty;
+
+  String? get _resolvedNetworkUrl =>
+      ProductImagePreview.normalizeImageUrl(existingImageUrl);
+
+  bool get _hasPreview => _hasLocalPreview || _resolvedNetworkUrl != null;
+
+  void _onImageTap(BuildContext context) {
+    if (isLoading) return;
+    if (!_hasPreview) {
+      onPickPressed();
+      return;
+    }
+    unawaited(
+      safeExecuteVoid(
+        () => ProductImagePreview.show(
+          context,
+          imageBytes: _hasLocalPreview ? previewBytes : null,
+          imageUrl: _resolvedNetworkUrl,
+        ),
+        tag: 'productImagePreview',
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +67,10 @@ class ProductImagePickerField extends StatelessWidget {
             children: [
               if (_hasPreview)
                 _FilledPreview(
-                  previewBytes: previewBytes,
-                  existingImageUrl: existingImageUrl,
-                  onTap: isLoading ? null : onPickPressed,
+                  previewBytes: _hasLocalPreview ? previewBytes : null,
+                  existingImageUrl: _resolvedNetworkUrl,
+                  onTap: isLoading ? null : () => _onImageTap(context),
+                  onExistingImageFailed: onExistingImageFailed,
                 )
               else
                 _EmptyPreview(
@@ -66,13 +94,19 @@ class ProductImagePickerField extends StatelessWidget {
         if (_hasPreview) ...[
           const SizedBox(height: 10),
           Text(
-            'معاينة الصورة قبل الرفع — اضغط على الصورة لتغييرها',
+            'اضغط على الصورة للمعاينة',
             textAlign: TextAlign.right,
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               fontSize: 13,
               height: 1.45,
             ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: isLoading ? null : onPickPressed,
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('تغيير الصورة من المعرض'),
           ),
         ],
       ],
@@ -85,11 +119,13 @@ class _FilledPreview extends StatelessWidget {
     required this.previewBytes,
     required this.existingImageUrl,
     this.onTap,
+    this.onExistingImageFailed,
   });
 
   final Uint8List? previewBytes;
   final String? existingImageUrl;
   final VoidCallback? onTap;
+  final VoidCallback? onExistingImageFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -114,17 +150,37 @@ class _FilledPreview extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: previewBytes != null
-                ? Image.memory(previewBytes!, fit: BoxFit.cover, width: double.infinity)
-                : Image.network(
-                    existingImageUrl!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    errorBuilder: (_, _, _) => _BrokenImageFallback(scheme: scheme),
-                  ),
+            child: _buildImage(scheme),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImage(ColorScheme scheme) {
+    if (previewBytes != null && previewBytes!.isNotEmpty) {
+      return Image.memory(
+        previewBytes!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (_, error, stackTrace) {
+          debugPrint(
+            'ProductImagePickerField memory image failed: $error\n$stackTrace',
+          );
+          return _BrokenImageFallback(scheme: scheme);
+        },
+      );
+    }
+
+    final url = existingImageUrl;
+    if (url == null || url.isEmpty) {
+      return _BrokenImageFallback(scheme: scheme);
+    }
+
+    return _NetworkProductImage(
+      url: url,
+      scheme: scheme,
+      onFailed: onExistingImageFailed,
     );
   }
 }
@@ -315,6 +371,62 @@ class _BrokenImageFallback extends StatelessWidget {
           size: 48,
         ),
       ),
+    );
+  }
+}
+
+class _NetworkProductImage extends StatefulWidget {
+  const _NetworkProductImage({
+    required this.url,
+    required this.scheme,
+    this.onFailed,
+  });
+
+  final String url;
+  final ColorScheme scheme;
+  final VoidCallback? onFailed;
+
+  @override
+  State<_NetworkProductImage> createState() => _NetworkProductImageState();
+}
+
+class _NetworkProductImageState extends State<_NetworkProductImage> {
+  bool _failed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return _BrokenImageFallback(scheme: widget.scheme);
+    }
+
+    return Image.network(
+      widget.url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Center(
+          child: CircularProgressIndicator(
+            color: widget.scheme.primary,
+            value: progress.expectedTotalBytes != null
+                ? progress.cumulativeBytesLoaded /
+                    progress.expectedTotalBytes!
+                : null,
+          ),
+        );
+      },
+      errorBuilder: (_, error, stackTrace) {
+        debugPrint(
+          'ProductImagePickerField network image failed: ${widget.url}\n'
+          '$error\n$stackTrace',
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _failed) return;
+          setState(() => _failed = true);
+          widget.onFailed?.call();
+        });
+        return _BrokenImageFallback(scheme: widget.scheme);
+      },
     );
   }
 }

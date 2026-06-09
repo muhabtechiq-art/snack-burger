@@ -7,20 +7,26 @@ import 'receipt_escpos_printer.dart';
 
 /// طباعة الفواتير — Windows: ESC/POS خام (CP864).
 class ThermalPrinterService {
-  Future<void> printOrderReceipt(DeliveryOrder order) async {
-    if (kIsWeb) {
-      debugPrint(
-        'ThermalPrinterService: استخدم order_invoice_printer على الويب',
-      );
-      return;
-    }
+  static const _logTag = 'ThermalPrinterService';
 
+  Future<void> printOrderReceipt(DeliveryOrder order) async {
+    if (_shouldSkipOnWeb()) return;
+
+    _requireWindowsPlatform();
+    await ReceiptEscPosPrinter.printOrderReceipt(order);
+  }
+
+  bool _shouldSkipOnWeb() {
+    if (!kIsWeb) return false;
+    debugPrint('$_logTag: استخدم order_invoice_printer على الويب');
+    return true;
+  }
+
+  void _requireWindowsPlatform() {
     if (!Platform.isWindows) {
       throw UnsupportedError(
         'الطباعة متاحة على Windows 11 فقط (ESC/POS RAW).',
       );
     }
-
-    await ReceiptEscPosPrinter.printOrderReceipt(order);
   }
 }

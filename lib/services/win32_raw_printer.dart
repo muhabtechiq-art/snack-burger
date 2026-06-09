@@ -8,44 +8,68 @@ import 'printer_preferences.dart';
 
 /// طباعة RAW عبر WinSpooler — `WindowsPrinter.printRawData` (win32).
 abstract final class Win32RawPrinter {
-  /// يرسل بايتات ESC/POS إلى الطابعة الافتراضية في Windows (RAW datatype).
-  static Future<void> printRawBytesToDefault(List<int> bytes) async {
+  static const _logTag = 'Win32RawPrinter';
+
+  static void _log(String message, {Object? error, StackTrace? stack}) {
+    if (error == null) {
+      debugPrint('$_logTag: $message');
+      return;
+    }
+    debugPrint('$_logTag: $message\n$error${stack != null ? '\n$stack' : ''}');
+  }
+
+  static void _requireWindows() {
     if (!Platform.isWindows) {
       throw UnsupportedError('الطباعة الخام متاحة على Windows فقط.');
     }
+  }
 
-    final defaultName = await getDefaultPrinterName();
-    debugPrint(
-      '[Win32RawPrinter] printRawData → default printer'
-      '${defaultName != null ? ' ("$defaultName")' : ''} '
+  static Future<void> _sendRawData({
+    required List<int> bytes,
+    required String targetDescription,
+    String? printerName,
+  }) async {
+    _requireWindows();
+
+    _log(
+      'printRawData → $targetDescription '
       'bytes=${bytes.length} useRawDatatype=true',
     );
 
     try {
       final success = await WindowsPrinter.printRawData(
-        printerName: null,
+        printerName: printerName,
         data: Uint8List.fromList(bytes),
         useRawDatatype: true,
       );
 
       if (!success) {
-        const message =
-            '[Win32RawPrinter] فشلت الطباعة: printRawData أرجع false '
-            'للطابعة الافتراضية';
-        debugPrint(message);
-        throw StateError('فشل إرسال البيانات RAW إلى الطابعة الافتراضية');
+        _log('فشلت الطباعة: printRawData أرجع false → $targetDescription');
+        throw StateError(
+          printerName == null
+              ? 'فشل إرسال البيانات RAW إلى الطابعة الافتراضية'
+              : 'فشل إرسال البيانات RAW إلى الطابعة "$printerName"',
+        );
       }
 
-      debugPrint(
-        '[Win32RawPrinter] نجحت الطباعة → default'
-        '${defaultName != null ? ' ("$defaultName")' : ''}',
-      );
+      _log('نجحت الطباعة → $targetDescription');
     } catch (e, stack) {
-      final message =
-          '[Win32RawPrinter] خطأ طباعة RAW → default printer: $e\n$stack';
-      debugPrint(message);
+      _log('خطأ طباعة RAW → $targetDescription', error: e, stack: stack);
       rethrow;
     }
+  }
+
+  /// يرسل بايتات ESC/POS إلى الطابعة الافتراضية في Windows (RAW datatype).
+  static Future<void> printRawBytesToDefault(List<int> bytes) async {
+    final defaultName = await getDefaultPrinterName();
+    final description = defaultName == null
+        ? 'default printer'
+        : 'default printer ("$defaultName")';
+
+    await _sendRawData(
+      bytes: bytes,
+      targetDescription: description,
+    );
   }
 
   /// اسم الطابعة الافتراضية في Windows (إن وُجدت).
@@ -62,45 +86,18 @@ abstract final class Win32RawPrinter {
 
   /// يرسل بايتات ESC/POS إلى اسم الطابعة في Windows (RAW datatype).
   static Future<void> printRawBytes(List<int> bytes, {String? printerName}) async {
-    if (!Platform.isWindows) {
-      throw UnsupportedError('الطباعة الخام متاحة على Windows فقط.');
-    }
-
     final name = (printerName ?? await PrinterPreferences.getWindowsPrinterName())
         .trim();
     if (name.isEmpty) {
-      const message = '[Win32RawPrinter] اسم الطابعة فارغ';
-      debugPrint(message);
+      _log('اسم الطابعة فارغ');
       throw StateError('لم يُحدَّد اسم الطابعة في الإعدادات.');
     }
 
-    debugPrint(
-      '[Win32RawPrinter] printRawData → printer="$name" '
-      'bytes=${bytes.length} useRawDatatype=true',
+    await _sendRawData(
+      bytes: bytes,
+      printerName: name,
+      targetDescription: 'printer="$name"',
     );
-
-    try {
-      final success = await WindowsPrinter.printRawData(
-        printerName: name,
-        data: Uint8List.fromList(bytes),
-        useRawDatatype: true,
-      );
-
-      if (!success) {
-        final message =
-            '[Win32RawPrinter] فشلت الطباعة: printRawData أرجع false '
-            'للطابعة "$name" (${bytes.length} bytes)';
-        debugPrint(message);
-        throw StateError('فشل إرسال البيانات RAW إلى الطابعة "$name"');
-      }
-
-      debugPrint('[Win32RawPrinter] نجحت الطباعة → "$name"');
-    } catch (e, stack) {
-      final message =
-          '[Win32RawPrinter] خطأ طباعة RAW → printer="$name": $e\n$stack';
-      debugPrint(message);
-      rethrow;
-    }
   }
 
   static Future<List<String>> listPrinterNames() async {
@@ -108,11 +105,10 @@ abstract final class Win32RawPrinter {
 
     try {
       final names = await WindowsPrinter.getAvailablePrinters();
-      debugPrint('[Win32RawPrinter] printers (${names.length}): $names');
+      _log('printers (${names.length}): $names');
       return names;
     } catch (e, stack) {
-      final message = '[Win32RawPrinter] listPrinterNames failed: $e\n$stack';
-      debugPrint(message);
+      _log('listPrinterNames failed', error: e, stack: stack);
       rethrow;
     }
   }

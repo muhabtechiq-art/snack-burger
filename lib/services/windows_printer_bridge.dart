@@ -11,8 +11,15 @@ class WindowsPrinterBridge {
   WindowsPrinterBridge._();
 
   static final WindowsPrinterBridge instance = WindowsPrinterBridge._();
+  static const _logTag = 'WindowsPrinterBridge';
 
   static final _utf8 = utf8;
+
+  static void _requireWindows() {
+    if (!Platform.isWindows) {
+      throw UnsupportedError('Windows spooler only');
+    }
+  }
 
   static Future<List<WindowsPrinterInfo>> logInstalledPrintersToConsole() async {
     final printers = await instance.listInstalledPrinters();
@@ -83,16 +90,12 @@ class WindowsPrinterBridge {
     required String printerSystemName,
     required List<int> bytes,
   }) async {
-    if (!Platform.isWindows) {
-      throw UnsupportedError('Windows spooler only');
-    }
+    _requireWindows();
 
     final name = printerSystemName.trim();
     if (name.isEmpty) throw ArgumentError('printerSystemName is empty');
 
-    debugPrint(
-      'WindowsPrinterBridge: delegating RAW → Win32RawPrinter ("$name")',
-    );
+    debugPrint('$_logTag: delegating RAW → Win32RawPrinter ("$name")');
     await Win32RawPrinter.printRawBytes(bytes, printerName: name);
   }
 

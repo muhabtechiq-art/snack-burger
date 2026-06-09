@@ -1,5 +1,7 @@
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
+import '../models/order_model.dart';
+import 'receipt_cashier_layout.dart';
 
 /// بناء فاتورة **نصية** لطابعات Generic / Text Only (مُجمّع Windows RAW).
 ///
@@ -28,17 +30,17 @@ abstract final class ReceiptTextBuilder {
 
     buffer
       ..writeln(_separator())
-      ..writeln(_padLine('Item', 'Qty', 'Price'))
+      ..writeln(ReceiptCashierLayout.tableHeader())
       ..writeln(_separator());
 
     for (final item in order.items) {
-      buffer.writeln(_itemLine(item.name, item.quantity, item.baseLineTotal));
+      buffer.writeln(ReceiptCashierLayout.itemRow(item));
       for (final addon in item.selectedAddons) {
         buffer.writeln(
-          _addonLine(
-            addon.name,
-            addon.quantity,
-            item.receiptAddonLineTotal(addon),
+          ReceiptCashierLayout.addonRow(
+            name: addon.name,
+            quantity: addon.quantity,
+            lineTotal: item.receiptAddonLineTotal(addon),
           ),
         );
       }
@@ -65,7 +67,7 @@ abstract final class ReceiptTextBuilder {
       ..writeln(_separator());
 
     for (final item in order.items) {
-      buffer.writeln('x${item.quantity}  ${item.name}');
+      buffer.writeln('x${item.quantity}  ${item.displayName}');
       for (final addon in item.selectedAddons) {
         buffer.writeln(
           '   + x${addon.quantity} ${addon.name}',
@@ -96,29 +98,9 @@ abstract final class ReceiptTextBuilder {
     return '${' ' * pad}$trimmed'.padRight(lineWidth);
   }
 
-  static String _padLine(String a, String b, String c) {
-    const w1 = 22;
-    const w2 = 5;
-    const w3 = lineWidth - w1 - w2;
-    return '${a.padRight(w1)}${b.padLeft(w2)}${c.padLeft(w3)}';
-  }
-
-  static String _itemLine(String name, int qty, double price) {
-    final priceStr = price.toStringAsFixed(0);
-    final maxName = lineWidth - 8 - priceStr.length;
-    final shortName =
-        name.length > maxName ? '${name.substring(0, maxName - 1)}.' : name;
-    return 'x$qty $shortName'.padRight(lineWidth - priceStr.length) + priceStr;
-  }
-
-  static String _addonLine(String name, int qty, double price) {
-    final priceStr = price.toStringAsFixed(0);
-    final prefix = '  + x$qty ';
-    final maxName = lineWidth - prefix.length - priceStr.length;
-    final shortName =
-        name.length > maxName ? '${name.substring(0, maxName - 1)}.' : name;
-    return '$prefix$shortName'.padRight(lineWidth - priceStr.length) + priceStr;
-  }
+  /// سطر تفاصيل المنتج — يفوّض إلى [ReceiptCashierLayout].
+  static String formatCashierItemLine(CartItem item) =>
+      ReceiptCashierLayout.itemRow(item);
 
   static String _wrap(String text) {
     if (text.length <= lineWidth) return text;

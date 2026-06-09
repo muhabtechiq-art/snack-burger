@@ -109,9 +109,29 @@ class ProductVariant {
 
   factory ProductVariant.fromMap(Map<String, dynamic> map) {
     return ProductVariant(
-      name: (map['name'] as String? ?? map['label'] as String? ?? '').trim(),
-      price: _readDouble(map['price']),
+      name: _readVariantName(map),
+      price: _readDouble(
+        map['price'] ?? map['unit_price'] ?? map['amount'] ?? map['cost'],
+      ),
     );
+  }
+
+  static String _readVariantName(Map<String, dynamic> map) {
+    for (final key in [
+      'name',
+      'label',
+      'size_name',
+      'variant_name',
+      'size',
+      'title',
+      'variant',
+    ]) {
+      final value = map[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
   }
 
   static List<ProductVariant> listFromDynamic(dynamic raw) {

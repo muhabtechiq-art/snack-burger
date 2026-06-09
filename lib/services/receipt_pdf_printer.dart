@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
+import 'receipt_cashier_layout.dart';
 
 /// طباعة الفاتورة كـ PDF مع خط عربي + لاتيني (أرقام، GPS، ×) — حوار طباعة Windows.
 abstract final class ReceiptPdfPrinter {
@@ -57,38 +58,60 @@ abstract final class ReceiptPdfPrinter {
       throw StateError('منصة الطباعة غير جاهزة (canPrint=false).');
     }
 
-    // Gives Windows spooler/printer driver a moment before dispatching the job.
     await Future<void>.delayed(const Duration(milliseconds: 250));
 
     final documentName = 'Snack Burger — ${order.id}';
+
+    Future<Uint8List> layout(PdfPageFormat _) => buildReceiptPdf(order);
 
     if (!showDialog && info.directPrint && info.canListPrinters) {
       final printers = await Printing.listPrinters();
       final target = _findGenericTextOnlyPrinter(printers);
       if (target != null) {
-        final sent = await Printing.directPrintPdf(
-          printer: target,
-          name: documentName,
-          format: _pageFormat,
-          usePrinterSettings: true,
-          dynamicLayout: false,
-          onLayout: (_) => buildReceiptPdf(order),
+        await _dispatchPdf(
+          documentName: documentName,
+          layout: layout,
+          directPrinter: target,
         );
-        if (!sent) {
-          throw StateError('تم إلغاء الطباعة أو فشل إرسال المهمة للطابعة.');
-        }
         return;
       }
     }
 
-    final sent = await Printing.layoutPdf(
-      name: documentName,
-      format: _pageFormat,
-      dynamicLayout: false,
-      onLayout: (_) => buildReceiptPdf(order),
+    await _dispatchPdf(
+      documentName: documentName,
+      layout: layout,
+      useLayoutDialog: true,
     );
+  }
+
+  static Future<void> _dispatchPdf({
+    required String documentName,
+    required Future<Uint8List> Function(PdfPageFormat format) layout,
+    Printer? directPrinter,
+    bool useLayoutDialog = false,
+  }) async {
+    final sent = directPrinter != null
+        ? await Printing.directPrintPdf(
+            printer: directPrinter,
+            name: documentName,
+            format: _pageFormat,
+            usePrinterSettings: true,
+            dynamicLayout: false,
+            onLayout: layout,
+          )
+        : await Printing.layoutPdf(
+            name: documentName,
+            format: _pageFormat,
+            dynamicLayout: false,
+            onLayout: layout,
+          );
+
     if (!sent) {
-      throw StateError('تم إلغاء الطباعة من حوار النظام.');
+      throw StateError(
+        useLayoutDialog
+            ? 'تم إلغاء الطباعة من حوار النظام.'
+            : 'تم إلغاء الطباعة أو فشل إرسال المهمة للطابعة.',
+      );
     }
   }
 
@@ -203,37 +226,35 @@ abstract final class ReceiptPdfPrinter {
     _ReceiptFonts fonts,
   ) {
     final local = order.createdAt.toLocal();
-    final dateStr = _formatDateTime(local);
 
     final widgets = <pw.Widget>[
-      _line(fonts, 'الزبون: ${order.customerName}'),
+      _line(fonts, 'الاسم: ${order.customerName}'),
       _line(fonts, 'الهاتف: ${order.customerPhone}'),
       _line(fonts, 'العنوان: ${order.address}'),
+      _line(fonts, 'التاريخ: ${ReceiptCashierLayout.formatDate(local)}'),
+      _line(fonts, 'الوقت: ${ReceiptCashierLayout.formatTime(local)}'),
       if (order.latitude != null && order.longitude != null)
         _line(
           fonts,
           'GPS: ${order.latitude!.toStringAsFixed(5)}, '
           '${order.longitude!.toStringAsFixed(5)}',
         ),
-      _line(fonts, 'الوقت: $dateStr'),
       pw.Divider(),
-      _line(fonts, 'الوجبات', bold: true),
+      _line(fonts, ReceiptCashierLayout.tableHeader(), bold: true),
+      pw.Divider(),
     ];
 
     for (final item in order.items) {
-      widgets.add(
-        _line(
-          fonts,
-          '${item.name}  x${item.quantity}  '
-          '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
-        ),
-      );
+      widgets.add(_line(fonts, ReceiptCashierLayout.itemRow(item)));
       for (final addon in item.selectedAddons) {
         widgets.add(
           _line(
             fonts,
-            '  + ${addon.name}  x${addon.quantity}  '
-            '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
+            ReceiptCashierLayout.addonRow(
+              name: addon.name,
+              quantity: addon.quantity,
+              lineTotal: item.receiptAddonLineTotal(addon),
+            ),
           ),
         );
       }
@@ -244,13 +265,14 @@ abstract final class ReceiptPdfPrinter {
       ..add(
         pw.Text(
           'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
-          style: _style(fonts, fontSize: 13, fontWeight: pw.FontWeight.bold),
+          style: _style(fonts, fontSize: 16, fontWeight: pw.FontWeight.bold),
+          textAlign: pw.TextAlign.center,
         ),
       )
       ..add(pw.SizedBox(height: 8))
       ..add(
         pw.Text(
-          'شكراً لطلبكم',
+          ReceiptCashierLayout.thanksMessage,
           style: _style(fonts, fontSize: 12),
           textAlign: pw.TextAlign.center,
         ),
@@ -275,7 +297,7 @@ abstract final class ReceiptPdfPrinter {
     for (final item in order.items) {
       widgets.add(
         pw.Text(
-          'x${item.quantity}  ${item.name}',
+          'x${item.quantity}  ${item.displayName}',
           style: _style(fonts, fontSize: 14, fontWeight: pw.FontWeight.bold),
         ),
       );

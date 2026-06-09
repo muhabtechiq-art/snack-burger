@@ -16,21 +16,190 @@ abstract final class SupabaseProductService {
 
   static const String defaultRestaurantId = 'snack_burger';
 
+  /// استعلام منتجات مع join للإضافات والأحجام (PostgREST embed).
+  static const String _selectWithRelations =
+      '*, $addonsTableName(*), $variantsTableName(*)';
+
   static SupabaseClient get _client => Supabase.instance.client;
+
+  /// يُحمّل الإضافات ثم الأحجام لقائمة منتجات (مسار مشترك للقراءة).
+  static Future<List<ProductModel>> _enrichProductsWithRelations(
+    List<ProductModel> products,
+  ) async {
+    final enriched = await _attachVariantsToProducts(
+      await _attachAddonsToProducts(products),
+    );
+    final withVariants = enriched.where((product) => product.hasVariants).length;
+    debugPrint(
+      '[SupabaseProductService] enrich: ${enriched.length} منتج، '
+      '$withVariants بأحجام',
+    );
+    return enriched;
+  }
+
+  static String _productIdKey(dynamic id) => _asString(id);
+
+  static bool _productIdsMatch(String a, String b) {
+    if (a == b) return true;
+    final aInt = int.tryParse(a);
+    final bInt = int.tryParse(b);
+    return aInt != null && bInt != null && aInt == bInt;
+  }
+
+  static String _readVariantProductId(Map<String, dynamic> map) {
+    for (final key in ['product_id', 'products_id', 'productId']) {
+      final value = map[key];
+      if (value == null) continue;
+      final text = _productIdKey(value);
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  static List<ProductVariant>? _lookupVariantsForProduct(
+    Map<String, List<ProductVariant>> grouped,
+    String productId,
+  ) {
+    final key = _productIdKey(productId);
+    final direct = grouped[key];
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    for (final entry in grouped.entries) {
+      if (_productIdsMatch(entry.key, key) && entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  /// يجلب صفوف الأحجام — inFilter ثم fallback لجلب الكل ومطابقة محلية.
+  static Future<List<dynamic>> _fetchVariantRowsForProductIds(
+    List<String> productIds,
+  ) async {
+    final serialized = _serializedProductIds(productIds);
+    debugPrint(
+      '[SupabaseProductService] inFilter product_ids=$serialized raw=$productIds',
+    );
+
+    final filtered = await _client
+        .from(variantsTableName)
+        .select()
+        .inFilter('product_id', serialized);
+
+    final filteredRows = filtered as List;
+    if (filteredRows.isNotEmpty) {
+      return filteredRows;
+    }
+
+    debugPrint(
+      '[SupabaseProductService] inFilter=0 — جلب كل product_variants '
+      'للمطابقة المحلية',
+    );
+
+    final allRows = await _client.from(variantsTableName).select();
+    final all = allRows as List;
+    debugPrint(
+      '[SupabaseProductService] إجمالي product_variants في الجدول=${all.length}',
+    );
+
+    for (final entry in all.take(5)) {
+      if (entry is! Map) continue;
+      final map = Map<String, dynamic>.from(entry);
+      debugPrint(
+        '  صف variant: product_id=${map['product_id']} '
+        'name=${map['name'] ?? map['label'] ?? map['size']} '
+        'keys=${map.keys.toList()}',
+      );
+    }
+
+    if (all.isEmpty) return const [];
+
+    final wanted = productIds.map(_productIdKey).toSet();
+    return all.where((entry) {
+      if (entry is! Map) return false;
+      final map = Map<String, dynamic>.from(entry);
+      final pid = _readVariantProductId(map);
+      if (pid.isEmpty) return false;
+      for (final id in wanted) {
+        if (_productIdsMatch(pid, id)) return true;
+      }
+      return false;
+    }).toList(growable: false);
+  }
+
+  static List<ProductVariant> _resolveVariantsForProduct({
+    required ProductModel product,
+    List<ProductVariant>? fromTable,
+  }) {
+    if (fromTable != null && fromTable.isNotEmpty) return fromTable;
+    if (product.variants.isNotEmpty) return product.variants;
+    return const [];
+  }
+
+  static List<String> _nonEmptyProductIds(List<ProductModel> products) {
+    return products
+        .map((product) => product.id)
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static List<dynamic> _serializedProductIds(List<String> productIds) {
+    return productIds
+        .map(ProductIdGenerator.serializeForSupabase)
+        .where((id) => id != null)
+        .toList(growable: false);
+  }
+
+  static ProductModel _copyProductRelations(
+    ProductModel product, {
+    List<ProductAddon>? addons,
+    List<ProductVariant>? variants,
+  }) {
+    return ProductModel(
+      id: product.id,
+      restaurantId: product.restaurantId,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      imageUrl: product.imageUrl,
+      category: product.category,
+      addons: addons ?? product.addons,
+      variants: variants ?? product.variants,
+      isAvailable: product.isAvailable,
+      createdAt: product.createdAt,
+    );
+  }
 
   static Future<List<ProductModel>> fetchProducts({
     String? restaurantId,
   }) async {
     try {
       debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
-      final rows = await _client.from(tableName).select();
+      final rows = await _fetchProductRowsWithRelations();
       final products = _parseAndFilter(rows, restaurantId);
-      return _attachVariantsToProducts(
-        await _attachAddonsToProducts(products),
-      );
+      return _enrichProductsWithRelations(products);
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
       rethrow;
+    }
+  }
+
+  /// جلب صفوف المنتجات — يحاول embed للعلاقات ثم fallback لـ select(*).
+  static Future<List<Map<String, dynamic>>> _fetchProductRowsWithRelations() async {
+    try {
+      final rows = await _client.from(tableName).select(_selectWithRelations);
+      debugPrint(
+        '[SupabaseProductService] nested select: '
+        '${(rows as List).length} صف',
+      );
+      return List<Map<String, dynamic>>.from(rows);
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[SupabaseProductService] nested select فشل — fallback select(*): '
+        '${e.message}',
+      );
+      final rows = await _client.from(tableName).select();
+      return List<Map<String, dynamic>>.from(rows);
     }
   }
 
@@ -42,9 +211,7 @@ abstract final class SupabaseProductService {
         .stream(primaryKey: const ['id'])
         .asyncMap((rows) async {
           final products = _parseAndFilter(rows, restaurantId);
-          return _attachVariantsToProducts(
-            await _attachAddonsToProducts(products),
-          );
+          return _enrichProductsWithRelations(products);
         })
         .asBroadcastStream();
   }
@@ -71,14 +238,20 @@ abstract final class SupabaseProductService {
           .from(tableName)
           .select()
           .eq('id', productId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              debugPrint('[SupabaseProductService] fetchProductById: timed out');
+              return null;
+            },
+          );
       if (row == null) return null;
 
       final product = _mapRowToProduct(Map<String, dynamic>.from(row));
       if (product == null) return null;
 
-      final withAddons = await _attachAddonsToProducts([product]);
-      final enriched = await _attachVariantsToProducts(withAddons);
+      final enriched = await _enrichProductsWithRelations([product]);
       return enriched.isEmpty ? product : enriched.first;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProductById فشل: $e\n$stack');
@@ -139,7 +312,7 @@ abstract final class SupabaseProductService {
       resolvedImageUrl: resolvedImageUrl,
     );
 
-    await _saveProductVariants(
+    await _persistProductVariants(
       productId: savedId,
       variants: product.variants,
     );
@@ -328,36 +501,103 @@ abstract final class SupabaseProductService {
     }
   }
 
+  static dynamic _serializeProductId(String productId) {
+    return ProductIdGenerator.serializeForSupabase(productId);
+  }
+
+  static PostgrestException _rlsDeniedException(
+    PostgrestException source,
+    String message,
+  ) {
+    return PostgrestException(
+      message: message,
+      code: source.code,
+      details: source.details,
+      hint: source.hint,
+    );
+  }
+
+  static bool _isMissingTableError(PostgrestException error, String tableName) {
+    return error.code == 'PGRST205' || error.message.contains(tableName);
+  }
+
+  /// عمود أو جدول غير متوافق مع schema cache (PGRST204).
+  static bool _isPostgrestSchemaMismatch(PostgrestException error) {
+    return error.code == 'PGRST204' ||
+        error.code == 'PGRST205' ||
+        error.message.contains('schema cache');
+  }
+
+  /// حذف صفوف فرعية لمنتج. يُرجع false إذا تُخطّى (مثلاً جدول غير موجود).
+  static Future<bool> _deleteChildRowsForProduct({
+    required String tableName,
+    required dynamic serializedProductId,
+    required String logContext,
+    required String rlsDeleteMessage,
+    bool allowMissingTable = false,
+  }) async {
+    try {
+      await _client
+          .from(tableName)
+          .delete()
+          .eq('product_id', serializedProductId);
+      return true;
+    } on PostgrestException catch (e, st) {
+      debugPrint(
+        '[SupabaseProductService] delete $logContext فشل: '
+        '${e.code} ${e.message}\n$st',
+      );
+      if (e.code == '42501') {
+        throw _rlsDeniedException(e, rlsDeleteMessage);
+      }
+      if (allowMissingTable && _isMissingTableError(e, tableName)) {
+        debugPrint(
+          '[SupabaseProductService] جدول $tableName غير موجود — تخطّي',
+        );
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _insertChildRows({
+    required String tableName,
+    required List<Map<String, dynamic>> rows,
+    required String logContext,
+    required String rlsInsertMessage,
+  }) async {
+    if (rows.isEmpty) return;
+
+    try {
+      await _client.from(tableName).insert(rows);
+    } on PostgrestException catch (e, st) {
+      debugPrint(
+        '[SupabaseProductService] insert $logContext فشل: '
+        '${e.code} ${e.message}\n$st',
+      );
+      if (e.code == '42501') {
+        throw _rlsDeniedException(e, rlsInsertMessage);
+      }
+      rethrow;
+    }
+  }
+
   /// يستبدل إضافات المنتج في `product_addons` بعد حفظ المنتج.
   static Future<void> _saveProductAddons({
     required String productId,
     required List<ProductAddon> addons,
     bool skipDelete = false,
   }) async {
-    final serializedProductId =
-        ProductIdGenerator.serializeForSupabase(productId);
+    final serializedProductId = _serializeProductId(productId);
 
     if (!skipDelete) {
-      try {
-        await _client
-            .from(addonsTableName)
-            .delete()
-            .eq('product_id', serializedProductId);
-      } on PostgrestException catch (e, st) {
-        debugPrint(
-          '[SupabaseProductService] delete addons فشل: ${e.code} ${e.message}\n$st',
-        );
-        if (e.code == '42501') {
-          throw PostgrestException(
-            message:
-                'لا توجد صلاحية لحذف الإضافات — فعّل سياسات DELETE على product_addons',
-            code: e.code,
-            details: e.details,
-            hint: e.hint,
-          );
-        }
-        rethrow;
-      }
+      await _deleteChildRowsForProduct(
+        tableName: addonsTableName,
+        serializedProductId: serializedProductId,
+        logContext: 'addons',
+        rlsDeleteMessage:
+            'لا توجد صلاحية لحذف الإضافات — فعّل سياسات DELETE على product_addons',
+      );
     }
 
     final validAddons = addons
@@ -379,62 +619,89 @@ abstract final class SupabaseProductService {
         )
         .toList(growable: false);
 
-    try {
-      await _client.from(addonsTableName).insert(rows);
-    } on PostgrestException catch (e, st) {
-      debugPrint(
-        '[SupabaseProductService] insert addons فشل: ${e.code} ${e.message}\n$st',
-      );
-      if (e.code == '42501') {
-        throw PostgrestException(
-          message:
-              'لا توجد صلاحية لحفظ الإضافات — فعّل سياسات INSERT على product_addons',
-          code: e.code,
-          details: e.details,
-          hint: e.hint,
-        );
-      }
-      rethrow;
-    }
+    await _insertChildRows(
+      tableName: addonsTableName,
+      rows: rows,
+      logContext: 'addons',
+      rlsInsertMessage:
+          'لا توجد صلاحية لحفظ الإضافات — فعّل سياسات INSERT على product_addons',
+    );
 
     debugPrint(
       '[SupabaseProductService] حُفظت ${rows.length} إضافة للمنتج $productId',
     );
   }
 
-  /// يستبدل أحجام المنتج في `product_variants` بعد حفظ المنتج.
-  static Future<void> _saveProductVariants({
+  /// يحفظ الأحجام في `product_variants` و/أو عمود `products.variants` (jsonb).
+  static Future<void> _persistProductVariants({
     required String productId,
     required List<ProductVariant> variants,
   }) async {
-    final serializedProductId =
-        ProductIdGenerator.serializeForSupabase(productId);
-
-    try {
-      await _client
-          .from(variantsTableName)
-          .delete()
-          .eq('product_id', serializedProductId);
-    } on PostgrestException catch (e, st) {
+    final savedToTable = await _saveProductVariantsInTable(
+      productId: productId,
+      variants: variants,
+    );
+    if (!savedToTable) {
       debugPrint(
-        '[SupabaseProductService] delete variants فشل: ${e.code} ${e.message}\n$st',
+        '[SupabaseProductService] جدول product_variants غير متاح — '
+        'حفظ الأحجام في products.variants (jsonb)',
       );
-      if (e.code == '42501') {
-        throw PostgrestException(
-          message:
-              'لا توجد صلاحية لحذف الأحجام — فعّل سياسات DELETE على product_variants',
-          code: e.code,
-          details: e.details,
-          hint: e.hint,
-        );
-      }
-      if (e.code == 'PGRST205' || e.message.contains('product_variants')) {
+    }
+    await _syncVariantsJsonbOnProduct(
+      productId: productId,
+      variants: variants,
+    );
+  }
+
+  static Future<void> _syncVariantsJsonbOnProduct({
+    required String productId,
+    required List<ProductVariant> variants,
+  }) async {
+    try {
+      await _client.from(tableName).update({
+        'variants': variants.map((variant) => variant.toMap()).toList(growable: false),
+      }).eq('id', _serializeProductId(productId));
+      debugPrint(
+        '[SupabaseProductService] variants jsonb → product $productId '
+        'count=${variants.length}',
+      );
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST204' || e.message.contains('variants')) {
         debugPrint(
-          '[SupabaseProductService] جدول product_variants غير موجود — تخطّي حفظ الأحجام',
+          '[SupabaseProductService] عمود products.variants غير موجود — '
+          'نفّذ supabase/product_variants_table_schema.sql في Supabase',
         );
         return;
       }
       rethrow;
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseProductService] _syncVariantsJsonbOnProduct فشل: $e\n$stack',
+      );
+    }
+  }
+
+  /// يستبدل أحجام المنتج في `product_variants` بعد حفظ المنتج.
+  /// يُرجع true إذا نجح الحفظ في الجدول، false إذا الجدول غير موجود.
+  static Future<bool> _saveProductVariantsInTable({
+    required String productId,
+    required List<ProductVariant> variants,
+  }) async {
+    final serializedProductId = _serializeProductId(productId);
+
+    final deleted = await _deleteChildRowsForProduct(
+      tableName: variantsTableName,
+      serializedProductId: serializedProductId,
+      logContext: 'variants',
+      rlsDeleteMessage:
+          'لا توجد صلاحية لحذف الأحجام — فعّل سياسات DELETE على product_variants',
+      allowMissingTable: true,
+    );
+    if (!deleted) {
+      debugPrint(
+        '[SupabaseProductService] جدول product_variants غير موجود — تخطّي حفظ الأحجام',
+      );
+      return false;
     }
 
     final validVariants = variants
@@ -445,7 +712,7 @@ abstract final class SupabaseProductService {
       debugPrint(
         '[SupabaseProductService] لا أحجام لحفظها للمنتج $productId',
       );
-      return;
+      return true;
     }
 
     final rows = validVariants
@@ -462,19 +729,19 @@ abstract final class SupabaseProductService {
         .toList(growable: false);
 
     try {
-      await _client.from(variantsTableName).insert(rows);
-    } on PostgrestException catch (e, st) {
-      debugPrint(
-        '[SupabaseProductService] insert variants فشل: ${e.code} ${e.message}\n$st',
+      await _insertChildRows(
+        tableName: variantsTableName,
+        rows: rows,
+        logContext: 'variants',
+        rlsInsertMessage:
+            'لا توجد صلاحية لحفظ الأحجام — فعّل سياسات INSERT على product_variants',
       );
-      if (e.code == '42501') {
-        throw PostgrestException(
-          message:
-              'لا توجد صلاحية لحفظ الأحجام — فعّل سياسات INSERT على product_variants',
-          code: e.code,
-          details: e.details,
-          hint: e.hint,
+    } on PostgrestException catch (e) {
+      if (_isPostgrestSchemaMismatch(e)) {
+        debugPrint(
+          '[SupabaseProductService] product_variants غير متوافق: ${e.message}',
         );
+        return false;
       }
       rethrow;
     }
@@ -482,6 +749,7 @@ abstract final class SupabaseProductService {
     debugPrint(
       '[SupabaseProductService] حُفظت ${rows.length} أحجام للمنتج $productId',
     );
+    return true;
   }
 
   /// يُحمّل الإضافات من `product_addons` ويربطها بالمنتجات (للبث المباشر).
@@ -490,35 +758,21 @@ abstract final class SupabaseProductService {
   ) async {
     if (products.isEmpty) return products;
 
-    final productIds = products.map((p) => p.id).where((id) => id.isNotEmpty).toList();
+    final productIds = _nonEmptyProductIds(products);
     if (productIds.isEmpty) return products;
 
     try {
       final rows = await _client
           .from(addonsTableName)
           .select()
-          .inFilter(
-            'product_id',
-            productIds
-                .map(ProductIdGenerator.serializeForSupabase)
-                .toList(growable: false),
-          );
+          .inFilter('product_id', _serializedProductIds(productIds));
 
       final addonsByProduct = _groupAddonsByProductId(rows);
       return products
           .map(
-            (product) => ProductModel(
-              id: product.id,
-              restaurantId: product.restaurantId,
-              name: product.name,
-              description: product.description,
-              price: product.price,
-              imageUrl: product.imageUrl,
-              category: product.category,
+            (product) => _copyProductRelations(
+              product,
               addons: addonsByProduct[_asString(product.id)] ?? const [],
-              variants: product.variants,
-              isAvailable: product.isAvailable,
-              createdAt: product.createdAt,
             ),
           )
           .toList(growable: false);
@@ -559,42 +813,36 @@ abstract final class SupabaseProductService {
   ) async {
     if (products.isEmpty) return products;
 
-    final productIds =
-        products.map((p) => p.id).where((id) => id.isNotEmpty).toList();
+    final productIds = _nonEmptyProductIds(products);
     if (productIds.isEmpty) return products;
 
     try {
-      final rows = await _client
-          .from(variantsTableName)
-          .select()
-          .inFilter(
-            'product_id',
-            productIds
-                .map(ProductIdGenerator.serializeForSupabase)
-                .toList(growable: false),
-          );
+      final rows = await _fetchVariantRowsForProductIds(productIds);
+
+      debugPrint(
+        '[SupabaseProductService] product_variants: ${rows.length} صف '
+        'لـ ${productIds.length} منتج',
+      );
 
       final variantsByProduct = _groupVariantsByProductId(rows);
       return products
           .map(
             (product) {
-              final fromTable = variantsByProduct[_asString(product.id)];
-              final variants = (fromTable != null && fromTable.isNotEmpty)
-                  ? fromTable
-                  : product.variants;
-              return ProductModel(
-                id: product.id,
-                restaurantId: product.restaurantId,
-                name: product.name,
-                description: product.description,
-                price: product.price,
-                imageUrl: product.imageUrl,
-                category: product.category,
-                addons: product.addons,
-                variants: variants,
-                isAvailable: product.isAvailable,
-                createdAt: product.createdAt,
+              final fromTable = _lookupVariantsForProduct(
+                variantsByProduct,
+                product.id,
               );
+              final variants = _resolveVariantsForProduct(
+                product: product,
+                fromTable: fromTable,
+              );
+              if (variants.isEmpty && product.variants.isEmpty) {
+                debugPrint(
+                  '[SupabaseProductService] لا أحجام للمنتج id=${product.id} '
+                  'name=${product.name}',
+                );
+              }
+              return _copyProductRelations(product, variants: variants);
             },
           )
           .toList(growable: false);
@@ -617,22 +865,37 @@ abstract final class SupabaseProductService {
     final grouped = <String, List<ProductVariant>>{};
     if (rows is! List) return grouped;
 
-    for (final entry in rows) {
+    final sortedRows = List<dynamic>.from(rows)
+      ..sort((a, b) {
+        if (a is! Map || b is! Map) return 0;
+        final aOrder = (a['sort_order'] as num?)?.toInt() ?? 0;
+        final bOrder = (b['sort_order'] as num?)?.toInt() ?? 0;
+        if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+        return _readDouble(a['price']).compareTo(_readDouble(b['price']));
+      });
+
+    for (final entry in sortedRows) {
       if (entry is! Map) continue;
       final map = Map<String, dynamic>.from(entry);
-      final productId = _asString(map['product_id']);
-      if (productId.isEmpty) continue;
+      final productId = _readVariantProductId(map);
+      if (productId.isEmpty) {
+        debugPrint(
+          '[SupabaseProductService] تخطي variant بدون product_id — '
+          'keys=${map.keys.toList()}',
+        );
+        continue;
+      }
 
       final variant = ProductVariant.fromMap(map);
-      if (variant.name.isEmpty) continue;
+      if (variant.name.isEmpty) {
+        debugPrint(
+          '[SupabaseProductService] تخطي variant بدون اسم — '
+          'product_id=$productId keys=${map.keys.toList()}',
+        );
+        continue;
+      }
 
       grouped.putIfAbsent(productId, () => <ProductVariant>[]).add(variant);
-    }
-
-    for (final variants in grouped.values) {
-      variants.sort(
-        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-      );
     }
 
     return grouped;
@@ -702,6 +965,14 @@ abstract final class SupabaseProductService {
       normalized['restaurant_id'] ?? normalized['restaurantId'],
     );
 
+    final variants = _parseVariantsFromRow(normalized);
+    if (variants.isNotEmpty) {
+      debugPrint(
+        '[SupabaseProductService] nested/jsonb variants للمنتج $id: '
+        '${variants.length}',
+      );
+    }
+
     return ProductModel(
       id: id,
       restaurantId:
@@ -716,7 +987,7 @@ abstract final class SupabaseProductService {
           ? _asString(normalized['category'])
           : 'general',
       addons: _parseAddonsFromRow(normalized),
-      variants: _parseVariantsFromRow(normalized),
+      variants: variants,
       isAvailable: normalized['is_available'] as bool? ??
           normalized['isAvailable'] as bool? ??
           true,

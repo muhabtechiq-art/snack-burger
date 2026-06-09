@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/end_of_day_report_model.dart';
+import 'receipt_cashier_layout.dart';
 
 /// يرسم الفاتورة كصورة نقطية (RTL) لطباعة عربية واضحة على الطابعات الحرارية.
 abstract final class ReceiptRasterBuilder {
@@ -85,20 +86,28 @@ abstract final class ReceiptRasterBuilder {
         bold: true,
       ),
       _RasterLine('————————————————', align: TextAlign.center),
-      _RasterLine('تفاصيل المبيعات', fontSize: 18, bold: true),
+      _RasterLine(
+        'الكميات المباعة لكل صنف',
+        fontSize: 18,
+        bold: true,
+      ),
+      _RasterLine('الصنف                    الكمية', bold: true),
     ];
 
-    if (report.productLines.isEmpty) {
+    final quantityByProduct = <String, int>{};
+    for (final line in report.productLines) {
+      final name = line.productName.trim();
+      if (name.isEmpty) continue;
+      quantityByProduct[name] =
+          (quantityByProduct[name] ?? 0) + line.quantitySold;
+    }
+
+    if (quantityByProduct.isEmpty) {
       lines.add(const _RasterLine('لا توجد مبيعات مسجّلة اليوم'));
     } else {
-      for (final line in report.productLines) {
-        lines.add(
-          _RasterLine(
-            '${line.productName}  x${line.quantitySold}  '
-            '${line.unitPrice.toStringAsFixed(0)}  '
-            '${line.lineTotal.toStringAsFixed(0)}',
-          ),
-        );
+      final sortedNames = quantityByProduct.keys.toList()..sort();
+      for (final name in sortedNames) {
+        lines.add(_RasterLine('$name: ${quantityByProduct[name]}'));
       }
     }
 
@@ -113,11 +122,6 @@ abstract final class ReceiptRasterBuilder {
 
   static List<_RasterLine> _cashierLines(DeliveryOrder order) {
     final local = order.createdAt.toLocal();
-    final dateStr =
-        '${local.year}-${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')} '
-        '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
 
     final lines = <_RasterLine>[
       _RasterLine(
@@ -126,48 +130,42 @@ abstract final class ReceiptRasterBuilder {
         bold: true,
         align: TextAlign.center,
       ),
-      _RasterLine('فاتورة الكاشير', fontSize: 20, bold: true, align: TextAlign.center),
+      _RasterLine(
+        ReceiptCashierLayout.subtitle,
+        fontSize: 18,
+        bold: true,
+        align: TextAlign.center,
+      ),
       _RasterLine('————————————————', align: TextAlign.center),
-      _RasterLine('الزبون: ${order.customerName}'),
+      _RasterLine('الاسم: ${order.customerName}'),
       _RasterLine('الهاتف: ${order.customerPhone}'),
       _RasterLine('العنوان: ${order.address}'),
+      _RasterLine('التاريخ: ${ReceiptCashierLayout.formatDate(local)}'),
+      _RasterLine('الوقت: ${ReceiptCashierLayout.formatTime(local)}'),
+      _RasterLine('————————————————', align: TextAlign.center),
+      _RasterLine.table(
+        name: 'المادة',
+        qty: 'الكمية',
+        price: 'السعر',
+        bold: true,
+      ),
+      _RasterLine('————————————————', align: TextAlign.center),
     ];
-
-    if (order.googleMapsUrl != null) {
-      lines.addAll([
-        _RasterLine('————————————————', align: TextAlign.center),
-        _RasterLine(
-          'موقع التوصيل — امسح QR',
-          fontSize: 18,
-          bold: true,
-          align: TextAlign.center,
-        ),
-        _RasterLine(
-          'يفتح Google Maps مباشرة',
-          align: TextAlign.center,
-          fontSize: 14,
-        ),
-      ]);
-    }
-
-    lines
-      ..add(_RasterLine('الوقت: $dateStr'))
-      ..add(_RasterLine('————————————————', align: TextAlign.center))
-      ..add(_RasterLine('الوجبات', bold: true))
-      ..add(_RasterLine('الصنف                    الكمية    السعر', bold: true));
 
     for (final item in order.items) {
       lines.add(
-        _RasterLine(
-          '${item.name}    x${item.quantity}    '
-          '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
+        _RasterLine.table(
+          name: item.displayName,
+          qty: '${item.quantity}',
+          price: item.baseLineTotal.toStringAsFixed(0),
         ),
       );
       for (final addon in item.selectedAddons) {
         lines.add(
-          _RasterLine(
-            '  + ${addon.name}    x${addon.quantity}    '
-            '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
+          _RasterLine.table(
+            name: '+ ${addon.name}',
+            qty: '${addon.quantity}',
+            price: item.receiptAddonLineTotal(addon).toStringAsFixed(0),
           ),
         );
       }
@@ -178,11 +176,18 @@ abstract final class ReceiptRasterBuilder {
       ..add(
         _RasterLine(
           'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
-          fontSize: 22,
+          fontSize: 26,
           bold: true,
+          align: TextAlign.center,
         ),
       )
-      ..add(_RasterLine('شكراً لطلبكم', align: TextAlign.center, fontSize: 18));
+      ..add(
+        _RasterLine(
+          ReceiptCashierLayout.thanksMessage,
+          align: TextAlign.center,
+          fontSize: 16,
+        ),
+      );
 
     return lines;
   }
@@ -212,7 +217,7 @@ abstract final class ReceiptRasterBuilder {
     for (final item in order.items) {
       lines.add(
         _RasterLine(
-          'x${item.quantity}    ${item.name}',
+          'x${item.quantity}    ${item.displayName}',
           fontSize: 24,
           bold: true,
         ),
@@ -249,27 +254,16 @@ abstract final class ReceiptRasterBuilder {
     final pad = _s(_pad);
     final lineGap = _s(6);
     final maxTextWidth = _width - pad * 2;
-    final painters = <TextPainter>[];
+    final rowHeights = <double>[];
     var contentHeight = pad;
 
     for (final line in lines) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: line.text,
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: _s(line.fontSize),
-            fontWeight: line.bold ? FontWeight.bold : FontWeight.w600,
-            fontFamily: 'NotoSansArabic',
-            height: 1.25,
-          ),
-        ),
-        textDirection: _textDirectionFor(line.text),
-        textAlign: line.align,
-        maxLines: null,
-      )..layout(maxWidth: maxTextWidth);
-      painters.add(painter);
-      contentHeight += painter.height + lineGap;
+      if (line.isTable) {
+        rowHeights.add(_tableRowHeight(line, maxTextWidth));
+      } else {
+        rowHeights.add(_textLineHeight(line, maxTextWidth));
+      }
+      contentHeight += rowHeights.last + lineGap;
     }
 
     final qrSize = qrData != null ? _s(200) : 0.0;
@@ -293,22 +287,28 @@ abstract final class ReceiptRasterBuilder {
       Paint()..color = Colors.white,
     );
 
-    for (var i = 0; i < painters.length; i++) {
-      final painter = painters[i];
+    var y = pad;
+    for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final dx = switch (line.align) {
-        TextAlign.center => pad + (maxTextWidth - painter.width) / 2,
-        TextAlign.left => pad,
-        _ => pad + maxTextWidth - painter.width,
-      };
-      painter.paint(
-        canvas,
-        Offset(dx, pad + _lineYOffset(painters, i, lineGap)),
-      );
+      if (line.isTable) {
+        _paintTableRow(
+          canvas: canvas,
+          line: line,
+          y: y,
+          maxTextWidth: maxTextWidth,
+        );
+      } else {
+        _paintTextLine(
+          canvas: canvas,
+          line: line,
+          y: y,
+          maxTextWidth: maxTextWidth,
+        );
+      }
+      y += rowHeights[i] + lineGap;
     }
 
     if (qrData != null) {
-      final textBottom = pad + _lineYOffset(painters, painters.length, lineGap);
       final qrPainter = QrPainter(
         data: qrData,
         version: QrVersions.auto,
@@ -324,7 +324,7 @@ abstract final class ReceiptRasterBuilder {
       );
       final qrLeft = (_width - qrSize) / 2;
       canvas.save();
-      canvas.translate(qrLeft, textBottom + lineGap);
+      canvas.translate(qrLeft, y + lineGap);
       qrPainter.paint(canvas, Size.square(qrSize));
       canvas.restore();
     }
@@ -341,7 +341,6 @@ abstract final class ReceiptRasterBuilder {
       throw StateError('تعذّر تحويل الفاتورة إلى صورة');
     }
 
-    // الطابعة 80mm تتوقع 576px — الرسم بـ 2x للجودة ثم تصغير.
     if (decoded.width != _width.round()) {
       return img.copyResize(
         decoded,
@@ -352,16 +351,146 @@ abstract final class ReceiptRasterBuilder {
     return decoded;
   }
 
-  static double _lineYOffset(
-    List<TextPainter> painters,
-    int index,
-    double lineGap,
+  static TextStyle _textStyle(_RasterLine line) => TextStyle(
+        color: Colors.black,
+        fontSize: _s(line.fontSize),
+        fontWeight: line.bold ? FontWeight.bold : FontWeight.w600,
+        fontFamily: 'NotoSansArabic',
+        height: 1.25,
+      );
+
+  static double _textLineHeight(_RasterLine line, double maxTextWidth) {
+    final painter = TextPainter(
+      text: TextSpan(text: line.text, style: _textStyle(line)),
+      textDirection: _textDirectionFor(line.text),
+      textAlign: line.align,
+      maxLines: null,
+    )..layout(maxWidth: maxTextWidth);
+    return painter.height;
+  }
+
+  static void _paintTextLine({
+    required Canvas canvas,
+    required _RasterLine line,
+    required double y,
+    required double maxTextWidth,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: line.text, style: _textStyle(line)),
+      textDirection: _textDirectionFor(line.text),
+      textAlign: line.align,
+      maxLines: null,
+    )..layout(maxWidth: maxTextWidth);
+
+    final pad = _s(_pad);
+    final dx = switch (line.align) {
+      TextAlign.center => pad + (maxTextWidth - painter.width) / 2,
+      TextAlign.left => pad,
+      _ => pad + maxTextWidth - painter.width,
+    };
+    painter.paint(canvas, Offset(dx, y));
+  }
+
+  static const double _tablePriceWidth = 72;
+  static const double _tableQtyWidth = 48;
+
+  static double _tableRowHeight(_RasterLine line, double maxTextWidth) {
+    final nameWidth = maxTextWidth - _s(_tablePriceWidth + _tableQtyWidth + 12);
+    final heights = <double>[
+      _cellHeight(line.price!, line.fontSize, line.bold, _s(_tablePriceWidth),
+          TextAlign.left),
+      _cellHeight(line.qty!, line.fontSize, line.bold, _s(_tableQtyWidth),
+          TextAlign.center),
+      _cellHeight(line.name!, line.fontSize, line.bold, nameWidth,
+          TextAlign.right),
+    ];
+    return heights.reduce((a, b) => a > b ? a : b);
+  }
+
+  static double _cellHeight(
+    String text,
+    double fontSize,
+    bool bold,
+    double width,
+    TextAlign align,
   ) {
-    var y = 0.0;
-    for (var i = 0; i < index; i++) {
-      y += painters[i].height + lineGap;
-    }
-    return y;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: _s(fontSize),
+          fontWeight: bold ? FontWeight.bold : FontWeight.w600,
+          fontFamily: 'NotoSansArabic',
+          height: 1.25,
+        ),
+      ),
+      textDirection: _textDirectionFor(text),
+      textAlign: align,
+      maxLines: 2,
+    )..layout(maxWidth: width);
+    return painter.height;
+  }
+
+  static void _paintTableRow({
+    required Canvas canvas,
+    required _RasterLine line,
+    required double y,
+    required double maxTextWidth,
+  }) {
+    final pad = _s(_pad);
+    final priceW = _s(_tablePriceWidth);
+    final qtyW = _s(_tableQtyWidth);
+    final gap = _s(6);
+    final nameLeft = pad + priceW + qtyW + gap * 2;
+    final nameWidth = maxTextWidth - priceW - qtyW - gap * 2;
+    final qtyLeft = pad + priceW + gap;
+
+    _paintCell(
+      canvas: canvas,
+      text: line.price!,
+      x: pad,
+      y: y,
+      width: priceW,
+      align: TextAlign.left,
+      line: line,
+    );
+    _paintCell(
+      canvas: canvas,
+      text: line.qty!,
+      x: qtyLeft,
+      y: y,
+      width: qtyW,
+      align: TextAlign.center,
+      line: line,
+    );
+    _paintCell(
+      canvas: canvas,
+      text: line.name!,
+      x: nameLeft,
+      y: y,
+      width: nameWidth,
+      align: TextAlign.right,
+      line: line,
+    );
+  }
+
+  static void _paintCell({
+    required Canvas canvas,
+    required String text,
+    required double x,
+    required double y,
+    required double width,
+    required TextAlign align,
+    required _RasterLine line,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: _textStyle(line)),
+      textDirection: _textDirectionFor(text),
+      textAlign: align,
+      maxLines: 2,
+    )..layout(maxWidth: width);
+    painter.paint(canvas, Offset(x, y));
   }
 
   static TextDirection _textDirectionFor(String text) {
@@ -376,10 +505,26 @@ final class _RasterLine {
     this.fontSize = 16,
     this.bold = false,
     this.align = TextAlign.right,
-  });
+  })  : name = null,
+        qty = null,
+        price = null;
+
+  const _RasterLine.table({
+    required this.name,
+    required this.qty,
+    required this.price,
+    this.bold = false,
+  })  : text = '',
+        fontSize = 16,
+        align = TextAlign.right;
 
   final String text;
+  final String? name;
+  final String? qty;
+  final String? price;
   final double fontSize;
   final bool bold;
   final TextAlign align;
+
+  bool get isTable => name != null && qty != null && price != null;
 }

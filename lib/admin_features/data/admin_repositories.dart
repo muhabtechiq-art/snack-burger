@@ -1,14 +1,13 @@
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../../core/auth/admin_profile_session.dart';
 import '../../core/config/restaurant_ids.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/end_of_day_report_model.dart';
-import 'package:flutter/foundation.dart';
-import 'package:image_picker/image_picker.dart';
-
 import '../../models/product_model.dart';
 import '../../services/product_repository.dart';
 import '../../services/supabase_order_service.dart';
-
 /// مستودع إداري — كل الاستعلامات مربوطة بـ [restaurantId].
 class AdminOrderRepository {
   AdminOrderRepository();
@@ -31,18 +30,38 @@ class AdminOrderRepository {
     return slug.trim().toLowerCase();
   }
 
+  String _scopedSlug({
+    required String restaurantId,
+    required String slug,
+  }) {
+    return resolveRestaurantId(restaurantId: restaurantId, slug: slug);
+  }
+
+  Stream<List<DeliveryOrder>> _watchScopedOrderStream({
+    required String restaurantId,
+    required String slug,
+    required Stream<List<DeliveryOrder>> Function({
+      required String slug,
+      ValueChanged<StreamHealth>? onHealthChanged,
+    }) watch,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    return watch(
+      slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
   Stream<List<DeliveryOrder>> watchPendingOrders({
     required String restaurantId,
     required String slug,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    final scopedId = resolveRestaurantId(
+    return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
-    );
-    return SupabaseOrderService.watchPendingOrders(
-      slug: scopedId,
       onHealthChanged: onHealthChanged,
+      watch: SupabaseOrderService.watchPendingOrders,
     );
   }
 
@@ -51,13 +70,11 @@ class AdminOrderRepository {
     required String slug,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    final scopedId = resolveRestaurantId(
+    return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
-    );
-    return SupabaseOrderService.watchActiveOrders(
-      slug: scopedId,
       onHealthChanged: onHealthChanged,
+      watch: SupabaseOrderService.watchActiveOrders,
     );
   }
 
@@ -66,13 +83,11 @@ class AdminOrderRepository {
     required String slug,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    final scopedId = resolveRestaurantId(
+    return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
-    );
-    return SupabaseOrderService.watchKitchenDashboardOrders(
-      slug: scopedId,
       onHealthChanged: onHealthChanged,
+      watch: SupabaseOrderService.watchKitchenDashboardOrders,
     );
   }
 
@@ -101,12 +116,8 @@ class AdminOrderRepository {
     required String slug,
     DateTime? day,
   }) {
-    final scopedId = resolveRestaurantId(
-      restaurantId: restaurantId,
-      slug: slug,
-    );
     return SupabaseOrderService.fetchTodayClosingReport(
-      slug: scopedId,
+      slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
       day: day,
     );
   }
@@ -119,13 +130,25 @@ class AdminProductRepository {
 
   final ProductRepository _productRepository;
 
+  T _delegateScoped<T>({
+    required String restaurantId,
+    required String slug,
+    required T Function({
+      required String restaurantId,
+      required String slug,
+    }) delegate,
+  }) {
+    return delegate(restaurantId: restaurantId, slug: slug);
+  }
+
   Stream<List<ProductModel>> watchProducts({
     required String restaurantId,
     required String slug,
   }) {
-    return _productRepository.watchProductsForRestaurant(
+    return _delegateScoped(
       restaurantId: restaurantId,
       slug: slug,
+      delegate: _productRepository.watchProductsForRestaurant,
     );
   }
 
@@ -133,9 +156,10 @@ class AdminProductRepository {
     required String restaurantId,
     required String slug,
   }) {
-    return _productRepository.fetchDistinctCategories(
+    return _delegateScoped(
       restaurantId: restaurantId,
       slug: slug,
+      delegate: _productRepository.fetchDistinctCategories,
     );
   }
 

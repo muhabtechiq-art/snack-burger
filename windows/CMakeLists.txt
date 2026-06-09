@@ -67,6 +67,13 @@ foreach(plugin ${FLUTTER_PLUGIN_LIST})
   endif()
 endforeach()
 
+# FFI plugins (e.g. flutter_local_notifications_windows) use a bare target name.
+foreach(ffi_plugin ${FLUTTER_FFI_PLUGIN_LIST})
+  if(TARGET ${ffi_plugin})
+    target_compile_definitions(${ffi_plugin} PRIVATE "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
+  endif()
+endforeach()
+
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
 # run in place. This is done instead of making a separate bundle (as on Linux)

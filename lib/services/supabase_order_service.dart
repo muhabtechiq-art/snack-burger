@@ -38,6 +38,67 @@ abstract final class SupabaseOrderService {
     return trimmed.toLowerCase();
   }
 
+  static String? _resolveLocationCoordinates({
+    required double? latitude,
+    required double? longitude,
+  }) {
+    if (!LocationFeatureFlags.enabled) return null;
+    if (latitude == null || longitude == null) {
+      throw ArgumentError(
+        'إحداثيات التوصيل مطلوبة — حدّد الموقع بدقة قبل الإرسال.',
+      );
+    }
+    return DeliveryCoordinates.format(latitude, longitude);
+  }
+
+  static Map<String, dynamic> _buildSubmitPayload({
+    required String? resolvedRestaurantUuid,
+    required String rawRestaurantId,
+    required String normalizedSlug,
+    required String customerName,
+    required String customerPhone,
+    required String address,
+    required List<Map<String, dynamic>> orderItems,
+    required double totalPrice,
+    String? locationCoordinates,
+  }) {
+    final payload = <String, dynamic>{
+      'customer_name': customerName.trim(),
+      'phone_number': customerPhone.trim(),
+      'address': address.trim(),
+      'total_price': totalPrice,
+      'order_items': orderItems,
+      'status': DeliveryOrderStatus.pending,
+    };
+
+    if (resolvedRestaurantUuid != null) {
+      payload['restaurant_id'] = resolvedRestaurantUuid;
+    } else if (rawRestaurantId.trim().isNotEmpty) {
+      debugPrint(
+        '[SupabaseOrderService] تخطي restaurant_id — القيمة ليست UUID: '
+        '${rawRestaurantId.trim()}',
+      );
+    }
+
+    if (normalizedSlug.isNotEmpty) {
+      payload['slug'] = normalizedSlug;
+    }
+
+    if (locationCoordinates != null) {
+      payload['location_coordinates'] = locationCoordinates;
+    }
+
+    return payload;
+  }
+
+  static ValueChanged<StreamHealth>? _streamHealthCallback(
+    ValueChanged<StreamHealth>? onHealthChanged,
+  ) {
+    return StabilityPhase1Flags.enablePhase1HealthSignals
+        ? onHealthChanged
+        : null;
+  }
+
   /// يحفظ طلباً جديداً ويعيد معرّف الصف.
   static Future<String> submitOrder({
     required String restaurantId,
@@ -52,45 +113,26 @@ abstract final class SupabaseOrderService {
   }) async {
     final correlationId = AppTelemetry.newCorrelationId(scope: 'order_submit');
     final orderItems = items.map((item) => item.toMap()).toList();
-    String? locationCoordinates;
-    if (LocationFeatureFlags.enabled) {
-      if (latitude == null || longitude == null) {
-        throw ArgumentError(
-          'إحداثيات التوصيل مطلوبة — حدّد الموقع بدقة قبل الإرسال.',
-        );
-      }
-      locationCoordinates = DeliveryCoordinates.format(latitude, longitude);
-    }
+    final locationCoordinates = _resolveLocationCoordinates(
+      latitude: latitude,
+      longitude: longitude,
+    );
     final resolvedRestaurantUuid =
         _resolveRestaurantUuid(restaurantId) ??
         _resolveRestaurantUuid(RestaurantIds.snackBurgerUuid ?? '');
     final normalizedSlug = slug.trim();
 
-    final payload = <String, dynamic>{
-      'customer_name': customerName.trim(),
-      'phone_number': customerPhone.trim(),
-      'address': address.trim(),
-      'total_price': totalPrice,
-      'order_items': orderItems,
-      'status': DeliveryOrderStatus.pending,
-    };
-
-    if (resolvedRestaurantUuid != null) {
-      payload['restaurant_id'] = resolvedRestaurantUuid;
-    } else if (restaurantId.trim().isNotEmpty) {
-      debugPrint(
-        '[SupabaseOrderService] تخطي restaurant_id — القيمة ليست UUID: '
-        '${restaurantId.trim()}',
-      );
-    }
-
-    if (normalizedSlug.isNotEmpty) {
-      payload['slug'] = normalizedSlug;
-    }
-
-    if (locationCoordinates != null) {
-      payload['location_coordinates'] = locationCoordinates;
-    }
+    final payload = _buildSubmitPayload(
+      resolvedRestaurantUuid: resolvedRestaurantUuid,
+      rawRestaurantId: restaurantId,
+      normalizedSlug: normalizedSlug,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      address: address,
+      orderItems: orderItems,
+      totalPrice: totalPrice,
+      locationCoordinates: locationCoordinates,
+    );
 
     debugPrint(
       '[SupabaseOrderService] submitOrder — '
@@ -147,44 +189,22 @@ abstract final class SupabaseOrderService {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
       return _legacyWatchPendingOrders(slug: slug);
     }
-    final normalized = slug.trim().toLowerCase();
+    final normalized = _normalizeSlug(slug);
 
     // بث كل التغييرات ثم فلترة pending محلياً — يزيل الطلب فور تحديث الحالة إلى accepted.
     return _resilientOrdersStream(
       sourceFactory: () =>
           _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) {
-        final orders = <DeliveryOrder>[];
-        for (final row in rows) {
-          try {
-            final order = DeliveryOrder.fromSupabase(
-              Map<String, dynamic>.from(row),
-            );
-            if (order.status != DeliveryOrderStatus.pending) {
-              continue;
-            }
-            final orderSlug = order.slug.trim().toLowerCase();
-            final orderRestaurant = order.restaurantId.trim().toLowerCase();
-            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-              orders.add(order);
-              continue;
-            }
-            if (orderSlug == normalized || orderRestaurant == normalized) {
-              orders.add(order);
-            }
-          } catch (e, st) {
-            debugPrint(
-              '[SupabaseOrderService] تخطي صف طلب ${row['id']}: $e\n$st',
-            );
-          }
-        }
-        orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        return orders;
-      },
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            order.status == DeliveryOrderStatus.pending &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+        logParseErrors: true,
+      ),
       streamTag: 'watchPendingOrders(slug=$normalized)',
-      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
-          ? onHealthChanged
-          : null,
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
@@ -207,19 +227,13 @@ abstract final class SupabaseOrderService {
           .stream(primaryKey: const ['id']).eq('id', normalizedOrderId),
       transform: (rows) {
         if (rows.isEmpty) return null;
-        try {
-          return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(rows.first));
-        } catch (e, st) {
-          debugPrint(
-            '[SupabaseOrderService] فشل تحويل صف الطلب $normalizedOrderId: $e\n$st',
-          );
-          return null;
-        }
+        return _tryParseOrderRow(
+          rows.first,
+          rowIdForLog: normalizedOrderId,
+        );
       },
       streamTag: 'watchOrderById(orderId=$normalizedOrderId)',
-      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
-          ? onHealthChanged
-          : null,
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
@@ -229,7 +243,7 @@ abstract final class SupabaseOrderService {
     required String phoneNumber,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    final normalizedSlug = slug.trim().toLowerCase();
+    final normalizedSlug = _normalizeSlug(slug);
     final normalizedPhone = IraqiPhoneValidator.normalize(phoneNumber);
     if (normalizedPhone.isEmpty) {
       return const Stream<List<DeliveryOrder>>.empty();
@@ -251,9 +265,7 @@ abstract final class SupabaseOrderService {
         normalizedPhone: normalizedPhone,
       ),
       streamTag: 'watchOrdersByPhone(slug=$normalizedSlug)',
-      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
-          ? onHealthChanged
-          : null,
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
@@ -265,37 +277,20 @@ abstract final class SupabaseOrderService {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
       return _legacyWatchActiveOrders(slug: slug);
     }
-    final normalized = slug.trim().toLowerCase();
+    final normalized = _normalizeSlug(slug);
 
     return _resilientOrdersStream(
       sourceFactory: () =>
           _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) {
-        final orders = <DeliveryOrder>[];
-        for (final row in rows) {
-          try {
-            final order = DeliveryOrder.fromSupabase(
-              Map<String, dynamic>.from(row),
-            );
-            if (!_activeOrderStatuses.contains(order.status)) continue;
-            final orderSlug = order.slug.trim().toLowerCase();
-            final orderRestaurant = order.restaurantId.trim().toLowerCase();
-            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-              orders.add(order);
-              continue;
-            }
-            if (orderSlug == normalized || orderRestaurant == normalized) {
-              orders.add(order);
-            }
-          } catch (_) {}
-        }
-        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        return orders;
-      },
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _activeOrderStatuses.contains(order.status) &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
       streamTag: 'watchActiveOrders(slug=$normalized)',
-      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
-          ? onHealthChanged
-          : null,
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
@@ -326,37 +321,20 @@ abstract final class SupabaseOrderService {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
       return _legacyWatchKitchenDashboardOrders(slug: slug);
     }
-    final normalized = slug.trim().toLowerCase();
+    final normalized = _normalizeSlug(slug);
 
     return _resilientOrdersStream(
       sourceFactory: () =>
           _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) {
-        final orders = <DeliveryOrder>[];
-        for (final row in rows) {
-          try {
-            final order = DeliveryOrder.fromSupabase(
-              Map<String, dynamic>.from(row),
-            );
-            if (!_kitchenDashboardStatuses.contains(order.status)) continue;
-            final orderSlug = order.slug.trim().toLowerCase();
-            final orderRestaurant = order.restaurantId.trim().toLowerCase();
-            if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-              orders.add(order);
-              continue;
-            }
-            if (orderSlug == normalized || orderRestaurant == normalized) {
-              orders.add(order);
-            }
-          } catch (_) {}
-        }
-        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        return orders;
-      },
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _kitchenDashboardStatuses.contains(order.status) &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
       streamTag: 'watchKitchenDashboardOrders(slug=$normalized)',
-      onHealthChanged: StabilityPhase1Flags.enablePhase1HealthSignals
-          ? onHealthChanged
-          : null,
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
@@ -368,7 +346,7 @@ abstract final class SupabaseOrderService {
     final localDay = day ?? DateTime.now();
     final dayStart = DateTime(localDay.year, localDay.month, localDay.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
-    final normalized = slug.trim().toLowerCase();
+    final normalized = _normalizeSlug(slug);
 
     try {
       final rows = await _client
@@ -378,30 +356,13 @@ abstract final class SupabaseOrderService {
           .lt('created_at', dayEnd.toUtc().toIso8601String())
           .order('created_at', ascending: false);
 
-      final orders = <DeliveryOrder>[];
-      for (final row in rows) {
-        try {
-          final order = DeliveryOrder.fromSupabase(
-            Map<String, dynamic>.from(row),
-          );
-          if (!_closingCountableStatuses.contains(order.status)) {
-            continue;
-          }
-          final orderSlug = order.slug.trim().toLowerCase();
-          final orderRestaurant = order.restaurantId.trim().toLowerCase();
-          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-            orders.add(order);
-            continue;
-          }
-          if (orderSlug == normalized || orderRestaurant == normalized) {
-            orders.add(order);
-          }
-        } catch (e, st) {
-          debugPrint(
-            '[SupabaseOrderService] تخطي صف تقرير ${row['id']}: $e\n$st',
-          );
-        }
-      }
+      final orders = _mapRowsToOrders(
+        rows: List<Map<String, dynamic>>.from(rows),
+        include: (order) =>
+            _closingCountableStatuses.contains(order.status) &&
+            _orderMatchesSlug(order, normalized),
+        logParseErrors: true,
+      );
 
       var totalSales = 0.0;
       final lineAggregates = <String, ClosingProductLine>{};
@@ -513,6 +474,52 @@ abstract final class SupabaseOrderService {
     }
   }
 
+  static String _normalizeSlug(String slug) => slug.trim().toLowerCase();
+
+  /// يحوّل صف Supabase إلى [DeliveryOrder] مع تخطّي الصفوف التالفة.
+  static DeliveryOrder? _tryParseOrderRow(
+    dynamic row, {
+    String? rowIdForLog,
+  }) {
+    try {
+      return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
+    } catch (e, st) {
+      if (rowIdForLog != null) {
+        debugPrint(
+          '[SupabaseOrderService] تخطي صف طلب $rowIdForLog: $e\n$st',
+        );
+      }
+      return null;
+    }
+  }
+
+  /// يحوّل صفوفاً إلى طلبات مع فلترة وترتيب اختياري.
+  static List<DeliveryOrder> _mapRowsToOrders({
+    required List<Map<String, dynamic>> rows,
+    required bool Function(DeliveryOrder order) include,
+    int Function(DeliveryOrder a, DeliveryOrder b)? compare,
+    bool logParseErrors = false,
+  }) {
+    final orders = <DeliveryOrder>[];
+    for (final row in rows) {
+      final order = _tryParseOrderRow(
+        row,
+        rowIdForLog: logParseErrors ? row['id']?.toString() : null,
+      );
+      if (order == null || !include(order)) continue;
+      orders.add(order);
+    }
+    if (compare != null) {
+      orders.sort(compare);
+    }
+    return orders;
+  }
+
+  /// هل ينتمي الطلب إلى المطعم المحدد بالـ slug؟
+  static bool orderMatchesSlug(DeliveryOrder order, String slug) {
+    return _orderMatchesSlug(order, _normalizeSlug(slug));
+  }
+
   static bool _orderMatchesSlug(DeliveryOrder order, String normalizedSlug) {
     final orderSlug = order.slug.trim().toLowerCase();
     final orderRestaurant = order.restaurantId.trim().toLowerCase();
@@ -525,27 +532,17 @@ abstract final class SupabaseOrderService {
     required String normalizedSlug,
     required String normalizedPhone,
   }) {
-    final orders = <DeliveryOrder>[];
-    for (final row in rows) {
-      try {
-        final order = DeliveryOrder.fromSupabase(
-          Map<String, dynamic>.from(row),
-        );
+    return _mapRowsToOrders(
+      rows: rows,
+      include: (order) {
         final orderPhone = IraqiPhoneValidator.normalize(order.customerPhone);
-        if (orderPhone != normalizedPhone) continue;
-        if (!_orderMatchesSlug(order, normalizedSlug)) continue;
-        if (!CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt)) {
-          continue;
-        }
-        orders.add(order);
-      } catch (e, st) {
-        debugPrint(
-          '[SupabaseOrderService] تخطي صف طلب ${row['id']}: $e\n$st',
-        );
-      }
-    }
-    orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return orders;
+        if (orderPhone != normalizedPhone) return false;
+        if (!_orderMatchesSlug(order, normalizedSlug)) return false;
+        return CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt);
+      },
+      compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      logParseErrors: true,
+    );
   }
 
   static Stream<T> _resilientOrdersStream<T>({
@@ -663,81 +660,46 @@ abstract final class SupabaseOrderService {
   static Stream<List<DeliveryOrder>> _legacyWatchPendingOrders({
     required String slug,
   }) {
-    final normalized = slug.trim().toLowerCase();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
-      final orders = <DeliveryOrder>[];
-      for (final row in rows) {
-        try {
-          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
-          if (order.status != DeliveryOrderStatus.pending) continue;
-          final orderSlug = order.slug.trim().toLowerCase();
-          final orderRestaurant = order.restaurantId.trim().toLowerCase();
-          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-            orders.add(order);
-            continue;
-          }
-          if (orderSlug == normalized || orderRestaurant == normalized) {
-            orders.add(order);
-          }
-        } catch (_) {
-          // Legacy path: keep behavior resilient by skipping malformed rows.
-        }
-      }
-      orders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      return orders;
-    });
+    final normalized = _normalizeSlug(slug);
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            order.status == DeliveryOrderStatus.pending &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+      ),
+    );
   }
 
   static Stream<List<DeliveryOrder>> _legacyWatchActiveOrders({
     required String slug,
   }) {
-    final normalized = slug.trim().toLowerCase();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
-      final orders = <DeliveryOrder>[];
-      for (final row in rows) {
-        try {
-          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
-          if (!_activeOrderStatuses.contains(order.status)) continue;
-          final orderSlug = order.slug.trim().toLowerCase();
-          final orderRestaurant = order.restaurantId.trim().toLowerCase();
-          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-            orders.add(order);
-            continue;
-          }
-          if (orderSlug == normalized || orderRestaurant == normalized) {
-            orders.add(order);
-          }
-        } catch (_) {}
-      }
-      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return orders;
-    });
+    final normalized = _normalizeSlug(slug);
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _activeOrderStatuses.contains(order.status) &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
+    );
   }
 
   static Stream<List<DeliveryOrder>> _legacyWatchKitchenDashboardOrders({
     required String slug,
   }) {
-    final normalized = slug.trim().toLowerCase();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
-      final orders = <DeliveryOrder>[];
-      for (final row in rows) {
-        try {
-          final order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
-          if (!_kitchenDashboardStatuses.contains(order.status)) continue;
-          final orderSlug = order.slug.trim().toLowerCase();
-          final orderRestaurant = order.restaurantId.trim().toLowerCase();
-          if (orderSlug.isEmpty && orderRestaurant.isEmpty) {
-            orders.add(order);
-            continue;
-          }
-          if (orderSlug == normalized || orderRestaurant == normalized) {
-            orders.add(order);
-          }
-        } catch (_) {}
-      }
-      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return orders;
-    });
+    final normalized = _normalizeSlug(slug);
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _kitchenDashboardStatuses.contains(order.status) &&
+            _orderMatchesSlug(order, normalized),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
+    );
   }
 
   static Stream<List<DeliveryOrder>> _legacyWatchOrdersByPhone({
@@ -766,11 +728,7 @@ abstract final class SupabaseOrderService {
         .stream(primaryKey: const ['id']).eq('id', normalizedOrderId)
         .map((rows) {
       if (rows.isEmpty) return null;
-      try {
-        return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(rows.first));
-      } catch (_) {
-        return null;
-      }
+      return _tryParseOrderRow(rows.first);
     });
   }
 }

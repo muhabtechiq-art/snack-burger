@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+
 import 'package:image_picker/image_picker.dart';
 
 import '../core/utils/product_id_generator.dart';
@@ -24,28 +25,58 @@ class ProductRepository {
     return SupabaseProductService.defaultRestaurantId;
   }
 
+  String _docId({
+    required String restaurantId,
+    required String slug,
+  }) {
+    return resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
+  }
+
+  static ProductModel _productForSave({
+    required ProductModel product,
+    required String restaurantDocId,
+    String? imageUrl,
+  }) {
+    return ProductModel(
+      id: product.id,
+      restaurantId: restaurantDocId,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      addons: product.addons,
+      variants: product.variants,
+      imageUrl: imageUrl ?? product.imageUrl,
+      isAvailable: product.isAvailable,
+      createdAt: product.createdAt,
+    );
+  }
+
   Future<List<ProductModel>> fetchProductsForRestaurant({
     required String restaurantId,
     required String slug,
   }) {
-    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
-    return SupabaseProductService.fetchProducts(restaurantId: docId);
+    return SupabaseProductService.fetchProducts(
+      restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
   }
 
   Stream<List<ProductModel>> watchProductsForRestaurant({
     required String restaurantId,
     required String slug,
   }) {
-    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
-    return SupabaseProductService.watchProducts(restaurantId: docId);
+    return SupabaseProductService.watchProducts(
+      restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
   }
 
   Future<List<String>> fetchDistinctCategories({
     required String restaurantId,
     required String slug,
   }) {
-    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
-    return SupabaseProductService.fetchDistinctCategories(restaurantId: docId);
+    return SupabaseProductService.fetchDistinctCategories(
+      restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
   }
 
   Future<ProductModel?> fetchProductById({
@@ -64,7 +95,7 @@ class ProductRepository {
     required Uint8List pickedImageBytes,
     String? productId,
   }) {
-    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
     final targetId =
         (productId != null && productId.trim().isNotEmpty)
             ? productId.trim()
@@ -84,21 +115,12 @@ class ProductRepository {
     required String slug,
     required ProductModel product,
     String? imageUrl,
-  }) async {
-    final docId = resolveRestaurantDocId(restaurantId: restaurantId, slug: slug);
-
-    final payload = ProductModel(
-      id: product.id,
-      restaurantId: docId,
-      name: product.name,
-      description: product.description,
-      price: product.price,
-      category: product.category,
-      addons: product.addons,
-      variants: product.variants,
-      imageUrl: imageUrl ?? product.imageUrl,
-      isAvailable: product.isAvailable,
-      createdAt: product.createdAt,
+  }) {
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
+    final payload = _productForSave(
+      product: product,
+      restaurantDocId: docId,
+      imageUrl: imageUrl,
     );
 
     return SupabaseProductService.saveProduct(

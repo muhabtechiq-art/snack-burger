@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'product_form_field_styles.dart';
+
 /// حقل تصنيف مع قائمة اقتراحات منسدلة (Autocomplete).
 class ProductCategoryField extends StatelessWidget {
   const ProductCategoryField({
@@ -18,11 +20,8 @@ class ProductCategoryField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const InputDecorator(
-        decoration: InputDecoration(
-          labelText: 'التصنيف',
-          border: OutlineInputBorder(),
-        ),
+      return InputDecorator(
+        decoration: ProductFormFieldStyles.decoration(labelText: 'التصنيف'),
         child: Align(
           alignment: Alignment.centerRight,
           child: SizedBox(
@@ -58,15 +57,15 @@ class ProductCategoryField extends StatelessWidget {
           textInputAction: TextInputAction.done,
           onChanged: (value) => controller.text = value,
           onFieldSubmitted: (_) => onFieldSubmitted(),
-          decoration: InputDecoration(
+          style: const TextStyle(color: ProductFormFieldStyles.textColor),
+          decoration: ProductFormFieldStyles.decoration(
             labelText: 'التصنيف',
             hintText: categoryOptions.isEmpty
                 ? 'اكتب اسم التصنيف (مثل: برجر)'
                 : 'اختر من القائمة أو اكتب تصنيفاً جديداً',
-            border: const OutlineInputBorder(),
             suffixIcon: Icon(
               Icons.arrow_drop_down_rounded,
-              color: Theme.of(context).colorScheme.primary,
+              color: ProductFormFieldStyles.textColor,
             ),
           ),
           validator: validator,

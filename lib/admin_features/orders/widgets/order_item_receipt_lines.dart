@@ -26,7 +26,7 @@ class OrderItemReceiptLines extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                item.name,
+                item.displayName,
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,

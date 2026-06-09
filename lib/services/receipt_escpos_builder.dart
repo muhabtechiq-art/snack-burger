@@ -5,25 +5,44 @@ import '../core/config/pos_code_table.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/end_of_day_report_model.dart';
+import 'receipt_cashier_layout.dart';
 import 'receipt_raster_builder.dart';
 import 'receipt_text_encoder.dart';
 
 /// يبني بايتات ESC/POS خام للفاتورة (كاشير + مطبخ) بترميز CP864.
 abstract final class ReceiptEscPosBuilder {
+  static const _logTag = 'ReceiptEscPosBuilder';
+
+  static void _log(String message) {
+    debugPrint('$_logTag: $message');
+  }
+
+  static void _logRaster(String label, dynamic image, List<int> bytes) {
+    _log(
+      '$label ${image.width}x${image.height} '
+      '→ ${bytes.length} bytes (~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
+    );
+  }
+
+  static List<int> _rasterPageBytes(Generator generator, dynamic image) {
+    return <int>[
+      ...generator.reset(),
+      ...generator.image(image, align: PosAlign.center),
+      ...generator.feed(2),
+      ...generator.cut(),
+    ];
+  }
+
   static Future<({CapabilityProfile profile, String arabicCodePage})>
       _loadPrintContext() async {
     for (final name in PrinterConfig.escPosProfileFallbacks) {
       try {
         final profile = await CapabilityProfile.load(name: name);
         final arabicCodePage = PosCodeTable.resolveArabicCodePage(profile);
-        debugPrint(
-          '[ReceiptEscPosBuilder] profile="$name" arabicCodePage=$arabicCodePage',
-        );
+        _log('profile="$name" arabicCodePage=$arabicCodePage');
         return (profile: profile, arabicCodePage: arabicCodePage);
       } catch (e, stack) {
-        debugPrint(
-          '[ReceiptEscPosBuilder] skip profile "$name": $e\n$stack',
-        );
+        _log('skip profile "$name": $e\n$stack');
       }
     }
 
@@ -38,14 +57,9 @@ abstract final class ReceiptEscPosBuilder {
     return Generator(PaperSize.mm80, ctx.profile);
   }
 
-  static Future<({CapabilityProfile profile, String arabicCodePage})>
-      _printContext() async {
-    return _loadPrintContext();
-  }
-
   /// reset + ESC t n — مرة واحدة قبل النص.
   static List<int> _selectCodePage(Generator generator, int codePageId) {
-    debugPrint('[ReceiptEscPosBuilder] ESC t $codePageId');
+    _log('ESC t $codePageId');
     return generator.rawBytes(PosCodeTable.escSelectCodePageId(codePageId));
   }
 
@@ -75,7 +89,7 @@ abstract final class ReceiptEscPosBuilder {
   static Future<List<int>> buildOrderReceiptTextBytes(
     DeliveryOrder order,
   ) async {
-    final ctx = await _printContext();
+    final ctx = await _loadPrintContext();
     final generator = Generator(PaperSize.mm80, ctx.profile);
     const codePageId = PrinterConfig.arabicCodePageId;
 
@@ -101,19 +115,13 @@ abstract final class ReceiptEscPosBuilder {
     final kitchen = await ReceiptRasterBuilder.buildKitchenImage(order);
 
     final bytes = <int>[
-      ...generator.reset(),
-      ...generator.image(cashier, align: PosAlign.center),
-      ...generator.feed(2),
-      ...generator.cut(),
-      ...generator.reset(),
-      ...generator.image(kitchen, align: PosAlign.center),
-      ...generator.feed(2),
-      ...generator.cut(),
+      ..._rasterPageBytes(generator, cashier),
+      ..._rasterPageBytes(generator, kitchen),
     ];
 
-    debugPrint(
-      '[ReceiptEscPosBuilder] raster order '
-      '${cashier.width}x${cashier.height}+${kitchen.width}x${kitchen.height} '
+    _log(
+      'raster order ${cashier.width}x${cashier.height}+'
+      '${kitchen.width}x${kitchen.height} '
       '→ ${bytes.length} bytes (~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
     );
     return bytes;
@@ -134,17 +142,8 @@ abstract final class ReceiptEscPosBuilder {
     final generator = await _newGenerator();
     final image = await ReceiptRasterBuilder.buildEndOfDayImage(report);
 
-    final bytes = <int>[
-      ...generator.reset(),
-      ...generator.image(image, align: PosAlign.center),
-      ...generator.feed(2),
-      ...generator.cut(),
-    ];
-
-    debugPrint(
-      '[ReceiptEscPosBuilder] raster EOD ${image.width}x${image.height} '
-      '→ ${bytes.length} bytes (~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
-    );
+    final bytes = _rasterPageBytes(generator, image);
+    _logRaster('raster EOD', image, bytes);
     return bytes;
   }
 
@@ -158,7 +157,7 @@ abstract final class ReceiptEscPosBuilder {
   static Future<List<int>> buildTestReceiptTextBytes() async {
     final generator = Generator(
       PaperSize.mm80,
-      (await _printContext()).profile,
+      (await _loadPrintContext()).profile,
     );
     const codePageId = PrinterConfig.arabicCodePageId;
 
@@ -179,17 +178,8 @@ abstract final class ReceiptEscPosBuilder {
     final generator = await _newGenerator();
     final image = await ReceiptRasterBuilder.buildTestImage();
 
-    final bytes = <int>[
-      ...generator.reset(),
-      ...generator.image(image, align: PosAlign.center),
-      ...generator.feed(2),
-      ...generator.cut(),
-    ];
-
-    debugPrint(
-      '[ReceiptEscPosBuilder] raster test ${image.width}x${image.height} '
-      '→ ${bytes.length} bytes (~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
-    );
+    final bytes = _rasterPageBytes(generator, image);
+    _logRaster('raster test', image, bytes);
     return bytes;
   }
 
@@ -224,16 +214,27 @@ abstract final class ReceiptEscPosBuilder {
     DeliveryOrder order,
   ) async {
     final local = order.createdAt.toLocal();
-    final dateStr = _formatDateTime(local);
     final bytes = <int>[];
 
     bytes
       ..addAll(await _lineRaw(generator, PrinterConfig.restaurantDisplayName))
-      ..addAll(await _lineRaw(generator, 'فاتورة الكاشير'))
+      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.subtitle))
       ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(await _lineRaw(generator, 'الزبون: ${order.customerName}'))
+      ..addAll(await _lineRaw(generator, 'الاسم: ${order.customerName}'))
       ..addAll(await _lineRaw(generator, 'الهاتف: ${order.customerPhone}'))
-      ..addAll(await _lineRaw(generator, 'العنوان: ${order.address}'));
+      ..addAll(await _lineRaw(generator, 'العنوان: ${order.address}'))
+      ..addAll(
+        await _lineRaw(
+          generator,
+          'التاريخ: ${ReceiptCashierLayout.formatDate(local)}',
+        ),
+      )
+      ..addAll(
+        await _lineRaw(
+          generator,
+          'الوقت: ${ReceiptCashierLayout.formatTime(local)}',
+        ),
+      );
 
     if (order.latitude != null && order.longitude != null) {
       bytes.addAll(
@@ -246,24 +247,25 @@ abstract final class ReceiptEscPosBuilder {
     }
 
     bytes
-      ..addAll(await _lineRaw(generator, 'الوقت: $dateStr'))
       ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(await _lineRaw(generator, 'الوجبات'));
+      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.tableHeader()));
 
     for (final item in order.items) {
       bytes.addAll(
         await _lineRaw(
           generator,
-          '${item.name}  x${item.quantity}  '
-          '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
+          ReceiptCashierLayout.itemRow(item),
         ),
       );
       for (final addon in item.selectedAddons) {
         bytes.addAll(
           await _lineRaw(
             generator,
-            '  + ${addon.name}  x${addon.quantity}  '
-            '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
+            ReceiptCashierLayout.addonRow(
+              name: addon.name,
+              quantity: addon.quantity,
+              lineTotal: item.receiptAddonLineTotal(addon),
+            ),
           ),
         );
       }
@@ -277,7 +279,7 @@ abstract final class ReceiptEscPosBuilder {
           'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
         ),
       )
-      ..addAll(await _lineRaw(generator, 'شكراً لطلبكم'));
+      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.thanksMessage));
 
     return bytes;
   }
@@ -302,7 +304,7 @@ abstract final class ReceiptEscPosBuilder {
       bytes.addAll(
         await _lineRaw(
           generator,
-          'x${item.quantity}  ${item.name}',
+          'x${item.quantity}  ${item.displayName}',
         ),
       );
       for (final addon in item.selectedAddons) {

@@ -1,10 +1,12 @@
-import 'dart:async';
-
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
 import 'supabase_order_service.dart';
 
 /// واجهة مستودع الطلبات — تفوّض إلى Supabase.
+///
+/// ملاحظة: الشاشات تستخدم مستودعات متخصصة:
+/// - `CustomerOrderRepository` — إرسال ومتابعة طلبات الزبون
+/// - `AdminOrderRepository` — لوحة الإدارة والتقارير
 class OrderRepository {
   OrderRepository();
 

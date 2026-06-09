@@ -9,6 +9,7 @@ import 'product_form_controller.dart';
 import 'product_form_save_exception.dart';
 import 'product_form_validators.dart';
 import 'widgets/product_category_field.dart';
+import 'widgets/product_form_field_styles.dart';
 import 'widgets/product_image_picker_field.dart';
 
 /// إضافة أو تعديل منتج — مع اختيار صورة من المعرض ومعاينة فورية.
@@ -149,7 +150,7 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
     } catch (_) {
       if (!mounted) return;
       final fallback =
-          controller.errorMessage ?? 'تعذّr حفظ المنتج. حاول مرة أخرى';
+          controller.errorMessage ?? 'تعذّر حفظ المنتج. حاول مرة أخرى';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(fallback)),
       );
@@ -181,9 +182,11 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
 
         final isBusy = controller.isBusy || _saveLocked;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Form(
+        return Theme(
+          data: ProductFormFieldStyles.wrap(context),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -196,18 +199,21 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
                   isLoading: controller.pickingImage || controller.uploadingImage,
                   loadingLabel: controller.uploadingImage
                       ? 'جاري رفع الصورة إلى Supabase...'
-                      : null,
+                      : controller.pickingImage
+                          ? 'جاري تحميل الصورة...'
+                          : null,
                   onPickPressed: controller.pickFromGallery,
                   onClear: controller.clearPickedImage,
+                  onExistingImageFailed: controller.clearBrokenExistingImage,
                 ),
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: controller.nameController,
                   textAlign: TextAlign.right,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
+                  style: const TextStyle(color: ProductFormFieldStyles.textColor),
+                  decoration: ProductFormFieldStyles.decoration(
                     labelText: 'اسم الوجبة',
-                    border: OutlineInputBorder(),
                   ),
                   validator: ProductFormValidators.validateRequiredName,
                 ),
@@ -217,9 +223,9 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
                   textAlign: TextAlign.right,
                   textInputAction: TextInputAction.next,
                   maxLines: 3,
-                  decoration: const InputDecoration(
+                  style: const TextStyle(color: ProductFormFieldStyles.textColor),
+                  decoration: ProductFormFieldStyles.decoration(
                     labelText: 'الوصف',
-                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -272,6 +278,7 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
               ],
             ),
           ),
+        ),
         );
       },
     );
@@ -323,9 +330,9 @@ class _PricingSection extends StatelessWidget {
                   FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
                 ],
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: ProductFormFieldStyles.textColor),
+                decoration: ProductFormFieldStyles.decoration(
                   labelText: 'السعر (د.ع)',
-                  border: OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (controller.useMultipleSizes) return null;
@@ -391,10 +398,12 @@ class _VariantsSection extends StatelessWidget {
                     child: TextFormField(
                       controller: draft.nameController,
                       textAlign: TextAlign.right,
-                      decoration: const InputDecoration(
+                      style: const TextStyle(
+                        color: ProductFormFieldStyles.textColor,
+                      ),
+                      decoration: ProductFormFieldStyles.decoration(
                         labelText: 'اسم الحجم',
                         hintText: 'مثال: وسط',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                   ),
@@ -409,9 +418,11 @@ class _VariantsSection extends StatelessWidget {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
                       ],
-                      decoration: const InputDecoration(
+                      style: const TextStyle(
+                        color: ProductFormFieldStyles.textColor,
+                      ),
+                      decoration: ProductFormFieldStyles.decoration(
                         labelText: 'السعر',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                   ),
@@ -479,9 +490,11 @@ class _AddonsSection extends StatelessWidget {
                         child: TextFormField(
                           controller: draft.nameController,
                           textAlign: TextAlign.right,
-                          decoration: const InputDecoration(
+                          style: const TextStyle(
+                            color: ProductFormFieldStyles.textColor,
+                          ),
+                          decoration: ProductFormFieldStyles.decoration(
                             labelText: 'اسم الإضافة',
-                            border: OutlineInputBorder(),
                           ),
                         ),
                       ),
@@ -496,9 +509,11 @@ class _AddonsSection extends StatelessWidget {
                           inputFormatters: [
                             FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
                           ],
-                          decoration: const InputDecoration(
+                          style: const TextStyle(
+                            color: ProductFormFieldStyles.textColor,
+                          ),
+                          decoration: ProductFormFieldStyles.decoration(
                             labelText: 'السعر',
-                            border: OutlineInputBorder(),
                           ),
                         ),
                       ),

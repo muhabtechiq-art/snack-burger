@@ -26,6 +26,10 @@ ADD COLUMN IF NOT EXISTS image_url text;
 ALTER TABLE public.products
 ADD COLUMN IF NOT EXISTS description text;
 
+-- أحجام المنتج (fallback jsonb — يقرأها المنيو إن لم يوجد جدول product_variants)
+ALTER TABLE public.products
+ADD COLUMN IF NOT EXISTS variants jsonb DEFAULT '[]'::jsonb;
+
 -- RLS: السماح بالإدراج والتحديث والقراءة (مثل orders)
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 

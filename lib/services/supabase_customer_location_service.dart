@@ -17,30 +17,90 @@ abstract final class CustomerLocationRpc {
 abstract final class SupabaseCustomerLocationService {
   SupabaseCustomerLocationService._();
 
+  static const String _logTag = 'SupabaseCustomerLocationService';
+
   static SupabaseClient get _client => Supabase.instance.client;
+
+  static void _log(
+    String method,
+    String message, {
+    Object? error,
+    StackTrace? stack,
+  }) {
+    if (error == null) {
+      debugPrint('$_logTag.$method: $message');
+      return;
+    }
+    debugPrint('$_logTag.$method: $message\n$error${stack != null ? '\n$stack' : ''}');
+  }
+
+  static String? _normalizePhone(String phoneNumber) {
+    final phone = phoneNumber.trim();
+    return phone.isEmpty ? null : phone;
+  }
+
+  static Map<String, dynamic> _buildLocationUpdatePayload({
+    required String phone,
+    required double latitude,
+    required double longitude,
+    String? address,
+  }) {
+    return <String, dynamic>{
+      'phone_number': phone,
+      'lat': latitude,
+      'lng': longitude,
+      if (address != null && address.trim().isNotEmpty)
+        'address': address.trim(),
+    };
+  }
+
+  static Future<T?> _runRpcSafely<T>({
+    required String method,
+    required Future<T?> Function() action,
+  }) async {
+    try {
+      return await action();
+    } catch (e, stack) {
+      _log(method, 'failed', error: e, stack: stack);
+      return null;
+    }
+  }
+
+  static Future<void> _runRpcVoid({
+    required String method,
+    required Future<void> Function() action,
+    String? successMessage,
+  }) async {
+    try {
+      await action();
+      if (successMessage != null) {
+        _log(method, successMessage);
+      }
+    } catch (e, stack) {
+      _log(method, 'failed', error: e, stack: stack);
+    }
+  }
 
   /// جلب بيانات الزبون لصفحة إتمام الطلب (حسب `phone_number`).
   static Future<CustomerDeliveryProfile?> fetchCustomerByPhone({
     required String phoneNumber,
   }) async {
-    final phone = phoneNumber.trim();
-    if (phone.isEmpty) return null;
+    final phone = _normalizePhone(phoneNumber);
+    if (phone == null) return null;
 
-    try {
-      final raw = await _client.rpc(
-        CustomerLocationRpc.getByPhone,
-        params: {'phone_number': phone},
-      );
+    return _runRpcSafely(
+      method: 'fetchCustomerByPhone',
+      action: () async {
+        final raw = await _client.rpc(
+          CustomerLocationRpc.getByPhone,
+          params: {'phone_number': phone},
+        );
 
-      final map = _parseRpcJsonMap(raw);
-      if (map == null) return null;
-      return CustomerDeliveryProfile.fromRpcRow(map, phoneNumber: phone);
-    } catch (e, stack) {
-      debugPrint(
-        '[SupabaseCustomerLocationService] fetchCustomerByPhone: $e\n$stack',
-      );
-      return null;
-    }
+        final map = _parseRpcJsonMap(raw);
+        if (map == null) return null;
+        return CustomerDeliveryProfile.fromRpcRow(map, phoneNumber: phone);
+      },
+    );
   }
 
   /// للتوافق مع الاستدعاءات القديمة.
@@ -58,31 +118,23 @@ abstract final class SupabaseCustomerLocationService {
     required double longitude,
     String? address,
   }) async {
-    final phone = phoneNumber.trim();
-    if (phone.isEmpty) return;
+    final phone = _normalizePhone(phoneNumber);
+    if (phone == null) return;
 
-    final payload = <String, dynamic>{
-      'phone_number': phone,
-      'lat': latitude,
-      'lng': longitude,
-      if (address != null && address.trim().isNotEmpty)
-        'address': address.trim(),
-    };
-
-    try {
-      await _client.rpc(
+    await _runRpcVoid(
+      method: 'updateCustomerLocation',
+      successMessage:
+          'update_customer_location phone=$phone lat=$latitude lng=$longitude',
+      action: () => _client.rpc(
         CustomerLocationRpc.updateLocation,
-        params: payload,
-      );
-      debugPrint(
-        '[SupabaseCustomerLocationService] update_customer_location '
-        'phone=$phone lat=$latitude lng=$longitude',
-      );
-    } catch (e, stack) {
-      debugPrint(
-        '[SupabaseCustomerLocationService] updateCustomerLocation: $e\n$stack',
-      );
-    }
+        params: _buildLocationUpdatePayload(
+          phone: phone,
+          latitude: latitude,
+          longitude: longitude,
+          address: address,
+        ),
+      ),
+    );
   }
 
   static Map<String, dynamic>? _parseRpcJsonMap(dynamic raw) {
