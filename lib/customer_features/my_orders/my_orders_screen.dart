@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/config/customer_my_orders_config.dart';
 import '../../core/theme/tenant_palette.dart';
+import '../../services/supabase_order_service.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
 import '../../state/active_restaurant_notifier.dart';
@@ -77,6 +78,7 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
   @override
   void initState() {
     super.initState();
+    unawaited(SupabaseOrderService.purgeOldRejectedOrders());
     unawaited(_loadSession());
   }
 

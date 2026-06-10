@@ -147,8 +147,16 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
 
   String _toggleActiveErrorMessage(Object error) {
     final raw = error.toString().toLowerCase();
+    if (raw.contains('rls') ||
+        raw.contains('لم يُحدَّث أي صف') ||
+        raw.contains('banners_rls_fix')) {
+      return 'صلاحيات Supabase تمنع التحديث — نفّذ supabase/banners_rls_fix.sql';
+    }
     if (raw.contains('permission') || raw.contains('42501')) {
       return 'لا توجد صلاحية لتحديث البانر في Supabase';
+    }
+    if (raw.contains('pgrst204') || raw.contains('is_active')) {
+      return 'عمود is_active غير موجود في جدول banners — راجع schema';
     }
     if (raw.contains('network') || raw.contains('socket')) {
       return 'تعذّر الاتصال — تحقق من الإنترنت وحاول مرة أخرى';

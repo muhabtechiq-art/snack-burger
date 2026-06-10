@@ -15,6 +15,9 @@ class CustomerMenuController extends ChangeNotifier {
   /// تبويب يُخفى من شريط الأقسام — المنتجات تبقى ظاهرة تحت «الكل».
   static const String _hiddenMenuCategoryLabel = 'قائمة عامة';
 
+  /// عدد المنتجات المعروضة في كل دفعة (تحميل تدريجي).
+  static const int productsPageSize = 20;
+
   CustomerMenuController({
     required this.slug,
     ProductRepository? productRepository,
@@ -47,6 +50,12 @@ class CustomerMenuController extends ChangeNotifier {
   String? _selectedCategory;
   List<String> _categoryTitles = const [];
   bool _disposed = false;
+
+  List<ProductModel>? _cachedFilteredProducts;
+  String _cachedSearchQuery = '';
+  String? _cachedSelectedCategory;
+  List<MapEntry<String, List<ProductModel>>>? _cachedCategorySections;
+  int _visibleProductLimit = productsPageSize;
 
   String? get restaurantId => _restaurantId;
 
@@ -88,6 +97,12 @@ class CustomerMenuController extends ChangeNotifier {
   String? get selectedCategory => _selectedCategory;
 
   List<ProductModel> get filteredProducts {
+    if (_cachedFilteredProducts != null &&
+        _cachedSearchQuery == _searchQuery &&
+        _cachedSelectedCategory == _selectedCategory) {
+      return _cachedFilteredProducts!;
+    }
+
     final query = _searchQuery.trim().toLowerCase();
     final bySearch = query.isEmpty
         ? products
@@ -101,17 +116,55 @@ class CustomerMenuController extends ChangeNotifier {
             .toList(growable: false);
 
     final category = _selectedCategory;
-    if (category == null || category == allCategoryLabel) {
-      return bySearch;
-    }
+    final result = category == null || category == allCategoryLabel
+        ? bySearch
+        : bySearch
+            .where((product) => product.category.trim() == category)
+            .toList(growable: false);
 
-    return bySearch
-        .where((product) => product.category.trim() == category)
-        .toList(growable: false);
+    _cachedFilteredProducts = result;
+    _cachedSearchQuery = _searchQuery;
+    _cachedSelectedCategory = _selectedCategory;
+    _cachedCategorySections = null;
+    return result;
   }
 
-  List<MapEntry<String, List<ProductModel>>> get categorySections =>
-      orderedCategoryEntries(filteredProducts);
+  List<MapEntry<String, List<ProductModel>>> get categorySections {
+    if (_cachedCategorySections != null) {
+      return _cachedCategorySections!;
+    }
+    final sections = orderedCategoryEntries(filteredProducts);
+    _cachedCategorySections = sections;
+    return sections;
+  }
+
+  /// أقسام مع تحميل تدريجي — أول [visibleProductLimit] منتجاً فقط.
+  List<MapEntry<String, List<ProductModel>>> get visibleCategorySections {
+    final all = categorySections;
+    var remaining = _visibleProductLimit;
+    if (remaining <= 0 || all.isEmpty) return const [];
+
+    final visible = <MapEntry<String, List<ProductModel>>>[];
+    for (final section in all) {
+      if (remaining <= 0) break;
+      final take = section.value.length.clamp(0, remaining);
+      if (take <= 0) continue;
+      visible.add(MapEntry(section.key, section.value.sublist(0, take)));
+      remaining -= take;
+    }
+    return visible;
+  }
+
+  int get visibleProductLimit => _visibleProductLimit;
+
+  bool get canLoadMoreProducts =>
+      filteredProducts.length > _visibleProductLimit;
+
+  void loadMoreProducts() {
+    if (!canLoadMoreProducts) return;
+    _visibleProductLimit += productsPageSize;
+    if (!_disposed) notifyListeners();
+  }
 
   int productCountForCategory(String category) {
     for (final section in categorySections) {
@@ -213,12 +266,16 @@ class CustomerMenuController extends ChangeNotifier {
   void selectCategory(String category) {
     if (_selectedCategory == category) return;
     _selectedCategory = category;
+    _resetVisibleProductLimit();
+    _invalidateProductCaches();
     if (!_disposed) notifyListeners();
   }
 
   void setSearchQuery(String query) {
     if (_searchQuery == query) return;
     _searchQuery = query;
+    _resetVisibleProductLimit();
+    _invalidateProductCaches();
     _syncCategoriesFromProducts();
     if (!_disposed) notifyListeners();
   }
@@ -226,13 +283,26 @@ class CustomerMenuController extends ChangeNotifier {
   void clearSearch() {
     if (_searchQuery.isEmpty) return;
     _searchQuery = '';
+    _resetVisibleProductLimit();
+    _invalidateProductCaches();
     _syncCategoriesFromProducts();
     if (!_disposed) notifyListeners();
   }
 
   void _applyProducts(List<ProductModel> items) {
     _products = List<ProductModel>.unmodifiable(items);
+    _resetVisibleProductLimit();
+    _invalidateProductCaches();
     _syncCategoriesFromProducts();
+  }
+
+  void _invalidateProductCaches() {
+    _cachedFilteredProducts = null;
+    _cachedCategorySections = null;
+  }
+
+  void _resetVisibleProductLimit() {
+    _visibleProductLimit = productsPageSize;
   }
 
   void _syncCategoriesFromProducts() {

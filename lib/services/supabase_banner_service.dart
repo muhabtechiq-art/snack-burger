@@ -147,29 +147,27 @@ abstract final class SupabaseBannerService {
     }
 
     try {
-      await _client
+      final rows = await _client
           .from(tableName)
           .update({'is_active': isActive})
-          .eq('id', normalizedId);
-
-      final row = await _client
-          .from(tableName)
-          .select('is_active')
           .eq('id', normalizedId)
-          .maybeSingle();
+          .select('id, is_active');
 
-      if (row == null) {
-        throw StateError('لم يُعثر على البانر بعد التحديث');
+      final updated = List<Map<String, dynamic>>.from(rows as List);
+      if (updated.isEmpty) {
+        throw StateError(
+          'لم يُحدَّث أي صف — نفّذ banners_rls_fix.sql في Supabase (سياسات UPDATE)',
+        );
       }
 
-      final saved = _readIsActive(row['is_active']);
+      final saved = _readIsActive(updated.first['is_active']);
       if (saved != isActive) {
-        throw StateError('لم تُحفظ الحالة المطلوبة في قاعدة البيانات');
+        throw StateError('لم تُحفظ الحالة المطلوبة في عمود is_active');
       }
 
       debugPrint(
         '[SupabaseBannerService] setBannerActive id=$normalizedId '
-        'is_active=$isActive — تم الحفظ والتحقق',
+        'is_active=$isActive — تم الحفظ (${updated.length} صف)',
       );
     } on PostgrestException catch (e, stack) {
       debugPrint(

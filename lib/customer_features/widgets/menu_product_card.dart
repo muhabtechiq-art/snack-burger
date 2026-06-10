@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/product_model.dart';
+import 'menu_product_image.dart';
 
 enum MenuProductCardLayout { grid, list }
 
@@ -24,19 +25,21 @@ class MenuProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return layout == MenuProductCardLayout.grid
-        ? _GridProductCard(
-            product: product,
-            palette: palette,
-            onQuickAdd: onQuickAdd,
-            onOpenDetails: onOpenDetails,
-          )
-        : _ListProductCard(
-            product: product,
-            palette: palette,
-            onQuickAdd: onQuickAdd,
-            onOpenDetails: onOpenDetails,
-          );
+    return RepaintBoundary(
+      child: layout == MenuProductCardLayout.grid
+          ? _GridProductCard(
+              product: product,
+              palette: palette,
+              onQuickAdd: onQuickAdd,
+              onOpenDetails: onOpenDetails,
+            )
+          : _ListProductCard(
+              product: product,
+              palette: palette,
+              onQuickAdd: onQuickAdd,
+              onOpenDetails: onOpenDetails,
+            ),
+    );
   }
 }
 
@@ -85,6 +88,7 @@ class _GridProductCard extends StatelessWidget {
                   imageUrl: product.imageUrl,
                   palette: palette,
                   onTap: onOpenDetails,
+                  cacheSize: 160,
                 ),
               ),
               Expanded(
@@ -274,94 +278,23 @@ class _ProductImageSlot extends StatelessWidget {
     required this.imageUrl,
     required this.palette,
     required this.onTap,
+    this.cacheSize = 320,
   });
 
   final String? imageUrl;
   final TenantPalette palette;
   final VoidCallback onTap;
+  final int cacheSize;
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = imageUrl != null && imageUrl!.trim().isNotEmpty;
-
-    if (hasImage) {
-      return InkWell(
-        onTap: onTap,
-        child: Image.network(
-          imageUrl!,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return _Placeholder(
-              palette: palette,
-              showLoading: true,
-            );
-          },
-          errorBuilder: (_, _, _) => _Placeholder(palette: palette),
-        ),
-      );
-    }
-
     return InkWell(
       onTap: onTap,
-      child: _Placeholder(palette: palette),
-    );
-  }
-}
-
-class _Placeholder extends StatelessWidget {
-  const _Placeholder({
-    required this.palette,
-    this.showLoading = false,
-  });
-
-  final TenantPalette palette;
-  final bool showLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [
-            palette.primary.withValues(alpha: 0.05),
-            palette.accent.withValues(alpha: 0.1),
-          ],
-        ),
-      ),
-      child: Center(
-        child: showLoading
-            ? SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: palette.primary.withValues(alpha: 0.4),
-                ),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.restaurant_menu_rounded,
-                    size: 22,
-                    color: palette.primary.withValues(alpha: 0.3),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'صورة',
-                    style: TextStyle(
-                      color: palette.primary.withValues(alpha: 0.3),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+      child: MenuProductImage(
+        imageUrl: imageUrl,
+        palette: palette,
+        cacheWidth: cacheSize,
+        cacheHeight: cacheSize,
       ),
     );
   }

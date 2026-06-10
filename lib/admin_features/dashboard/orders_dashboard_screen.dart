@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -45,6 +47,7 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    unawaited(SupabaseOrderService.purgeOldRejectedOrders());
   }
 
   @override

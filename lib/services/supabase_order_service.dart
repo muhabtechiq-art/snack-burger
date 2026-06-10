@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
+import '../core/config/rejected_orders_config.dart';
 import '../core/observability/app_telemetry.dart';
 import '../core/utils/iraqi_phone_validator.dart';
 import '../core/config/restaurant_ids.dart';
@@ -307,10 +308,40 @@ abstract final class SupabaseOrderService {
     DeliveryOrderStatus.delivering,
   };
 
-  static const Set<String> _kitchenDashboardStatuses = {
-    DeliveryOrderStatus.pending,
-    DeliveryOrderStatus.rejected,
-  };
+  /// يمسح الطلبات المرفوضة الأقدم من اليوم — RPC في Supabase.
+  static Future<void> purgeOldRejectedOrders() async {
+    try {
+      final deleted = await _client.rpc<int>('purge_old_rejected_orders');
+      debugPrint(
+        '[SupabaseOrderService] purge_old_rejected_orders → $deleted صف',
+      );
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseOrderService] purge_old_rejected_orders تخطي: $e\n$stack',
+      );
+    }
+  }
+
+  /// طلبات «طلباتي»: غير المرفوض ضمن نافذة 6 ساعات؛ المرفوض اليوم فقط.
+  static bool _includeCustomerPhoneOrder(DeliveryOrder order) {
+    if (order.isRejected) {
+      return RejectedOrdersConfig.isCreatedOnLocalDay(order.createdAt);
+    }
+    return CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt);
+  }
+
+  /// لوحة الإدارة: معلّق كما هو؛ مرفوض من اليوم المحلي فقط.
+  static bool _includeKitchenDashboardOrder(
+    DeliveryOrder order,
+    String normalizedSlug,
+  ) {
+    if (!_orderMatchesSlug(order, normalizedSlug)) return false;
+    if (order.isPending) return true;
+    if (order.isRejected) {
+      return RejectedOrdersConfig.isCreatedOnLocalDay(order.createdAt);
+    }
+    return false;
+  }
 
   /// بث طلبات المطبخ: معلّقة + مرفوضة (لتبويبي لوحة الإدارة).
   static Stream<List<DeliveryOrder>> watchKitchenDashboardOrders({
@@ -327,9 +358,7 @@ abstract final class SupabaseOrderService {
           _client.from(tableName).stream(primaryKey: const ['id']),
       transform: (rows) => _mapRowsToOrders(
         rows: rows,
-        include: (order) =>
-            _kitchenDashboardStatuses.contains(order.status) &&
-            _orderMatchesSlug(order, normalized),
+        include: (order) => _includeKitchenDashboardOrder(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       ),
       streamTag: 'watchKitchenDashboardOrders(slug=$normalized)',
@@ -552,7 +581,7 @@ abstract final class SupabaseOrderService {
         final orderPhone = IraqiPhoneValidator.normalize(order.customerPhone);
         if (orderPhone != normalizedPhone) return false;
         if (!_orderMatchesSlug(order, normalizedSlug)) return false;
-        return CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt);
+        return _includeCustomerPhoneOrder(order);
       },
       compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       logParseErrors: true,
@@ -708,9 +737,7 @@ abstract final class SupabaseOrderService {
     return _client.from(tableName).stream(primaryKey: const ['id']).map(
       (rows) => _mapRowsToOrders(
         rows: rows,
-        include: (order) =>
-            _kitchenDashboardStatuses.contains(order.status) &&
-            _orderMatchesSlug(order, normalized),
+        include: (order) => _includeKitchenDashboardOrder(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       ),
     );
