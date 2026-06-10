@@ -1,41 +1,65 @@
 # Web cache busting (Snack Burger Flutter)
 
-## How updates reach users
+## فكرتان منفصلتان (الطريقة الاحترافية)
 
-1. **`web/index.html`** (copied into `build/web/` after each build):
-   - Unregisters all legacy service workers on load.
-   - Resolves paths from `<base href="$FLUTTER_BASE_HREF">` (→ `/snack-burger/` on GitHub Pages).
-   - Loads `flutter_bootstrap.js` with `?v=` from meta `snack-burger-asset-version` (default `1.1`).
+| المفهوم | مثال | من يغيّره؟ | يظهر للزبون؟ |
+|---------|------|------------|--------------|
+| **رقم الإصدار** (SemVer) | `1.0.0` في `pubspec.yaml` | أنت يدوياً عند إصدار حقيقي | نعم (إن عرضته في التطبيق) |
+| **معرّف النشر** (deploy tag) | `a3f9c2b` (أول 7 حروف من commit) | **تلقائياً** عند كل بناء | لا |
 
-2. **`web/flutter_bootstrap.js`** (processed at build time):
-   - Does **not** register a service worker.
-   - Fetches **`version.json`** with `cache: 'no-store'`.
-   - Appends `?v=<version>` to **`main.dart.js`** (meta tag, or `version` + `build_number` from `pubspec.yaml`).
+لا ترفع `1.0.0` → `1.0.847` في كل تعديل. ارفع `1.0.0` → `1.0.1` فقط عند إصلاح مهم، أو `1.1.0` عند ميزة جديدة.
 
-3. Post-build **removes** `flutter_service_worker.js` from `build/web/`.
+معرّف النشر يُحقَن في `web/index.html` كـ `__CACHE_TAG__` أثناء `post_build_gh_pages` ويجبر الموبايل على جلب `main.dart.js` الجديد.
 
-4. **`netlify.toml`** sets `Cache-Control: no-cache` on entry HTML/JS files. Hashed assets under `/assets/` stay long-cached.
+## كيف يعمل التحديث
 
-## After each release
+1. **`web/index.html`** (المصدر يحتوي `__CACHE_TAG__`):
+   - يُستبدل عند البناء بـ commit hash أو `SNACK_BURGER_CACHE_TAG`.
+   - يلغي service workers القديمة.
+   - يحمّل `flutter_bootstrap.js?v=<tag>`.
 
-Bump **both**:
+2. **`web/flutter_bootstrap.js`**:
+   - لا يسجّل service worker.
+   - يجلب `version.json` بدون كاش.
+   - يضيف `?v=<tag>` لـ `main.dart.js`.
 
-- `pubspec.yaml` (updates `version.json` at build time), e.g. `version: 1.0.2+3`
-- `<meta name="snack-burger-asset-version" content="1.2">` in `web/index.html` when you need to force clients off an old `main.dart.js` cache
+3. **`post_build`** يحذف `flutter_service_worker.js` من `build/web/`.
 
-Then rebuild and deploy.
+## أولوية معرّف النشر
 
-## Local build
+1. `SNACK_BURGER_CACHE_TAG` (إن وُجد)
+2. `GITHUB_SHA` (أول 7 أحرف) — في GitHub Actions
+3. `git rev-parse --short HEAD` — بناء محلي
+4. طابع زمني `local-...`
+
+## متى تغيّر `pubspec.yaml` يدوياً؟
+
+```yaml
+version: 1.0.0+1
+#        ^^^^^  ^ build number (للمتجر/أندرويد — ارفعه عند نشر APK جديد)
+#        SemVer — للزبون
+```
+
+- **كل push على main للويب:** لا حاجة لتغيير `pubspec` — معرّف النشر يكفي.
+- **إصدار APK جديد:** ارفع `+1` أو `version` حسب نوع التحديث.
+
+## بناء محلي
 
 ```powershell
 flutter build web --release --base-href /snack-burger/
 .\scripts\post_build_gh_pages.ps1
 ```
 
-Or run the all-in-one script:
+أو:
 
 ```powershell
 .\scripts\github_pages_build.ps1
 ```
 
-On CI (Linux), `node scripts/post_build_gh_pages.js` is used instead.
+## SemVer سريع
+
+| التغيير | مثال |
+|---------|------|
+| إصلاح خطأ | `1.0.0` → `1.0.1` |
+| ميزة جديدة | `1.0.1` → `1.1.0` |
+| تغيير جذري | `1.1.0` → `2.0.0` |

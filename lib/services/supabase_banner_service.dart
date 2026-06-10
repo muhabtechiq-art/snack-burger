@@ -126,6 +126,17 @@ abstract final class SupabaseBannerService {
     return _parseRows(rows as List);
   }
 
+  static bool _readIsActive(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+    }
+    return false;
+  }
+
   static Future<void> setBannerActive({
     required String bannerId,
     required bool isActive,
@@ -141,9 +152,24 @@ abstract final class SupabaseBannerService {
           .update({'is_active': isActive})
           .eq('id', normalizedId);
 
+      final row = await _client
+          .from(tableName)
+          .select('is_active')
+          .eq('id', normalizedId)
+          .maybeSingle();
+
+      if (row == null) {
+        throw StateError('لم يُعثر على البانر بعد التحديث');
+      }
+
+      final saved = _readIsActive(row['is_active']);
+      if (saved != isActive) {
+        throw StateError('لم تُحفظ الحالة المطلوبة في قاعدة البيانات');
+      }
+
       debugPrint(
         '[SupabaseBannerService] setBannerActive id=$normalizedId '
-        'is_active=$isActive — تم الإرسال بنجاح',
+        'is_active=$isActive — تم الحفظ والتحقق',
       );
     } on PostgrestException catch (e, stack) {
       debugPrint(

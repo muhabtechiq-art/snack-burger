@@ -27,8 +27,8 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
   String? _busyBannerId;
   bool _addingBanner = false;
 
-  /// حالة محلية مؤقتة للمفتاح — تُزال عند تطابق البث أو عند فشل الطلب.
-  final Map<String, bool> _activeOverrides = {};
+  /// حالة مؤكدة بعد نجاح Supabase — حتى يتزامن البث.
+  final Map<String, bool> _confirmedActive = {};
 
   Future<void> _confirmDelete(PromoBannerModel banner) async {
     if (_busyBannerId != null) return;
@@ -83,17 +83,11 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
 
   Future<void> _toggleActive(
     PromoBannerModel banner,
-    bool value, {
-    required String restaurantId,
-    required String slug,
-  }) async {
+    bool value,
+  ) async {
     if (_busyBannerId != null) return;
 
-    final previous = _activeOverrides[banner.id] ?? banner.isActive;
-    setState(() {
-      _busyBannerId = banner.id;
-      _activeOverrides[banner.id] = value;
-    });
+    setState(() => _busyBannerId = banner.id);
 
     try {
       await _repository.setBannerActive(
@@ -104,19 +98,8 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
       if (!mounted) return;
 
       setState(() {
-        _activeOverrides[banner.id] = value;
+        _confirmedActive[banner.id] = value;
       });
-
-      final refreshed = await _repository.fetchAllBanners(
-        restaurantId: restaurantId,
-        slug: slug,
-      );
-      if (!mounted) return;
-
-      final match = refreshed.where((item) => item.id == banner.id).firstOrNull;
-      if (match != null && match.isActive == value) {
-        setState(() => _activeOverrides.remove(banner.id));
-      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -130,10 +113,7 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _activeOverrides[banner.id] = previous;
-        _activeOverrides.remove(banner.id);
-      });
+      setState(() => _confirmedActive.remove(banner.id));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_toggleActiveErrorMessage(e)),
@@ -149,20 +129,20 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
     }
   }
 
-  bool _resolveBannerActive(PromoBannerModel banner) {
-    final override = _activeOverrides[banner.id];
-    if (override == null) return banner.isActive;
+  bool _displayBannerActive(PromoBannerModel banner) {
+    final confirmed = _confirmedActive[banner.id];
+    if (confirmed == null) return banner.isActive;
 
-    if (override == banner.isActive) {
+    if (confirmed == banner.isActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (_activeOverrides[banner.id] == banner.isActive) {
-          setState(() => _activeOverrides.remove(banner.id));
+        if (_confirmedActive[banner.id] == banner.isActive) {
+          setState(() => _confirmedActive.remove(banner.id));
         }
       });
     }
 
-    return override;
+    return confirmed;
   }
 
   String _toggleActiveErrorMessage(Object error) {
@@ -340,7 +320,7 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                 itemBuilder: (context, index) {
                   final banner = banners[index];
                   final isBusy = _busyBannerId == banner.id;
-                  final displayActive = _resolveBannerActive(banner);
+                  final displayActive = _displayBannerActive(banner);
 
                   return ListTile(
                     shape: RoundedRectangleBorder(
@@ -398,12 +378,7 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                           onChanged: isBusy
                               ? null
                               : (value) => unawaited(
-                                    _toggleActive(
-                                      banner,
-                                      value,
-                                      restaurantId: restaurant.id,
-                                      slug: restaurant.slug,
-                                    ),
+                                    _toggleActive(banner, value),
                                   ),
                         ),
                         IconButton(
