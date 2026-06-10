@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
+import '../../../models/promo_banner_model.dart';
 import '../../../models/restaurant_model.dart';
+import 'menu_banner_carousel.dart';
 import 'menu_persistent_headers.dart';
 
 /// بانر علوي — لوجو دائري بارز على خلفية داكنة متناسقة مع الهوية.
@@ -12,6 +14,7 @@ class MenuBanner extends StatelessWidget {
     required this.palette,
     required this.onBack,
     required this.onOpenMenu,
+    this.promoBanners = const [],
   });
 
   static const double expandedHeight = MenuHeaderMetrics.bannerExpandedHeight;
@@ -22,6 +25,7 @@ class MenuBanner extends StatelessWidget {
   final TenantPalette palette;
   final VoidCallback onBack;
   final VoidCallback onOpenMenu;
+  final List<PromoBannerModel> promoBanners;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +50,14 @@ class MenuBanner extends StatelessWidget {
           StretchMode.zoomBackground,
           StretchMode.blurBackground,
         ],
-        background: DecoratedBox(
+        background: _hasPromoCarousel
+            ? SizedBox.expand(
+                child: MenuBannerCarousel(
+                  banners: promoBanners,
+                  height: expandedHeight,
+                ),
+              )
+            : DecoratedBox(
           decoration: BoxDecoration(
             gradient: _bannerBackgroundGradient(palette),
           ),
@@ -132,6 +143,8 @@ class MenuBanner extends StatelessWidget {
   static Color _bannerBackgroundTop(TenantPalette palette) {
     return Color.lerp(palette.primary, SnackBurgerBrandColors.ink, 0.72)!;
   }
+
+  bool get _hasPromoCarousel => promoBanners.isNotEmpty;
 
   static LinearGradient _bannerBackgroundGradient(TenantPalette palette) {
     return LinearGradient(

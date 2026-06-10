@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/auth/auth_notifier.dart';
 import '../../core/theme/tenant_palette.dart';
 import '../../state/active_restaurant_notifier.dart';
 import 'admin_drawer.dart';
@@ -39,12 +38,6 @@ class _AdminPageScaffoldState extends State<AdminPageScaffold> {
     });
   }
 
-  Future<void> _signOut() async {
-    await context.read<AuthNotifier>().signOut();
-    if (!mounted) return;
-    context.go('/${widget.slug}');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -77,18 +70,19 @@ class _AdminPageScaffoldState extends State<AdminPageScaffold> {
             appBar: AppBar(
               backgroundColor: AdminPanelColors.charcoal,
               foregroundColor: AdminPanelColors.gold,
+              automaticallyImplyLeading: true,
+              leading: context.canPop()
+                  ? IconButton(
+                      tooltip: 'رجوع',
+                      icon: const Icon(Icons.arrow_forward_ios_rounded),
+                      onPressed: () => context.pop(),
+                    )
+                  : null,
               title: Text(
                 widget.title,
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
-              actions: [
-                ...?widget.actions,
-                IconButton(
-                  tooltip: 'تسجيل الخروج',
-                  onPressed: _signOut,
-                  icon: const Icon(Icons.logout_rounded),
-                ),
-              ],
+              actions: widget.actions,
             ),
             floatingActionButton: widget.floatingActionButton,
             body: widget.body,

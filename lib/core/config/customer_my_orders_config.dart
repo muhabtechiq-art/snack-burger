@@ -3,7 +3,7 @@ abstract final class CustomerMyOrdersConfig {
   CustomerMyOrdersConfig._();
 
   /// المدة الزمنية التي تظهر خلالها الطلبات للزبون (الأقدم يُخفى).
-  static const Duration visibleOrdersWindow = Duration(hours: 48);
+  static const Duration visibleOrdersWindow = Duration(hours: 6);
 
   /// هل يُعرض الطلب للزبون وفق نافذة [visibleOrdersWindow]؟
   static bool isOrderVisibleToCustomer(

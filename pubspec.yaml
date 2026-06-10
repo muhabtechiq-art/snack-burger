@@ -58,6 +58,9 @@ dependencies:
   windows_printer: ^0.2.1
   flutter_local_notifications: ^22.0.0
   cached_network_image: ^3.4.1
+  carousel_slider: ^5.1.2
+  uuid: ^4.5.3
+  flutter_image_compress: ^2.3.0
 dependency_overrides:
   flutter_star_prnt:
     path: packages/flutter_star_prnt

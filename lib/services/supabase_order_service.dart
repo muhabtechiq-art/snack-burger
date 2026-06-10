@@ -257,8 +257,7 @@ abstract final class SupabaseOrderService {
     }
 
     return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
+      sourceFactory: () => _watchRecentOrderRows(),
       transform: (rows) => _filterOrdersByPhoneAndSlug(
         rows: rows,
         normalizedSlug: normalizedSlug,
@@ -475,6 +474,21 @@ abstract final class SupabaseOrderService {
   }
 
   static String _normalizeSlug(String slug) => slug.trim().toLowerCase();
+
+  /// أقدم وقت إنشاء يُجلب في بث «طلباتي» (UTC ISO8601).
+  static String _customerOrdersCreatedAfterIso() {
+    return DateTime.now()
+        .toUtc()
+        .subtract(CustomerMyOrdersConfig.visibleOrdersWindow)
+        .toIso8601String();
+  }
+
+  static Stream<List<Map<String, dynamic>>> _watchRecentOrderRows() {
+    return _client
+        .from(tableName)
+        .stream(primaryKey: const ['id'])
+        .gte('created_at', _customerOrdersCreatedAfterIso());
+  }
 
   /// يحوّل صف Supabase إلى [DeliveryOrder] مع تخطّي الصفوف التالفة.
   static DeliveryOrder? _tryParseOrderRow(
@@ -706,7 +720,7 @@ abstract final class SupabaseOrderService {
     required String slug,
     required String phoneNumber,
   }) {
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+    return _watchRecentOrderRows().map(
       (rows) => _filterOrdersByPhoneAndSlug(
         rows: rows,
         normalizedSlug: slug,

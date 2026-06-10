@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../admin_features/auth/admin_login_screen.dart';
 import '../../admin_features/dashboard/admin_home_screen.dart';
 import '../../admin_features/dashboard/orders_dashboard_screen.dart';
+import '../../admin_features/banners/banners_admin_screen.dart';
 import '../../admin_features/products/product_form_controller.dart';
 import '../../admin_features/products/product_form_page.dart';
 import '../../admin_features/products/products_admin_screen.dart';
@@ -124,6 +125,19 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
             child: AdminWrapper(
               slug: slug,
               child: PrinterSettingsPage(slug: slug),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/:slug/admin/banners/manage',
+        name: 'banners-manage',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          return NoTransitionPage<void>(
+            child: AdminWrapper(
+              slug: slug,
+              child: BannersAdminScreen(slug: slug),
             ),
           );
         },

@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/auth/auth_notifier.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
@@ -40,6 +43,12 @@ class _AdminDrawerState extends State<AdminDrawer> {
       restaurantId: widget.restaurant.id,
       slug: widget.slug,
     );
+  }
+
+  Future<void> _signOut() async {
+    await context.read<AuthNotifier>().signOut();
+    if (!mounted) return;
+    context.go('/${widget.slug}');
   }
 
   @override
@@ -180,6 +189,15 @@ class _AdminDrawerState extends State<AdminDrawer> {
                       },
                     ),
                     _AdminTile(
+                      icon: Icons.view_carousel_rounded,
+                      title: 'بانرات المنيو',
+                      subtitle: 'صور ترويجية دوّارة في المنيو',
+                      onTap: () {
+                        Navigator.pop(context);
+                        context.push('/${widget.slug}/admin/banners/manage');
+                      },
+                    ),
+                    _AdminTile(
                       icon: Icons.home_rounded,
                       title: 'الرئيسية',
                       subtitle: 'لوحة التحكم',
@@ -189,6 +207,32 @@ class _AdminDrawerState extends State<AdminDrawer> {
                       },
                     ),
                     ],
+                  ),
+                ),
+                Divider(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  height: 1,
+                  indent: 20,
+                  endIndent: 20,
+                ),
+                ListTile(
+                  onTap: () {
+                    Navigator.pop(context);
+                    unawaited(_signOut());
+                  },
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  leading: Icon(
+                    Icons.logout_rounded,
+                    color: AdminPanelColors.gold,
+                  ),
+                  title: Text(
+                    'تسجيل خروج',
+                    style: TextStyle(
+                      color: AdminPanelColors.gold,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
                 Padding(

@@ -9,6 +9,7 @@ import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
+import 'customer_menu_banners_controller.dart';
 import 'customer_menu_controller.dart';
 import 'customer_menu_drawer.dart';
 import '../services/customer_last_order_notifier.dart';
@@ -67,8 +68,12 @@ class _CustomerMenuScopeState extends State<_CustomerMenuScope> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          key: ValueKey(widget.slug),
+          key: ValueKey('menu-${widget.slug}'),
           create: (_) => CustomerMenuController(slug: widget.slug),
+        ),
+        ChangeNotifierProvider(
+          key: ValueKey('banners-${widget.slug}'),
+          create: (_) => CustomerMenuBannersController(slug: widget.slug),
         ),
         ChangeNotifierProvider<CartNotifier>.value(value: _cartNotifier),
         ChangeNotifierProvider<DeliveryLocationNotifier>.value(
@@ -136,12 +141,14 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
   final Map<String, GlobalKey> _sectionKeys = {};
 
   late CustomerMenuController _menuController;
+  late CustomerMenuBannersController _bannersController;
   String? _boundRestaurantId;
 
   @override
   void initState() {
     super.initState();
     _menuController = context.read<CustomerMenuController>();
+    _bannersController = context.read<CustomerMenuBannersController>();
     _menuController.addListener(_onMenuControllerChanged);
   }
 
@@ -176,6 +183,10 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
       if (!mounted) return;
       if (_boundRestaurantId != restaurant.id) return;
       menu.bindToRestaurant(
+        restaurantId: restaurant.id,
+        slug: restaurant.slug,
+      );
+      _bannersController.bindToRestaurant(
         restaurantId: restaurant.id,
         slug: restaurant.slug,
       );
@@ -240,8 +251,11 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Consumer2<ActiveRestaurantNotifier, CustomerMenuController>(
-        builder: (context, tenant, menu, _) {
+      child: Consumer3<
+          ActiveRestaurantNotifier,
+          CustomerMenuController,
+          CustomerMenuBannersController>(
+        builder: (context, tenant, menu, banners, _) {
           if (tenant.isLoading) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
@@ -342,6 +356,7 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
                     palette: palette,
                     onBack: () => context.go('/'),
                     onOpenMenu: _openMenuDrawer,
+                    promoBanners: banners.activeBanners,
                   ),
                   MenuStickyControlsHeader(
                     searchController: _searchController,
