@@ -1,1 +1,7 @@
-{"app_name":"snack_burger","version":"1.0.0","build_number":"1","package_name":"snack_burger"}
+{
+  "app_name": "snack_burger",
+  "version": "1.0.0",
+  "build_number": "1",
+  "package_name": "snack_burger",
+  "deploy_tag": "fba26b9"
+}
