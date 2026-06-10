@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/theme/tenant_palette.dart';
+import '../../models/promo_banner_model.dart';
 import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
@@ -264,18 +266,20 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Consumer3<
-          ActiveRestaurantNotifier,
-          CustomerMenuController,
-          CustomerMenuBannersController>(
-        builder: (context, tenant, menu, banners, _) {
-          if (tenant.isLoading) {
+      child: Selector<ActiveRestaurantNotifier, _TenantGateSnapshot>(
+        selector: (_, tenant) => _TenantGateSnapshot(
+          isLoading: tenant.isLoading,
+          restaurant: tenant.restaurant,
+        ),
+        shouldRebuild: (previous, next) => previous != next,
+        builder: (context, tenantSnapshot, _) {
+          if (tenantSnapshot.isLoading) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
 
-          final restaurant = tenant.restaurant;
+          final restaurant = tenantSnapshot.restaurant;
           if (restaurant == null || !restaurant.isActive) {
             return Scaffold(
               appBar: AppBar(title: const Text('غير متوفر')),
@@ -285,141 +289,340 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
             );
           }
 
-          _maybeBindMenu(restaurant, menu);
-          _syncSectionKeys(menu.categories);
+          _maybeBindMenu(restaurant, _menuController);
 
-          final palette = TenantPalette.fromRestaurant(restaurant);
-
-          final menuTheme = Theme.of(context).copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: palette.primary,
-              primary: palette.primary,
-              secondary: palette.accent,
-              brightness: Brightness.light,
-            ),
-            scaffoldBackgroundColor: palette.surfaceTint,
-            iconTheme: IconThemeData(color: palette.primary),
-            textTheme: Theme.of(context).textTheme.apply(
-                  bodyColor: SnackBurgerBrandColors.ink,
-                  displayColor: SnackBurgerBrandColors.ink,
-                ),
-            appBarTheme: AppBarTheme(
-              backgroundColor: palette.primary,
-              foregroundColor: palette.onPrimary,
-              iconTheme: IconThemeData(color: palette.onPrimary),
-            ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                backgroundColor: palette.primary,
-                foregroundColor: palette.onPrimary,
-              ),
-            ),
-            outlinedButtonTheme: OutlinedButtonThemeData(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: palette.primary,
-                side: BorderSide(
-                  color: palette.primary.withValues(alpha: 0.35),
-                ),
-              ),
-            ),
-            inputDecorationTheme: InputDecorationTheme(
-              prefixIconColor: palette.primary,
-              suffixIconColor: palette.primary,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: palette.primary.withValues(alpha: 0.2),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: palette.primary, width: 1.5),
-              ),
-            ),
-          );
-
-          return Theme(
-            data: menuTheme,
-            child: Scaffold(
-              key: _scaffoldKey,
-              backgroundColor: palette.surfaceTint,
-              drawer: CustomerMenuDrawer(
-                restaurant: restaurant,
-                palette: palette,
-              ),
-              bottomNavigationBar: Consumer<CartNotifier>(
-                builder: (context, cart, _) {
-                  if (cart.itemCount == 0) {
-                    return const SizedBox.shrink();
-                  }
-                  return MenuCartBar(
-                    palette: palette,
-                    restaurant: restaurant,
-                  );
-                },
-              ),
-              body: CustomScrollView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                slivers: [
-                  MenuBanner(
-                    restaurant: restaurant,
-                    palette: palette,
-                    onBack: () => context.go('/'),
-                    onOpenMenu: _openMenuDrawer,
-                    promoBanners: banners.activeBanners,
-                  ),
-                  MenuStickyControlsHeader(
-                    searchController: _searchController,
-                    isSearching: menu.isSearching,
-                    onQueryChanged: menu.setSearchQuery,
-                    onClear: () => _clearSearch(menu),
-                    categories: menu.categories,
-                    selectedCategory:
-                        menu.selectedCategory ?? menu.categories.firstOrNull,
-                    onCategorySelected: menu.selectCategory,
-                    palette: palette,
-                  ),
-                  _MenuProductsSliver(
-                    palette: palette,
-                    sectionKeys: _sectionKeys,
-                    onQuickAdd: _handleQuickAdd,
-                    onOpenDetails: _openProductDetails,
-                    onClearSearch: () => _clearSearch(_menuController),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                      child: TextButton.icon(
-                        onPressed: () =>
-                            context.push('/${restaurant.slug}/admin/login'),
-                        icon: Icon(
-                          Icons.admin_panel_settings_outlined,
-                          size: 18,
-                          color: palette.primary.withValues(alpha: 0.55),
-                        ),
-                        label: Text(
-                          'دخول الإدارة',
-                          style: TextStyle(
-                            color: palette.primary.withValues(alpha: 0.55),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          return _CustomerMenuThemedScaffold(
+            scaffoldKey: _scaffoldKey,
+            scrollController: _scrollController,
+            searchController: _searchController,
+            sectionKeys: _sectionKeys,
+            restaurant: restaurant,
+            onOpenMenuDrawer: _openMenuDrawer,
+            onClearSearch: () => _clearSearch(_menuController),
+            onQuickAdd: _handleQuickAdd,
+            onOpenDetails: _openProductDetails,
           );
         },
       ),
     );
   }
+}
 
+/// غلاف Theme + Scaffold — يُعاد بناؤه عند تغيّر المطعم فقط.
+class _CustomerMenuThemedScaffold extends StatelessWidget {
+  const _CustomerMenuThemedScaffold({
+    required this.scaffoldKey,
+    required this.scrollController,
+    required this.searchController,
+    required this.sectionKeys,
+    required this.restaurant,
+    required this.onOpenMenuDrawer,
+    required this.onClearSearch,
+    required this.onQuickAdd,
+    required this.onOpenDetails,
+  });
+
+  final GlobalKey<ScaffoldState> scaffoldKey;
+  final ScrollController scrollController;
+  final TextEditingController searchController;
+  final Map<String, GlobalKey> sectionKeys;
+  final RestaurantModel restaurant;
+  final VoidCallback onOpenMenuDrawer;
+  final VoidCallback onClearSearch;
+  final Future<void> Function(BuildContext context, ProductModel product)
+      onQuickAdd;
+  final Future<void> Function(BuildContext context, ProductModel product)
+      onOpenDetails;
+
+  ThemeData _buildMenuTheme(BuildContext context, TenantPalette palette) {
+    return Theme.of(context).copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: palette.primary,
+        primary: palette.primary,
+        secondary: palette.accent,
+        brightness: Brightness.light,
+      ),
+      scaffoldBackgroundColor: palette.surfaceTint,
+      iconTheme: IconThemeData(color: palette.primary),
+      textTheme: Theme.of(context).textTheme.apply(
+            bodyColor: SnackBurgerBrandColors.ink,
+            displayColor: SnackBurgerBrandColors.ink,
+          ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: palette.primary,
+        foregroundColor: palette.onPrimary,
+        iconTheme: IconThemeData(color: palette.onPrimary),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: palette.primary,
+          foregroundColor: palette.onPrimary,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.primary,
+          side: BorderSide(
+            color: palette.primary.withValues(alpha: 0.35),
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        prefixIconColor: palette.primary,
+        suffixIconColor: palette.primary,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: palette.primary.withValues(alpha: 0.2),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: palette.primary, width: 1.5),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = TenantPalette.fromRestaurant(restaurant);
+
+    return Theme(
+      data: _buildMenuTheme(context, palette),
+      child: Scaffold(
+        key: scaffoldKey,
+        backgroundColor: palette.surfaceTint,
+        drawer: CustomerMenuDrawer(
+          restaurant: restaurant,
+          palette: palette,
+        ),
+        bottomNavigationBar: _MenuCartBarSlot(
+          palette: palette,
+          restaurant: restaurant,
+        ),
+        body: CustomScrollView(
+          controller: scrollController,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            _MenuBannerSlot(
+              restaurant: restaurant,
+              palette: palette,
+              onBack: () => context.go('/'),
+              onOpenMenu: onOpenMenuDrawer,
+            ),
+            _MenuStickyControlsSlot(
+              searchController: searchController,
+              palette: palette,
+              onClearSearch: onClearSearch,
+            ),
+            _MenuProductsSliver(
+              palette: palette,
+              sectionKeys: sectionKeys,
+              onQuickAdd: onQuickAdd,
+              onOpenDetails: onOpenDetails,
+              onClearSearch: onClearSearch,
+            ),
+            _MenuAdminLinkSliver(
+              restaurant: restaurant,
+              palette: palette,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// شريط السلة — يُعاد بناؤه عند تغيّر السلة فقط.
+class _MenuCartBarSlot extends StatelessWidget {
+  const _MenuCartBarSlot({
+    required this.palette,
+    required this.restaurant,
+  });
+
+  final TenantPalette palette;
+  final RestaurantModel restaurant;
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<CartNotifier, int>(
+      selector: (_, cart) => cart.itemCount,
+      shouldRebuild: (previous, next) => previous != next,
+      builder: (context, itemCount, _) {
+        if (itemCount == 0) {
+          return const SizedBox.shrink();
+        }
+        return MenuCartBar(
+          palette: palette,
+          restaurant: restaurant,
+        );
+      },
+    );
+  }
+}
+
+/// البانر العلوي — يُعاد بناؤه عند تغيّر البانرات الترويجية فقط.
+class _MenuBannerSlot extends StatelessWidget {
+  const _MenuBannerSlot({
+    required this.restaurant,
+    required this.palette,
+    required this.onBack,
+    required this.onOpenMenu,
+  });
+
+  final RestaurantModel restaurant;
+  final TenantPalette palette;
+  final VoidCallback onBack;
+  final VoidCallback onOpenMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final promoBanners = context.select<CustomerMenuBannersController,
+        List<PromoBannerModel>>(
+      (controller) => controller.activeBanners,
+    );
+
+    return MenuBanner(
+      restaurant: restaurant,
+      palette: palette,
+      onBack: onBack,
+      onOpenMenu: onOpenMenu,
+      promoBanners: promoBanners,
+    );
+  }
+}
+
+/// البحث + الأقسام — يُعاد بناؤه عند تغيّر حالة البحث/التصنيفات فقط.
+class _MenuStickyControlsSlot extends StatelessWidget {
+  const _MenuStickyControlsSlot({
+    required this.searchController,
+    required this.palette,
+    required this.onClearSearch,
+  });
+
+  final TextEditingController searchController;
+  final TenantPalette palette;
+  final VoidCallback onClearSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<CustomerMenuController, _MenuHeaderSnapshot>(
+      selector: (_, menu) => _MenuHeaderSnapshot(
+        isSearching: menu.isSearching,
+        categories: menu.categories,
+        selectedCategory:
+            menu.selectedCategory ?? menu.categories.firstOrNull,
+      ),
+      shouldRebuild: (previous, next) => previous != next,
+      builder: (context, header, _) {
+        final menu = context.read<CustomerMenuController>();
+        return MenuStickyControlsHeader(
+          searchController: searchController,
+          isSearching: header.isSearching,
+          onQueryChanged: menu.setSearchQuery,
+          onClear: onClearSearch,
+          categories: header.categories,
+          selectedCategory: header.selectedCategory,
+          onCategorySelected: menu.selectCategory,
+          palette: palette,
+        );
+      },
+    );
+  }
+}
+
+/// رابط دخول الإدارة — ثابت نسبياً (يعتمد على المطعم فقط).
+class _MenuAdminLinkSliver extends StatelessWidget {
+  const _MenuAdminLinkSliver({
+    required this.restaurant,
+    required this.palette,
+  });
+
+  final RestaurantModel restaurant;
+  final TenantPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: TextButton.icon(
+          onPressed: () => context.push('/${restaurant.slug}/admin/login'),
+          icon: Icon(
+            Icons.admin_panel_settings_outlined,
+            size: 18,
+            color: palette.primary.withValues(alpha: 0.55),
+          ),
+          label: Text(
+            'دخول الإدارة',
+            style: TextStyle(
+              color: palette.primary.withValues(alpha: 0.55),
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@immutable
+class _TenantGateSnapshot {
+  const _TenantGateSnapshot({
+    required this.isLoading,
+    required this.restaurant,
+  });
+
+  final bool isLoading;
+  final RestaurantModel? restaurant;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! _TenantGateSnapshot) return false;
+    if (isLoading != other.isLoading) return false;
+    final a = restaurant;
+    final b = other.restaurant;
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == b;
+    return a.id == b.id &&
+        a.slug == b.slug &&
+        a.isActive == b.isActive;
+  }
+
+  @override
+  int get hashCode => Object.hash(isLoading, restaurant?.id);
+}
+
+@immutable
+class _MenuHeaderSnapshot {
+  const _MenuHeaderSnapshot({
+    required this.isSearching,
+    required this.categories,
+    required this.selectedCategory,
+  });
+
+  final bool isSearching;
+  final List<String> categories;
+  final String? selectedCategory;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MenuHeaderSnapshot &&
+        isSearching == other.isSearching &&
+        selectedCategory == other.selectedCategory &&
+        listEquals(categories, other.categories);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        isSearching,
+        selectedCategory,
+        Object.hashAll(categories),
+      );
 }
 
 /// قائمة المنتجات — تُعاد بناؤها فقط عند تغيّر بيانات المنيو (Selector).

@@ -48,7 +48,6 @@ class MenuBanner extends StatelessWidget {
         title: null,
         stretchModes: const [
           StretchMode.zoomBackground,
-          StretchMode.blurBackground,
         ],
         background: _hasPromoCarousel
             ? SizedBox.expand(
@@ -220,7 +219,7 @@ class _BannerLogoMark extends StatelessWidget {
               height: _logoSize,
               fit: BoxFit.cover,
               alignment: Alignment.center,
-              filterQuality: FilterQuality.high,
+              filterQuality: FilterQuality.medium,
               gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) => ColoredBox(
                 color: palette.primary.withValues(alpha: 0.35),

@@ -213,29 +213,6 @@ class CustomerMenuController extends ChangeNotifier {
     _initialLoadComplete = false;
     if (!_disposed) notifyListeners();
 
-    try {
-      final items = await _productRepository.fetchProductsForRestaurant(
-        restaurantId: restaurantId,
-        slug: slug,
-      );
-      if (_disposed || generation != _bindGeneration) return;
-      _applyProducts(items);
-      _streamError = null;
-    } catch (error, stack) {
-      debugPrint('CustomerMenuController fetch: $error\n$stack');
-      if (_disposed || generation != _bindGeneration) return;
-      if (!hasProducts) {
-        _streamError = error;
-      }
-    }
-
-    if (_disposed || generation != _bindGeneration) return;
-    _initialLoadComplete = true;
-    _productsLoading = false;
-    notifyListeners();
-
-    if (_disposed || generation != _bindGeneration) return;
-
     _productsSubscription = _productRepository
         .watchProductsForRestaurant(
           restaurantId: restaurantId,

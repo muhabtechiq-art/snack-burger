@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
@@ -101,90 +99,78 @@ class _MenuStickyControlsHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     return SizedBox(
       height: maxExtent,
-      child: ClipRect(
-        child: Stack(
-          fit: StackFit.expand,
+      child: Material(
+        color: pinned ? const Color(0xFFFAFAFA) : Colors.white,
+        elevation: pinned ? 2 : 0,
+        shadowColor: palette.primary.withValues(alpha: 0.1),
+        child: Column(
           children: [
-            if (pinned)
-              BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: const SizedBox.expand(),
-              ),
-            Material(
-              color: Colors.white.withValues(alpha: pinned ? 0.94 : 1),
-              elevation: pinned ? 2 : 0,
-              shadowColor: palette.primary.withValues(alpha: 0.1),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: MenuHeaderMetrics.searchHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      child: TextField(
-                        controller: searchController,
-                        textAlign: TextAlign.right,
-                        textDirection: TextDirection.rtl,
-                        textInputAction: TextInputAction.search,
-                        onChanged: onQueryChanged,
-                        decoration: InputDecoration(
-                          hintText: 'ابحث في القائمة...',
-                          hintTextDirection: TextDirection.rtl,
-                          filled: true,
-                          fillColor: palette.surfaceTint,
-                          isDense: true,
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: palette.primary,
-                            size: 22,
-                          ),
-                          suffixIcon: isSearching
-                              ? IconButton(
-                                  icon: Icon(
-                                    Icons.close_rounded,
-                                    color: palette.primary,
-                                  ),
-                                  tooltip: 'مسح البحث',
-                                  onPressed: onClear,
-                                )
-                              : null,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: palette.primary.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: palette.primary.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
+            SizedBox(
+              height: MenuHeaderMetrics.searchHeight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: TextField(
+                  controller: searchController,
+                  textAlign: TextAlign.right,
+                  textDirection: TextDirection.rtl,
+                  textInputAction: TextInputAction.search,
+                  onChanged: onQueryChanged,
+                  decoration: InputDecoration(
+                    hintText: 'ابحث في القائمة...',
+                    hintTextDirection: TextDirection.rtl,
+                    filled: true,
+                    fillColor: palette.surfaceTint,
+                    isDense: true,
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: palette.primary,
+                      size: 22,
+                    ),
+                    suffixIcon: isSearching
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.close_rounded,
                               color: palette.primary,
-                              width: 1.5,
                             ),
-                          ),
-                        ),
+                            tooltip: 'مسح البحث',
+                            onPressed: onClear,
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: palette.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: palette.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: palette.primary,
+                        width: 1.5,
                       ),
                     ),
                   ),
-                  MenuCategoryChipsRow(
-                    categories: categories,
-                    selectedCategory: selectedCategory,
-                    onCategorySelected: onCategorySelected,
-                    palette: palette,
-                    height: MenuHeaderMetrics.categoriesHeight,
-                    backgroundColor: Colors.transparent,
-                    showBottomBorder: true,
-                  ),
-                ],
+                ),
               ),
+            ),
+            MenuCategoryChipsRow(
+              categories: categories,
+              selectedCategory: selectedCategory,
+              onCategorySelected: onCategorySelected,
+              palette: palette,
+              height: MenuHeaderMetrics.categoriesHeight,
+              backgroundColor: Colors.transparent,
+              showBottomBorder: true,
             ),
           ],
         ),

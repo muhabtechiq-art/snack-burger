@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/utils/menu_product_image_url.dart';
 import '../../models/promo_banner_model.dart';
 
 /// شريط بانر دوّار — يعرض الصور النشطة فقط.
@@ -50,32 +51,85 @@ class MenuBannerCarousel extends StatelessWidget {
   }
 }
 
-class _BannerSlide extends StatelessWidget {
+class _BannerSlide extends StatefulWidget {
   const _BannerSlide({required this.banner});
 
   final PromoBannerModel banner;
 
   @override
+  State<_BannerSlide> createState() => _BannerSlideState();
+}
+
+class _BannerSlideState extends State<_BannerSlide> {
+  static const int _decodeWidth = 720;
+  static const int _decodeHeight = 400;
+
+  bool _useOriginalUrl = false;
+
+  @override
+  void didUpdateWidget(covariant _BannerSlide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.banner.imageUrl != widget.banner.imageUrl) {
+      _useOriginalUrl = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final normalized =
+        MenuProductImageUrl.normalizeImageUrl(widget.banner.imageUrl);
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final memWidth = (_decodeWidth * devicePixelRatio).round();
+    final memHeight = (_decodeHeight * devicePixelRatio).round();
+
+    final resolvedUrl = normalized == null
+        ? null
+        : _useOriginalUrl
+            ? normalized
+            : MenuProductImageUrl.bannerThumbnail(normalized) ?? normalized;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        CachedNetworkImage(
-          imageUrl: banner.imageUrl,
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          filterQuality: FilterQuality.medium,
-          placeholder: (_, _) => ColoredBox(
-            color: Colors.black.withValues(alpha: 0.18),
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
+        if (resolvedUrl == null)
+          ColoredBox(color: Colors.black.withValues(alpha: 0.35))
+        else
+          CachedNetworkImage(
+            imageUrl: resolvedUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            memCacheWidth: memWidth,
+            memCacheHeight: memHeight,
+            filterQuality: FilterQuality.medium,
+            fadeInDuration: const Duration(milliseconds: 180),
+            placeholder: (_, _) => ColoredBox(
+              color: Colors.black.withValues(alpha: 0.18),
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
+            errorWidget: (context, url, error) {
+              if (!_useOriginalUrl && resolvedUrl != normalized) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  setState(() => _useOriginalUrl = true);
+                });
+                return ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+              return ColoredBox(
+                color: Colors.black.withValues(alpha: 0.35),
+                child: const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white54,
+                ),
+              );
+            },
           ),
-          errorWidget: (_, _, _) => ColoredBox(
-            color: Colors.black.withValues(alpha: 0.35),
-            child: const Icon(Icons.broken_image_outlined, color: Colors.white54),
-          ),
-        ),
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -90,13 +144,13 @@ class _BannerSlide extends StatelessWidget {
             ),
           ),
         ),
-        if (banner.title.trim().isNotEmpty)
+        if (widget.banner.title.trim().isNotEmpty)
           Align(
             alignment: Alignment.bottomRight,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               child: Text(
-                banner.title,
+                widget.banner.title,
                 textAlign: TextAlign.right,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,

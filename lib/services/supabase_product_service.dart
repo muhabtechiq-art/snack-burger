@@ -23,12 +23,23 @@ abstract final class SupabaseProductService {
   static SupabaseClient get _client => Supabase.instance.client;
 
   /// يُحمّل الإضافات ثم الأحجام لقائمة منتجات (مسار مشترك للقراءة).
+  /// عند [relationsEmbedded] يُفترض أن nested select ملأ addons/variants مسبقاً.
   static Future<List<ProductModel>> _enrichProductsWithRelations(
-    List<ProductModel> products,
-  ) async {
-    final enriched = await _attachVariantsToProducts(
-      await _attachAddonsToProducts(products),
-    );
+    List<ProductModel> products, {
+    bool relationsEmbedded = false,
+  }) async {
+    List<ProductModel> enriched;
+    if (relationsEmbedded) {
+      enriched = products;
+      debugPrint(
+        '[SupabaseProductService] enrich: تخطّي جلب منفصل — '
+        'embed موجود (${products.length} منتج)',
+      );
+    } else {
+      enriched = await _attachVariantsToProducts(
+        await _attachAddonsToProducts(products),
+      );
+    }
     final withVariants = enriched.where((product) => product.hasVariants).length;
     debugPrint(
       '[SupabaseProductService] enrich: ${enriched.length} منتج، '
@@ -175,31 +186,41 @@ abstract final class SupabaseProductService {
   }) async {
     try {
       debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
-      final rows = await _fetchProductRowsWithRelations();
-      final products = _parseAndFilter(rows, restaurantId);
-      return _enrichProductsWithRelations(products);
+      final fetchResult = await _fetchProductRowsWithRelations();
+      final products = _parseAndFilter(fetchResult.rows, restaurantId);
+      return _enrichProductsWithRelations(
+        products,
+        relationsEmbedded: fetchResult.relationsEmbedded,
+      );
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
       rethrow;
     }
   }
 
-  /// جلب صفوف المنتجات — يحاول embed للعلاقات ثم fallback لـ select(*).
-  static Future<List<Map<String, dynamic>>> _fetchProductRowsWithRelations() async {
+  /// نتيجة جلب صفوف المنتجات — يُعلَم هل nested embed نجح.
+  static Future<({List<Map<String, dynamic>> rows, bool relationsEmbedded})>
+      _fetchProductRowsWithRelations() async {
     try {
       final rows = await _client.from(tableName).select(_selectWithRelations);
       debugPrint(
         '[SupabaseProductService] nested select: '
         '${(rows as List).length} صف',
       );
-      return List<Map<String, dynamic>>.from(rows);
+      return (
+        rows: List<Map<String, dynamic>>.from(rows),
+        relationsEmbedded: true,
+      );
     } on PostgrestException catch (e) {
       debugPrint(
         '[SupabaseProductService] nested select فشل — fallback select(*): '
         '${e.message}',
       );
       final rows = await _client.from(tableName).select();
-      return List<Map<String, dynamic>>.from(rows);
+      return (
+        rows: List<Map<String, dynamic>>.from(rows),
+        relationsEmbedded: false,
+      );
     }
   }
 

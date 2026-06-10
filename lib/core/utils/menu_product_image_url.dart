@@ -48,4 +48,19 @@ abstract final class MenuProductImageUrl {
         )
         .toString();
   }
+
+  /// نسخة مصغّرة لبانرات المنيو العلوية (~عرض الشاشة × 296pt).
+  static String? bannerThumbnail(
+    String? rawUrl, {
+    int width = 720,
+    int height = 400,
+    int quality = 80,
+  }) {
+    return thumbnail(
+      rawUrl,
+      width: width,
+      height: height,
+      quality: quality,
+    );
+  }
 }
