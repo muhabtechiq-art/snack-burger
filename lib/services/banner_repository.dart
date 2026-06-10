@@ -54,6 +54,15 @@ class BannerRepository {
     );
   }
 
+  Future<List<PromoBannerModel>> fetchAllBanners({
+    required String restaurantId,
+    required String slug,
+  }) {
+    return SupabaseBannerService.fetchAllBanners(
+      restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
+  }
+
   Future<void> setBannerActive({
     required String bannerId,
     required bool isActive,

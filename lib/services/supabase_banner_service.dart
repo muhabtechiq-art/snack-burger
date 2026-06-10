@@ -112,14 +112,46 @@ abstract final class SupabaseBannerService {
         .eq('id', banner.id);
   }
 
+  static Future<List<PromoBannerModel>> fetchAllBanners({
+    required String restaurantId,
+  }) async {
+    final normalized = restaurantId.trim().toLowerCase();
+    final rows = await _client
+        .from(tableName)
+        .select()
+        .eq('restaurant_id', normalized)
+        .order('sort_order', ascending: true)
+        .order('created_at', ascending: false);
+
+    return _parseRows(rows as List);
+  }
+
   static Future<void> setBannerActive({
     required String bannerId,
     required bool isActive,
   }) async {
-    await _client
-        .from(tableName)
-        .update({'is_active': isActive})
-        .eq('id', bannerId);
+    final normalizedId = bannerId.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError('معرّف البانر فارغ');
+    }
+
+    try {
+      await _client
+          .from(tableName)
+          .update({'is_active': isActive})
+          .eq('id', normalizedId);
+
+      debugPrint(
+        '[SupabaseBannerService] setBannerActive id=$normalizedId '
+        'is_active=$isActive — تم الإرسال بنجاح',
+      );
+    } on PostgrestException catch (e, stack) {
+      debugPrint(
+        '[SupabaseBannerService] setBannerActive فشل: '
+        'code=${e.code} message=${e.message}\n$stack',
+      );
+      rethrow;
+    }
   }
 
   static Future<void> deleteBanner({required String bannerId}) async {

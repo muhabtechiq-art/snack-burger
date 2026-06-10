@@ -27,6 +27,9 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
   String? _busyBannerId;
   bool _addingBanner = false;
 
+  /// حالة محلية مؤقتة للمفتاح — تُزال عند تطابق البث أو عند فشل الطلب.
+  final Map<String, bool> _activeOverrides = {};
+
   Future<void> _confirmDelete(PromoBannerModel banner) async {
     if (_busyBannerId != null) return;
 
@@ -78,19 +81,64 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
     }
   }
 
-  Future<void> _toggleActive(PromoBannerModel banner, bool value) async {
+  Future<void> _toggleActive(
+    PromoBannerModel banner,
+    bool value, {
+    required String restaurantId,
+    required String slug,
+  }) async {
     if (_busyBannerId != null) return;
 
-    setState(() => _busyBannerId = banner.id);
+    final previous = _activeOverrides[banner.id] ?? banner.isActive;
+    setState(() {
+      _busyBannerId = banner.id;
+      _activeOverrides[banner.id] = value;
+    });
+
     try {
       await _repository.setBannerActive(
         bannerId: banner.id,
         isActive: value,
       );
+
+      if (!mounted) return;
+
+      setState(() {
+        _activeOverrides[banner.id] = value;
+      });
+
+      final refreshed = await _repository.fetchAllBanners(
+        restaurantId: restaurantId,
+        slug: slug,
+      );
+      if (!mounted) return;
+
+      final match = refreshed.where((item) => item.id == banner.id).firstOrNull;
+      if (match != null && match.isActive == value) {
+        setState(() => _activeOverrides.remove(banner.id));
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'تم تفعيل البانر — سيظهر في المنيو'
+                : 'تم إيقاف البانر — لن يظهر في المنيو',
+          ),
+          backgroundColor: AdminPanelColors.charcoal,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
+      setState(() {
+        _activeOverrides[banner.id] = previous;
+        _activeOverrides.remove(banner.id);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر تحديث الحالة: $e')),
+        SnackBar(
+          content: Text(_toggleActiveErrorMessage(e)),
+          backgroundColor: Colors.red.shade800,
+        ),
       );
     } finally {
       if (mounted) {
@@ -99,6 +147,33 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
         _busyBannerId = null;
       }
     }
+  }
+
+  bool _resolveBannerActive(PromoBannerModel banner) {
+    final override = _activeOverrides[banner.id];
+    if (override == null) return banner.isActive;
+
+    if (override == banner.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_activeOverrides[banner.id] == banner.isActive) {
+          setState(() => _activeOverrides.remove(banner.id));
+        }
+      });
+    }
+
+    return override;
+  }
+
+  String _toggleActiveErrorMessage(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('permission') || raw.contains('42501')) {
+      return 'لا توجد صلاحية لتحديث البانر في Supabase';
+    }
+    if (raw.contains('network') || raw.contains('socket')) {
+      return 'تعذّر الاتصال — تحقق من الإنترنت وحاول مرة أخرى';
+    }
+    return 'تعذّر تحديث حالة البانر — حاول مرة أخرى';
   }
 
   Future<void> _addBanner({
@@ -265,6 +340,7 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                 itemBuilder: (context, index) {
                   final banner = banners[index];
                   final isBusy = _busyBannerId == banner.id;
+                  final displayActive = _resolveBannerActive(banner);
 
                   return ListTile(
                     shape: RoundedRectangleBorder(
@@ -306,9 +382,9 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                       ),
                     ),
                     subtitle: Text(
-                      banner.isActive ? 'نشط — يظهر في المنيو' : 'مخفي',
+                      displayActive ? 'نشط — يظهر في المنيو' : 'مخفي',
                       style: TextStyle(
-                        color: banner.isActive
+                        color: displayActive
                             ? AdminPanelColors.gold.withValues(alpha: 0.85)
                             : AdminPanelColors.textMuted,
                       ),
@@ -317,11 +393,18 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Switch.adaptive(
-                          value: banner.isActive,
+                          value: displayActive,
                           activeThumbColor: AdminPanelColors.gold,
                           onChanged: isBusy
                               ? null
-                              : (value) => unawaited(_toggleActive(banner, value)),
+                              : (value) => unawaited(
+                                    _toggleActive(
+                                      banner,
+                                      value,
+                                      restaurantId: restaurant.id,
+                                      slug: restaurant.slug,
+                                    ),
+                                  ),
                         ),
                         IconButton(
                           icon: isBusy

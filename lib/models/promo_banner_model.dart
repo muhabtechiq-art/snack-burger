@@ -68,7 +68,7 @@ class PromoBannerModel {
           .trim(),
       imageUrl: (data['image_url'] ?? data['imageUrl'] ?? '').toString().trim(),
       title: (data['title'] ?? '').toString().trim(),
-      isActive: data['is_active'] == true || data['isActive'] == true,
+      isActive: _readBool(data['is_active'] ?? data['isActive']),
       sortOrder: _readInt(data['sort_order'] ?? data['sortOrder']),
       createdAt: parseModelDate(data['created_at'] ?? data['createdAt']),
     );
@@ -77,5 +77,16 @@ class PromoBannerModel {
   static int _readInt(dynamic value) {
     if (value is int) return value;
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static bool _readBool(dynamic value, {bool defaultValue = false}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+    }
+    return defaultValue;
   }
 }
