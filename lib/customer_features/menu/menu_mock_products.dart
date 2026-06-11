@@ -1,6 +1,6 @@
 import '../../models/product_model.dart';
 
-/// مؤقت: `true` لعرض 30 منتجاً وهمياً؛ `false` لجلب المنتجات الحقيقية من Firestore.
+/// مؤقت: `true` لعرض 30 منتجاً وهمياً؛ `false` لجلب المنتجات الحقيقية من Supabase.
 const kUseMockMenuProducts = false;
 
 final DateTime _mockCreatedAt = DateTime(2024, 6, 1);

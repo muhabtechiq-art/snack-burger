@@ -69,16 +69,6 @@ class DeliveryOrder {
 
   bool get isDelivered => status == DeliveryOrderStatus.delivered;
 
-  factory DeliveryOrder.fromFirestore(
-    Map<String, dynamic> data, {
-    required String docId,
-  }) {
-    return DeliveryOrder.fromMap(
-      data,
-      id: data['id'] as String? ?? docId,
-    );
-  }
-
   factory DeliveryOrder.fromSupabase(Map<String, dynamic> row) {
     return DeliveryOrder.fromMap(
       row,

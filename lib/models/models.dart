@@ -1,4 +1,4 @@
-/// نماذج بيانات متعددة المستأجرين (مخطط Firestore).
+/// نماذج بيانات متعددة المستأجرين (مخطط Supabase).
 library;
 
 export 'order_model.dart';

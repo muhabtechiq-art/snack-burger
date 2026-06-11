@@ -4,11 +4,13 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/auth/admin_profile_session.dart';
 import 'core/auth/auth_notifier.dart';
+import 'core/config/supabase_env.dart';
 import 'core/observability/app_telemetry.dart';
 import 'core/router/app_router.dart';
 import 'dev/snack_burger_product_seeder.dart';
@@ -39,9 +41,12 @@ Future<void> main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load(fileName: '.env');
+  SupabaseEnv.ensureConfigured();
+
   await Supabase.initialize(
-    url: 'https://jifnpjhtkwxpegzwamrs.supabase.co',
-    anonKey: 'sb_publishable_pp5dLOfJKxznF0YVqOGTdw_6vDn8xow',
+    url: SupabaseEnv.url,
+    anonKey: SupabaseEnv.anonKey,
   );
 
   await AdminProfileSession.loadFromStorage();

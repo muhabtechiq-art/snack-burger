@@ -17,7 +17,7 @@ abstract final class SnackBurgerBrandColors {
   static const Color ink = Color(0xFF1E1712);
 }
 
-/// ألوان المطعم المستخرجة من Firestore لاستخدامها في واجهة المنيو.
+/// ألوان المطعم المستخرجة من بيانات المستأجر لاستخدامها في واجهة المنيو.
 class TenantPalette {
   const TenantPalette({
     required this.primary,
@@ -29,9 +29,9 @@ class TenantPalette {
 
   factory TenantPalette.fromRestaurant(RestaurantModel? restaurant) {
     return TenantPalette(
-      primary: parseFirestoreColor(restaurant?.primaryColorHex) ??
+      primary: parseDynamicColor(restaurant?.primaryColorHex) ??
           SnackBurgerBrandColors.primary,
-      accent: parseFirestoreColor(restaurant?.accentColorHex) ??
+      accent: parseDynamicColor(restaurant?.accentColorHex) ??
           SnackBurgerBrandColors.accent,
     );
   }
@@ -68,8 +68,8 @@ class TenantPalette {
   Color get surfaceTint => Color.lerp(Colors.white, SnackBurgerBrandColors.warm, 0.06)!;
 }
 
-/// يحوّل قيم Firestore (`#8B0000`, `8B0000`, `4287299584`, …) إلى [Color].
-Color? parseFirestoreColor(dynamic raw) {
+/// يحوّل قيم اللون من JSON/DB (`#8B0000`, `8B0000`, `4287299584`, …) إلى [Color].
+Color? parseDynamicColor(dynamic raw) {
   if (raw == null) return null;
 
   if (raw is Color) return raw;
@@ -117,14 +117,14 @@ Color _contrastOn(Color background) {
   return background.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
 }
 
-/// يقرأ أول حقل لون متاح من خريطة Firestore.
-String? readFirestoreColorField(
+/// يقرأ أول حقل لون متاح من خريطة JSON/DB.
+String? readMapColorField(
   Map<String, dynamic> map,
   List<String> keys,
 ) {
   for (final key in keys) {
     if (!map.containsKey(key) || map[key] == null) continue;
-    final color = parseFirestoreColor(map[key]);
+    final color = parseDynamicColor(map[key]);
     if (color != null) {
       final argb = color.toARGB32().toRadixString(16).padLeft(8, '0');
       return '#${argb.substring(2)}';
@@ -133,7 +133,7 @@ String? readFirestoreColorField(
   return null;
 }
 
-String? readFirestoreStringField(
+String? readStringField(
   Map<String, dynamic> map,
   List<String> keys,
 ) {

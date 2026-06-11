@@ -283,8 +283,9 @@ class CustomerMenuController extends ChangeNotifier {
   }
 
   void _syncCategoriesFromProducts() {
-    final sections = categorySections;
-    final titles = sections.map((entry) => entry.key).toList();
+    // عناوين الشريط من الكatalog الكامل — لا من filteredProducts.
+    final titles =
+        orderedCategoryEntries(products).map((entry) => entry.key).toList();
 
     if (listEquals(titles, _categoryTitles)) {
       _ensureSelectedCategoryValid(titles);

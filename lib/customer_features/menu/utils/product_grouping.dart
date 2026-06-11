@@ -22,7 +22,7 @@ String _categoryLabel(String raw) {
   return trimmed.replaceAll('_', ' ');
 }
 
-/// ترتيب الأقسام: يحافظ على ترتيب ظهورها في Firestore عند الإمكان.
+/// ترتيب الأقسام: يحافظ على ترتيب ظهورها في القائمة عند الإمكان.
 List<MapEntry<String, List<ProductModel>>> orderedCategoryEntries(
   List<ProductModel> products,
 ) {

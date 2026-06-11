@@ -1,6 +1,6 @@
 import '../core/theme/tenant_palette.dart';
 
-/// بيانات المطعم (مستأجر / Firestore: `restaurants/{id}`).
+/// بيانات المطعم (مستأجر / جدول Supabase: `restaurants`).
 class RestaurantModel {
   const RestaurantModel({
     required this.id,
@@ -15,7 +15,7 @@ class RestaurantModel {
     this.isActive = true,
   });
 
-  /// معرف المستند في Firestore.
+  /// معرف المطعم في Supabase.
   final String id;
 
   /// المعرف في المسار، مثل `snack_burger` في `/#/snack_burger`.
@@ -57,33 +57,44 @@ class RestaurantModel {
   factory RestaurantModel.fromMap(Map<String, dynamic> map) {
     final slug = (map['slug'] ?? map['username'] ?? '') as String;
     return RestaurantModel(
-      id: map['id'] as String? ?? '',
+      id: map['id']?.toString() ?? '',
       slug: slug,
       name: map['name'] as String? ?? '',
-      logoUrl: readFirestoreStringField(map, ['logoUrl', 'logo', 'logoURL']),
-      bannerUrl: readFirestoreStringField(map, [
+      logoUrl: readStringField(map, [
+        'logoUrl',
+        'logo_url',
+        'logo',
+        'logoURL',
+      ]),
+      bannerUrl: readStringField(map, [
         'bannerUrl',
+        'banner_url',
         'bannerImage',
         'banner',
         'coverUrl',
         'coverImage',
       ]),
-      primaryColorHex: readFirestoreColorField(map, [
+      primaryColorHex: readMapColorField(map, [
             'primaryColor',
             'primary_color',
             'primaryColorHex',
           ]) ??
           '#8B0000',
-      accentColorHex: readFirestoreColorField(map, [
+      accentColorHex: readMapColorField(map, [
             'accentColor',
             'accent_color',
             'accentColorHex',
             'secondaryColor',
           ]) ??
           '#E1AD01',
-      whatsappNumber: map['whatsappNumber'] as String?,
-      orderRoutingMode: (map['orderRoutingMode'] as String?) ?? 'whatsapp',
-      isActive: map['isActive'] as bool? ?? true,
+      whatsappNumber: readStringField(map, [
+        'whatsappNumber',
+        'whatsapp_number',
+      ]),
+      orderRoutingMode:
+          readStringField(map, ['orderRoutingMode', 'order_routing_mode']) ??
+              'whatsapp',
+      isActive: map['isActive'] as bool? ?? map['is_active'] as bool? ?? true,
     );
   }
 

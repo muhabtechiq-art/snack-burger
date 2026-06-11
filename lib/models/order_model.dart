@@ -20,7 +20,7 @@ enum OrderStatus {
     }
   }
 
-  String get asFirestoreValue => name;
+  String get asStoredValue => name;
 }
 
 class CartItem {
@@ -247,7 +247,7 @@ class OrderModel {
       'tableNumber': tableNumber,
       'items': items.map((e) => e.toMap()).toList(),
       'totalPrice': totalPrice,
-      'status': status.asFirestoreValue,
+      'status': status.asStoredValue,
       'orderTime': orderTime.toUtc().toIso8601String(),
     };
   }

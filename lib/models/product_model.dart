@@ -51,7 +51,7 @@ class ProductModel {
     return price;
   }
 
-  /// خريطة جاهزة للحفظ في Firestore (يُفضَّل تخزين `createdAt` كـ Timestamp في الطبقة الخدمية).
+  /// خريطة جاهزة للحفظ في Supabase (يُفضَّل ISO8601 لـ `createdAt` في الطبقة الخدمية).
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'id': id,
@@ -72,10 +72,10 @@ class ProductModel {
     return ProductModel(
       id: map['id'] as String? ?? '',
       restaurantId: (map['restaurantId'] ?? map['restaurant_id'] ?? '') as String? ?? '',
-      name: readFirestoreStringField(map, ['name', 'title', 'productName']) ?? '',
+      name: readStringField(map, ['name', 'title', 'productName']) ?? '',
       description: map['description'] as String?,
       price: _readDouble(map['price']),
-      imageUrl: readFirestoreStringField(map, [
+      imageUrl: readStringField(map, [
         'imageUrl',
         'image',
         'imageURL',
@@ -197,7 +197,7 @@ double _readDouble(dynamic v) {
   return double.tryParse('$v') ?? 0;
 }
 
-/// يدعم `String` (ISO)، `int` (ms)، و Firestore [Timestamp] عند تمرير خريطة بعد التحويل في المستودع.
+/// يدعم `String` (ISO)، `int` (ms)، و Timestamp من JSONB عند تمرير خريطة بعد التحويل في المستودع.
 DateTime parseModelDate(dynamic v) {
   if (v == null) return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   if (v is DateTime) return v;

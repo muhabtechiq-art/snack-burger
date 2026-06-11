@@ -1,8 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/restaurant_model.dart';
+import '../services/supabase_restaurant_service.dart';
 
-/// سياق المطعم النشط من الـ slug في الرابط (بدون Firebase).
+/// سياق المطعم النشط من الـ slug في الرابط — يُحمَّل من Supabase مع fallback محلي.
 class ActiveRestaurantNotifier extends ChangeNotifier {
   ActiveRestaurantNotifier();
 
@@ -30,7 +31,7 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
     _resolvedSlug = normalized;
     notifyListeners();
 
-    _restaurant = _restaurantFromSlug(normalized);
+    _restaurant = await _loadRestaurant(normalized);
     _loading = false;
     notifyListeners();
   }
@@ -41,6 +42,25 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<RestaurantModel> _loadRestaurant(String slug) async {
+    try {
+      final fromDb = await SupabaseRestaurantService.fetchBySlug(slug);
+      if (fromDb != null) {
+        debugPrint('[ActiveRestaurantNotifier] loaded slug=$slug from Supabase');
+        return fromDb;
+      }
+    } catch (e, stack) {
+      debugPrint(
+        '[ActiveRestaurantNotifier] Supabase fetch failed for slug=$slug — '
+        'using local fallback: $e\n$stack',
+      );
+    }
+
+    debugPrint('[ActiveRestaurantNotifier] local fallback for slug=$slug');
+    return _restaurantFromSlug(slug);
+  }
+
+  /// Fallback محلي حتى يُنشأ جدول `restaurants` أو يُضاف slug جديد.
   RestaurantModel _restaurantFromSlug(String slug) {
     if (slug == 'snack_burger') {
       return const RestaurantModel(
