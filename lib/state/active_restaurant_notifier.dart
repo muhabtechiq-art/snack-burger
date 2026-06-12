@@ -15,7 +15,26 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
   String? get resolvedSlug => _resolvedSlug;
   bool get isLoading => _loading;
 
-  Future<void> resolveSlug(String slug) async {
+  static const Duration _foregroundRefreshDebounce = Duration(seconds: 2);
+
+  DateTime? _lastForegroundRefreshAt;
+
+  /// يعيد جلب بيانات المطعم الحالي من Supabase — يتجاوز cache الجلسة.
+  Future<void> refreshRestaurant() async {
+    final slug = _resolvedSlug;
+    if (slug == null || slug.isEmpty) return;
+
+    final now = DateTime.now();
+    final last = _lastForegroundRefreshAt;
+    if (last != null && now.difference(last) < _foregroundRefreshDebounce) {
+      return;
+    }
+    _lastForegroundRefreshAt = now;
+
+    await resolveSlug(slug, force: true);
+  }
+
+  Future<void> resolveSlug(String slug, {bool force = false}) async {
     final normalized = slug.trim().toLowerCase();
     if (normalized.isEmpty) {
       _restaurant = null;
@@ -23,16 +42,23 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (_resolvedSlug == normalized && _restaurant != null) {
+    if (!force && _resolvedSlug == normalized && _restaurant != null) {
       return;
     }
 
-    _loading = true;
+    final showLoading = _restaurant == null || _resolvedSlug != normalized;
+    if (showLoading) {
+      _loading = true;
+      notifyListeners();
+    }
+
     _resolvedSlug = normalized;
-    notifyListeners();
 
     _restaurant = await _loadRestaurant(normalized);
-    _loading = false;
+
+    if (showLoading) {
+      _loading = false;
+    }
     notifyListeners();
   }
 
