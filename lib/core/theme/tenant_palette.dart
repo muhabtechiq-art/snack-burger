@@ -4,6 +4,12 @@ import '../../models/restaurant_model.dart';
 
 /// ألوان هوية Snack Burger المستوحاة من اللوجو.
 abstract final class SnackBurgerBrandColors {
+  /// أحمر مطفي لواجهة المنيو.
+  static const Color mutedRed = Color(0xFF9B2335);
+
+  /// أصفر خردلي للخلفيات والإبراز.
+  static const Color mustard = Color(0xFFF6D21E);
+
   /// أحمر الشعار الرئيسي.
   static const Color primary = Color(0xFFB31217);
 

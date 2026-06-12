@@ -1,11 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/theme/tenant_palette.dart';
-import '../../models/promo_banner_model.dart';
 import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
@@ -13,14 +10,9 @@ import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
 import 'customer_menu_banners_controller.dart';
 import 'customer_menu_controller.dart';
-import 'customer_menu_drawer.dart';
 import '../services/customer_last_order_notifier.dart';
-import '../widgets/category_section_header.dart';
-import '../widgets/menu_banner.dart';
-import '../widgets/menu_cart_bar.dart';
-import '../widgets/menu_persistent_headers.dart';
-import '../widgets/menu_product_card.dart';
-import '../widgets/product_detail_dialog.dart';
+import '../widgets/customer_menu_browsing_shell.dart';
+import '../widgets/product_detail_page.dart';
 
 /// واجهة المنيو للزبون — عرض وطلب فقط (بدون أي عناصر إدارية).
 class CustomerMenuScreen extends StatelessWidget {
@@ -140,7 +132,6 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  final Map<String, GlobalKey> _sectionKeys = {};
 
   late CustomerMenuController _menuController;
   late CustomerMenuBannersController _bannersController;
@@ -151,13 +142,11 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     super.initState();
     _menuController = context.read<CustomerMenuController>();
     _bannersController = context.read<CustomerMenuBannersController>();
-    _menuController.addListener(_onMenuControllerChanged);
     _scrollController.addListener(_onScrollForLoadMore);
   }
 
   @override
   void dispose() {
-    _menuController.removeListener(_onMenuControllerChanged);
     _scrollController.removeListener(_onScrollForLoadMore);
     _scrollController.dispose();
     _searchController.dispose();
@@ -172,22 +161,6 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     final position = _scrollController.position;
     if (position.maxScrollExtent - position.pixels < 480) {
       menu.loadMoreProducts();
-    }
-  }
-
-  void _onMenuControllerChanged() {
-    if (!mounted) return;
-    _syncSectionKeys(_menuController.categories);
-  }
-
-  void _openMenuDrawer() {
-    _scaffoldKey.currentState?.openDrawer();
-  }
-
-  void _syncSectionKeys(List<String> titles) {
-    _sectionKeys.removeWhere((key, _) => !titles.contains(key));
-    for (final title in titles) {
-      _sectionKeys.putIfAbsent(title, GlobalKey.new);
     }
   }
 
@@ -227,27 +200,25 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     BuildContext context,
     ProductModel product,
   ) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => ProductDetailDialog(
-        product: product,
-        palette: TenantPalette.fromRestaurant(
-          context.read<ActiveRestaurantNotifier>().restaurant!,
-        ),
-        onAdd: ({required selectedAddons, selectedVariant}) {
-          context.read<CartNotifier>().addProduct(
-            product,
-            selectedAddons: selectedAddons,
-            selectedVariant: selectedVariant,
-          );
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('تمت إضافة ${product.name} إلى السلة'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        },
-      ),
+    final restaurant = context.read<ActiveRestaurantNotifier>().restaurant!;
+    final palette = TenantPalette.fromRestaurant(restaurant);
+    await ProductDetailPage.open(
+      context,
+      product: product,
+      palette: palette,
+      onAdd: ({required selectedAddons, selectedVariant}) {
+        context.read<CartNotifier>().addProduct(
+          product,
+          selectedAddons: selectedAddons,
+          selectedVariant: selectedVariant,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تمت إضافة ${product.name} إلى السلة'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
     );
   }
 
@@ -291,280 +262,16 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
 
           _maybeBindMenu(restaurant, _menuController);
 
-          return _CustomerMenuThemedScaffold(
+          return CustomerMenuBrowsingShell(
             scaffoldKey: _scaffoldKey,
             scrollController: _scrollController,
             searchController: _searchController,
-            sectionKeys: _sectionKeys,
             restaurant: restaurant,
-            onOpenMenuDrawer: _openMenuDrawer,
             onClearSearch: () => _clearSearch(_menuController),
             onQuickAdd: _handleQuickAdd,
             onOpenDetails: _openProductDetails,
           );
         },
-      ),
-    );
-  }
-}
-
-/// غلاف Theme + Scaffold — يُعاد بناؤه عند تغيّر المطعم فقط.
-class _CustomerMenuThemedScaffold extends StatelessWidget {
-  const _CustomerMenuThemedScaffold({
-    required this.scaffoldKey,
-    required this.scrollController,
-    required this.searchController,
-    required this.sectionKeys,
-    required this.restaurant,
-    required this.onOpenMenuDrawer,
-    required this.onClearSearch,
-    required this.onQuickAdd,
-    required this.onOpenDetails,
-  });
-
-  final GlobalKey<ScaffoldState> scaffoldKey;
-  final ScrollController scrollController;
-  final TextEditingController searchController;
-  final Map<String, GlobalKey> sectionKeys;
-  final RestaurantModel restaurant;
-  final VoidCallback onOpenMenuDrawer;
-  final VoidCallback onClearSearch;
-  final Future<void> Function(BuildContext context, ProductModel product)
-      onQuickAdd;
-  final Future<void> Function(BuildContext context, ProductModel product)
-      onOpenDetails;
-
-  ThemeData _buildMenuTheme(BuildContext context, TenantPalette palette) {
-    return Theme.of(context).copyWith(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: palette.primary,
-        primary: palette.primary,
-        secondary: palette.accent,
-        brightness: Brightness.light,
-      ),
-      scaffoldBackgroundColor: palette.surfaceTint,
-      iconTheme: IconThemeData(color: palette.primary),
-      textTheme: Theme.of(context).textTheme.apply(
-            bodyColor: SnackBurgerBrandColors.ink,
-            displayColor: SnackBurgerBrandColors.ink,
-          ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: palette.primary,
-        foregroundColor: palette.onPrimary,
-        iconTheme: IconThemeData(color: palette.onPrimary),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: palette.primary,
-          foregroundColor: palette.onPrimary,
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: palette.primary,
-          side: BorderSide(
-            color: palette.primary.withValues(alpha: 0.35),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        prefixIconColor: palette.primary,
-        suffixIconColor: palette.primary,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: palette.primary.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: palette.primary, width: 1.5),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = TenantPalette.fromRestaurant(restaurant);
-
-    return Theme(
-      data: _buildMenuTheme(context, palette),
-      child: Scaffold(
-        key: scaffoldKey,
-        backgroundColor: palette.surfaceTint,
-        drawer: CustomerMenuDrawer(
-          restaurant: restaurant,
-          palette: palette,
-        ),
-        bottomNavigationBar: _MenuCartBarSlot(
-          palette: palette,
-          restaurant: restaurant,
-        ),
-        body: CustomScrollView(
-          controller: scrollController,
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            _MenuBannerSlot(
-              restaurant: restaurant,
-              palette: palette,
-              onBack: () => context.go('/'),
-              onOpenMenu: onOpenMenuDrawer,
-            ),
-            _MenuStickyControlsSlot(
-              searchController: searchController,
-              palette: palette,
-              onClearSearch: onClearSearch,
-            ),
-            _MenuProductsSliver(
-              palette: palette,
-              sectionKeys: sectionKeys,
-              onQuickAdd: onQuickAdd,
-              onOpenDetails: onOpenDetails,
-              onClearSearch: onClearSearch,
-            ),
-            _MenuAdminLinkSliver(
-              restaurant: restaurant,
-              palette: palette,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// شريط السلة — يُعاد بناؤه عند تغيّر السلة فقط.
-class _MenuCartBarSlot extends StatelessWidget {
-  const _MenuCartBarSlot({
-    required this.palette,
-    required this.restaurant,
-  });
-
-  final TenantPalette palette;
-  final RestaurantModel restaurant;
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<CartNotifier, int>(
-      selector: (_, cart) => cart.itemCount,
-      shouldRebuild: (previous, next) => previous != next,
-      builder: (context, itemCount, _) {
-        if (itemCount == 0) {
-          return const SizedBox.shrink();
-        }
-        return MenuCartBar(
-          palette: palette,
-          restaurant: restaurant,
-        );
-      },
-    );
-  }
-}
-
-/// البانر العلوي — يُعاد بناؤه عند تغيّر البانرات الترويجية فقط.
-class _MenuBannerSlot extends StatelessWidget {
-  const _MenuBannerSlot({
-    required this.restaurant,
-    required this.palette,
-    required this.onBack,
-    required this.onOpenMenu,
-  });
-
-  final RestaurantModel restaurant;
-  final TenantPalette palette;
-  final VoidCallback onBack;
-  final VoidCallback onOpenMenu;
-
-  @override
-  Widget build(BuildContext context) {
-    final promoBanners = context.select<CustomerMenuBannersController,
-        List<PromoBannerModel>>(
-      (controller) => controller.activeBanners,
-    );
-
-    return MenuBanner(
-      restaurant: restaurant,
-      palette: palette,
-      onBack: onBack,
-      onOpenMenu: onOpenMenu,
-      promoBanners: promoBanners,
-    );
-  }
-}
-
-/// البحث + الأقسام — يُعاد بناؤه عند تغيّر حالة البحث/التصنيفات فقط.
-class _MenuStickyControlsSlot extends StatelessWidget {
-  const _MenuStickyControlsSlot({
-    required this.searchController,
-    required this.palette,
-    required this.onClearSearch,
-  });
-
-  final TextEditingController searchController;
-  final TenantPalette palette;
-  final VoidCallback onClearSearch;
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<CustomerMenuController, _MenuHeaderSnapshot>(
-      selector: (_, menu) => _MenuHeaderSnapshot(
-        isSearching: menu.isSearching,
-        categories: menu.categories,
-        selectedCategory:
-            menu.selectedCategory ?? menu.categories.firstOrNull,
-      ),
-      shouldRebuild: (previous, next) => previous != next,
-      builder: (context, header, _) {
-        final menu = context.read<CustomerMenuController>();
-        return MenuStickyControlsHeader(
-          searchController: searchController,
-          isSearching: header.isSearching,
-          onQueryChanged: menu.setSearchQuery,
-          onClear: onClearSearch,
-          categories: header.categories,
-          selectedCategory: header.selectedCategory,
-          onCategorySelected: menu.selectCategory,
-          palette: palette,
-        );
-      },
-    );
-  }
-}
-
-/// رابط دخول الإدارة — ثابت نسبياً (يعتمد على المطعم فقط).
-class _MenuAdminLinkSliver extends StatelessWidget {
-  const _MenuAdminLinkSliver({
-    required this.restaurant,
-    required this.palette,
-  });
-
-  final RestaurantModel restaurant;
-  final TenantPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        child: TextButton.icon(
-          onPressed: () => context.push('/${restaurant.slug}/admin/login'),
-          icon: Icon(
-            Icons.admin_panel_settings_outlined,
-            size: 18,
-            color: palette.primary.withValues(alpha: 0.55),
-          ),
-          label: Text(
-            'دخول الإدارة',
-            style: TextStyle(
-              color: palette.primary.withValues(alpha: 0.55),
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -595,272 +302,4 @@ class _TenantGateSnapshot {
 
   @override
   int get hashCode => Object.hash(isLoading, restaurant?.id);
-}
-
-@immutable
-class _MenuHeaderSnapshot {
-  const _MenuHeaderSnapshot({
-    required this.isSearching,
-    required this.categories,
-    required this.selectedCategory,
-  });
-
-  final bool isSearching;
-  final List<String> categories;
-  final String? selectedCategory;
-
-  @override
-  bool operator ==(Object other) {
-    return other is _MenuHeaderSnapshot &&
-        isSearching == other.isSearching &&
-        selectedCategory == other.selectedCategory &&
-        listEquals(categories, other.categories);
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        isSearching,
-        selectedCategory,
-        Object.hashAll(categories),
-      );
-}
-
-/// قائمة المنتجات — تُعاد بناؤها فقط عند تغيّر بيانات المنيو (Selector).
-class _MenuProductsSliver extends StatelessWidget {
-  const _MenuProductsSliver({
-    required this.palette,
-    required this.sectionKeys,
-    required this.onQuickAdd,
-    required this.onOpenDetails,
-    required this.onClearSearch,
-  });
-
-  final TenantPalette palette;
-  final Map<String, GlobalKey> sectionKeys;
-  final Future<void> Function(BuildContext context, ProductModel product)
-      onQuickAdd;
-  final Future<void> Function(BuildContext context, ProductModel product)
-      onOpenDetails;
-  final VoidCallback onClearSearch;
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<CustomerMenuController, _MenuProductsSnapshot>(
-      selector: (_, menu) => _MenuProductsSnapshot(
-        productsLoading: menu.productsLoading,
-        hasProducts: menu.hasProducts,
-        showProductsError: menu.showProductsError,
-        productsErrorMessage: menu.productsErrorMessage,
-        isEmpty: menu.isEmpty,
-        isSearching: menu.isSearching,
-        sections: menu.visibleCategorySections,
-        canLoadMore: menu.canLoadMoreProducts,
-      ),
-      shouldRebuild: (previous, next) => previous != next,
-      builder: (context, snapshot, _) {
-        final menu = context.read<CustomerMenuController>();
-
-        if (snapshot.productsLoading && !snapshot.hasProducts) {
-          return SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Center(
-                child: CircularProgressIndicator(color: palette.primary),
-              ),
-            ),
-          );
-        }
-
-        if (snapshot.showProductsError) {
-          final message =
-              snapshot.productsErrorMessage ?? 'تعذّر تحميل المنتجات';
-          return SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.cloud_off_rounded,
-                    size: 48,
-                    color: palette.primary.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: palette.primary.withValues(alpha: 0.8),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: menu.retryProductsLoad,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('إعادة المحاولة'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        if (snapshot.isEmpty) {
-          final message = snapshot.isSearching
-              ? 'لا توجد نتائج مطابقة للبحث.'
-              : 'لا توجد منتجات في قائمة المطعم حالياً.';
-
-          return SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                children: [
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: palette.primary.withValues(alpha: 0.7)),
-                  ),
-                  if (snapshot.isSearching) ...[
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: onClearSearch,
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      label: const Text('الرجوع للقائمة الكاملة'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }
-
-        return SliverMainAxisGroup(
-          slivers: [
-            for (final section in snapshot.sections) ...[
-              SliverToBoxAdapter(
-                child: CategorySectionHeader(
-                  title: section.key,
-                  count: section.value.length,
-                  palette: palette,
-                  sectionKey: sectionKeys[section.key],
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 0.76,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final product = section.value[index];
-                      return MenuProductCard(
-                        key: ValueKey(product.id),
-                        product: product,
-                        palette: palette,
-                        layout: MenuProductCardLayout.grid,
-                        onQuickAdd: () => onQuickAdd(context, product),
-                        onOpenDetails: () => onOpenDetails(context, product),
-                      );
-                    },
-                    childCount: section.value.length,
-                    addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: true,
-                  ),
-                ),
-              ),
-            ],
-            if (snapshot.canLoadMore)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: palette.primary.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
-          ],
-        );
-      },
-    );
-  }
-}
-
-@immutable
-class _MenuProductsSnapshot {
-  const _MenuProductsSnapshot({
-    required this.productsLoading,
-    required this.hasProducts,
-    required this.showProductsError,
-    required this.productsErrorMessage,
-    required this.isEmpty,
-    required this.isSearching,
-    required this.sections,
-    required this.canLoadMore,
-  });
-
-  final bool productsLoading;
-  final bool hasProducts;
-  final bool showProductsError;
-  final String? productsErrorMessage;
-  final bool isEmpty;
-  final bool isSearching;
-  final List<MapEntry<String, List<ProductModel>>> sections;
-  final bool canLoadMore;
-
-  @override
-  bool operator ==(Object other) {
-    return other is _MenuProductsSnapshot &&
-        productsLoading == other.productsLoading &&
-        hasProducts == other.hasProducts &&
-        showProductsError == other.showProductsError &&
-        productsErrorMessage == other.productsErrorMessage &&
-        isEmpty == other.isEmpty &&
-        isSearching == other.isSearching &&
-        canLoadMore == other.canLoadMore &&
-        _sectionsEqual(sections, other.sections);
-  }
-
-  static bool _sectionsEqual(
-    List<MapEntry<String, List<ProductModel>>> a,
-    List<MapEntry<String, List<ProductModel>>> b,
-  ) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].key != b[i].key) return false;
-      final aProducts = a[i].value;
-      final bProducts = b[i].value;
-      if (aProducts.length != bProducts.length) return false;
-      for (var j = 0; j < aProducts.length; j++) {
-        if (aProducts[j].id != bProducts[j].id) return false;
-      }
-    }
-    return true;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        productsLoading,
-        hasProducts,
-        showProductsError,
-        productsErrorMessage,
-        isEmpty,
-        isSearching,
-        canLoadMore,
-        sections.length,
-      );
 }

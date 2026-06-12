@@ -70,7 +70,11 @@ class MenuCartBar extends StatelessWidget {
                     ),
                   ),
                   FilledButton(
-                    onPressed: () => _openCartSheet(context),
+                    onPressed: () => openCheckoutSheet(
+                      context,
+                      palette: palette,
+                      restaurant: restaurant,
+                    ),
                     style: FilledButton.styleFrom(
                       backgroundColor: palette.primary,
                       foregroundColor: palette.onPrimary,
@@ -90,7 +94,12 @@ class MenuCartBar extends StatelessWidget {
     );
   }
 
-  Future<void> _openCartSheet(BuildContext parentContext) async {
+  /// فتح ورقة السلة والطلب — من الهيدر أو شريط التنقل السفلي.
+  static Future<void> openCheckoutSheet(
+    BuildContext parentContext, {
+    required TenantPalette palette,
+    required RestaurantModel restaurant,
+  }) async {
     final cart = parentContext.read<CartNotifier>();
     final location = parentContext.read<DeliveryLocationNotifier>();
     final customerSession = parentContext.read<CustomerLastOrderNotifier>();

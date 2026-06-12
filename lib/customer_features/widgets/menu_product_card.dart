@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/product_model.dart';
+import '../theme/customer_menu_theme.dart';
 import 'menu_product_image.dart';
 
 enum MenuProductCardLayout { grid, list }
@@ -65,17 +66,19 @@ class _GridProductCard extends StatelessWidget {
     return Material(
       color: Colors.white,
       elevation: 0,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(CustomerMenuTheme.radiusMd),
       clipBehavior: Clip.antiAlias,
       child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: palette.primary.withValues(alpha: 0.08)),
+            borderRadius: BorderRadius.circular(CustomerMenuTheme.radiusMd),
+            border: Border.all(
+              color: CustomerMenuTheme.mutedRed.withValues(alpha: 0.1),
+            ),
             boxShadow: [
               BoxShadow(
-                color: palette.primary.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+                color: CustomerMenuTheme.mutedRed.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -107,7 +110,7 @@ class _GridProductCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: palette.primary,
+                                color: CustomerMenuTheme.ink,
                                 height: 1.15,
                                 fontSize: 12,
                               ),
