@@ -13,6 +13,7 @@ import '../core/config/stability_phase1_flags.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
+import 'supabase_error_reporter.dart';
 import '../models/end_of_day_report_model.dart';
 import '../models/order_model.dart';
 
@@ -178,6 +179,7 @@ abstract final class SupabaseOrderService {
         stackTrace: stack,
         fields: <String, Object?>{'slug': normalizedSlug},
       );
+      reportSupabaseError(e, stack, operation: 'submitOrder');
       rethrow;
     }
   }
@@ -439,6 +441,7 @@ abstract final class SupabaseOrderService {
       );
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] fetchTodayClosingReport فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'fetchTodayClosingReport');
       rethrow;
     }
   }
@@ -474,6 +477,7 @@ abstract final class SupabaseOrderService {
           'status': status,
         },
       );
+      reportSupabaseError(e, stack, operation: 'updateOrderStatus');
       rethrow;
     }
   }
@@ -498,6 +502,7 @@ abstract final class SupabaseOrderService {
       );
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] updateRejectionReason فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'updateRejectionReason');
       rethrow;
     }
   }
@@ -657,6 +662,12 @@ abstract final class SupabaseOrderService {
                 'stream': streamTag,
                 'error_kind': _errorKind(error),
               },
+            );
+            reportSupabaseError(
+              error,
+              stackTrace,
+              operation: streamTag,
+              showSnackBar: false,
             );
             if (closed) return;
             await subscription?.cancel();

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_html/html.dart' as html;
 
+import 'core/errors/app_error_handler.dart';
 import 'core/theme/dynamic_theme.dart';
 import 'state/active_restaurant_notifier.dart';
 
@@ -84,6 +85,7 @@ class _AlMahabMenuAppState extends State<AlMahabMenuApp>
         return MaterialApp.router(
           title: 'Al-Mahab Menu',
           debugShowCheckedModeBanner: false,
+          scaffoldMessengerKey: AppErrorHandler.scaffoldMessengerKey,
           theme: buildDynamicTheme(tenant.restaurant),
           routerConfig: widget.router,
         );

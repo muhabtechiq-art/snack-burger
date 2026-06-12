@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/promo_banner_model.dart';
+import 'supabase_error_reporter.dart';
 
 /// CRUD لجدول `banners` في Supabase.
 abstract final class SupabaseBannerService {
@@ -9,6 +12,9 @@ abstract final class SupabaseBannerService {
 
   static const String tableName = 'banners';
   static const String defaultRestaurantId = 'snack_burger';
+
+  static const Duration _streamReconnectBaseDelay = Duration(seconds: 1);
+  static const Duration _streamReconnectMaxDelay = Duration(seconds: 20);
 
   static SupabaseClient get _client => Supabase.instance.client;
 
@@ -52,6 +58,7 @@ abstract final class SupabaseBannerService {
       return banners;
     } catch (e, stack) {
       debugPrint('[SupabaseBannerService] fetchActiveBanners فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'fetchActiveBanners');
       rethrow;
     }
   }
@@ -76,22 +83,114 @@ abstract final class SupabaseBannerService {
     required String restaurantId,
   }) {
     final normalized = restaurantId.trim().toLowerCase();
-    return _client
-        .from(tableName)
-        .stream(primaryKey: const ['id'])
-        .map((rows) => _filterActiveForRestaurant(rows, normalized));
+    return _resilientBannersStream(
+      streamTag: 'watchActiveBanners(restaurantId=$normalized)',
+      sourceFactory: () => _client
+          .from(tableName)
+          .stream(primaryKey: const ['id'])
+          .map((rows) => _filterActiveForRestaurant(rows, normalized)),
+    );
   }
 
   static Stream<List<PromoBannerModel>> watchAllBanners({
     required String restaurantId,
   }) {
     final normalized = restaurantId.trim().toLowerCase();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map((rows) {
-      return _parseRows(rows)
-          .where(
-            (banner) => banner.restaurantId.trim().toLowerCase() == normalized,
-          )
-          .toList(growable: false);
+    return _resilientBannersStream(
+      streamTag: 'watchAllBanners(restaurantId=$normalized)',
+      sourceFactory: () => _client.from(tableName).stream(primaryKey: const ['id']).map(
+        (rows) {
+          return _parseRows(rows)
+              .where(
+                (banner) =>
+                    banner.restaurantId.trim().toLowerCase() == normalized,
+              )
+              .toList(growable: false);
+        },
+      ),
+    );
+  }
+
+  static Stream<List<PromoBannerModel>> _resilientBannersStream({
+    required Stream<List<PromoBannerModel>> Function() sourceFactory,
+    required String streamTag,
+  }) {
+    return Stream<List<PromoBannerModel>>.multi((controller) {
+      StreamSubscription<List<PromoBannerModel>>? subscription;
+      bool closed = false;
+      int reconnectAttempt = 0;
+      DateTime lastDataAt = DateTime.now();
+      late Future<void> Function() subscribe;
+
+      Duration reconnectDelayForAttempt(int attempt) {
+        final seconds = 1 << (attempt - 1).clamp(0, 4);
+        final delay = Duration(seconds: seconds);
+        if (delay > _streamReconnectMaxDelay) return _streamReconnectMaxDelay;
+        if (delay < _streamReconnectBaseDelay) return _streamReconnectBaseDelay;
+        return delay;
+      }
+
+      Future<void> scheduleReconnect(String reason, {Object? error}) async {
+        reconnectAttempt += 1;
+        final delay = reconnectDelayForAttempt(reconnectAttempt);
+        debugPrint(
+          '[SupabaseBannerService] $streamTag reconnect ($reason) '
+          'attempt=$reconnectAttempt delay=${delay.inMilliseconds}ms'
+          '${error != null ? ' error=$error' : ''}',
+        );
+        await Future<void>.delayed(delay);
+        if (!closed) {
+          unawaited(subscribe());
+        }
+      }
+
+      subscribe = () async {
+        if (closed) return;
+        await subscription?.cancel();
+        subscription = null;
+        subscription = sourceFactory().listen(
+          (banners) {
+            if (closed) return;
+            reconnectAttempt = 0;
+            lastDataAt = DateTime.now();
+            controller.add(banners);
+          },
+          onError: (Object error, StackTrace stackTrace) async {
+            debugPrint(
+              '[SupabaseBannerService] $streamTag error: $error\n$stackTrace',
+            );
+            reportSupabaseError(
+              error,
+              stackTrace,
+              operation: streamTag,
+              showSnackBar: false,
+            );
+            if (closed) return;
+            await subscription?.cancel();
+            subscription = null;
+            await scheduleReconnect('on_error', error: error);
+          },
+          onDone: () async {
+            if (closed) return;
+            final idleFor = DateTime.now().difference(lastDataAt);
+            if (idleFor > const Duration(seconds: 30)) {
+              debugPrint('[SupabaseBannerService] $streamTag idle before close');
+            }
+            await subscription?.cancel();
+            subscription = null;
+            await scheduleReconnect('on_done');
+          },
+          cancelOnError: false,
+        );
+      };
+
+      unawaited(subscribe());
+
+      controller.onCancel = () async {
+        closed = true;
+        await subscription?.cancel();
+        subscription = null;
+      };
     });
   }
 
@@ -174,6 +273,7 @@ abstract final class SupabaseBannerService {
         '[SupabaseBannerService] setBannerActive فشل: '
         'code=${e.code} message=${e.message}\n$stack',
       );
+      reportSupabaseError(e, stack, operation: 'setBannerActive');
       rethrow;
     }
   }

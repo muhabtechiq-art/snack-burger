@@ -39,6 +39,13 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
     return _productsStream!;
   }
 
+  @override
+  void dispose() {
+    _productsStream = null;
+    _streamRestaurantId = null;
+    super.dispose();
+  }
+
   Future<void> _confirmDeleteProduct(ProductModel product) async {
     if (_deletingProductId != null) return;
 

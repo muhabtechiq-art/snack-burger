@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/restaurant_model.dart';
+import 'supabase_error_reporter.dart';
 
 /// قراءة بيانات المطاعم من جدول `restaurants` في Supabase.
 abstract final class SupabaseRestaurantService {
@@ -37,11 +38,13 @@ abstract final class SupabaseRestaurantService {
         '[SupabaseRestaurantService] fetchBySlug($normalized) فشل: '
         '${e.code} ${e.message}\n$stack',
       );
+      reportSupabaseError(e, stack, operation: 'fetchBySlug');
       rethrow;
     } catch (e, stack) {
       debugPrint(
         '[SupabaseRestaurantService] fetchBySlug($normalized) خطأ: $e\n$stack',
       );
+      reportSupabaseError(e, stack, operation: 'fetchBySlug');
       rethrow;
     }
   }

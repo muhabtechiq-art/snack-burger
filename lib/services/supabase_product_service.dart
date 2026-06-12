@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
+import 'supabase_error_reporter.dart';
 
 /// منتجات المنيو — جدول `products` + `product_addons` في Supabase.
 abstract final class SupabaseProductService {
@@ -197,6 +198,7 @@ abstract final class SupabaseProductService {
       );
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'fetchProducts');
       rethrow;
     }
   }
@@ -297,6 +299,12 @@ abstract final class SupabaseProductService {
             debugPrint(
               '[SupabaseProductService] $streamTag error: $error\n$stackTrace',
             );
+            reportSupabaseError(
+              error,
+              stackTrace,
+              operation: streamTag,
+              showSnackBar: false,
+            );
             if (closed) return;
             await subscription?.cancel();
             subscription = null;
@@ -365,6 +373,7 @@ abstract final class SupabaseProductService {
       return enriched.isEmpty ? product : enriched.first;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProductById فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'fetchProductById');
       rethrow;
     }
   }
@@ -535,6 +544,7 @@ abstract final class SupabaseProductService {
       return savedId;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] saveProduct فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'saveProduct');
       rethrow;
     }
   }
@@ -572,6 +582,7 @@ abstract final class SupabaseProductService {
       debugPrint('[SupabaseProductService] تم حذف المنتج: $id');
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] deleteProduct فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'deleteProduct');
       rethrow;
     }
   }

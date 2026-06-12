@@ -26,9 +26,33 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
 
   String? _busyBannerId;
   bool _addingBanner = false;
+  Stream<List<PromoBannerModel>>? _bannersStream;
+  String? _streamRestaurantId;
 
   /// حالة مؤكدة بعد نجاح Supabase — حتى يتزامن البث.
   final Map<String, bool> _confirmedActive = {};
+
+  Stream<List<PromoBannerModel>> _bannersStreamFor({
+    required String restaurantId,
+    required String slug,
+  }) {
+    if (_streamRestaurantId == restaurantId && _bannersStream != null) {
+      return _bannersStream!;
+    }
+    _streamRestaurantId = restaurantId;
+    _bannersStream = _repository.watchAllBanners(
+      restaurantId: restaurantId,
+      slug: slug,
+    );
+    return _bannersStream!;
+  }
+
+  @override
+  void dispose() {
+    _bannersStream = null;
+    _streamRestaurantId = null;
+    super.dispose();
+  }
 
   Future<void> _confirmDelete(PromoBannerModel banner) async {
     if (_busyBannerId != null) return;
@@ -281,7 +305,7 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
           }
 
           return StreamBuilder<List<PromoBannerModel>>(
-            stream: _repository.watchAllBanners(
+            stream: _bannersStreamFor(
               restaurantId: restaurant.id,
               slug: restaurant.slug,
             ),

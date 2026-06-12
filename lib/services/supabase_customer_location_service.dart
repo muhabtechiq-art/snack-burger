@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/customer_delivery_profile.dart';
 import '../models/saved_delivery_location_model.dart';
+import 'supabase_error_reporter.dart';
 
 /// أسماء دوال RPC — لا تستخدم `.from('profiles')` لموقع الزبون.
 abstract final class CustomerLocationRpc {
@@ -62,6 +63,7 @@ abstract final class SupabaseCustomerLocationService {
       return await action();
     } catch (e, stack) {
       _log(method, 'failed', error: e, stack: stack);
+      reportSupabaseError(e, stack, operation: method);
       return null;
     }
   }
@@ -78,6 +80,7 @@ abstract final class SupabaseCustomerLocationService {
       }
     } catch (e, stack) {
       _log(method, 'failed', error: e, stack: stack);
+      reportSupabaseError(e, stack, operation: method);
     }
   }
 
