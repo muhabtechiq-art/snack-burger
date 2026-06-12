@@ -16,6 +16,9 @@ abstract final class SupabaseProductService {
 
   static const String defaultRestaurantId = 'snack_burger';
 
+  static const Duration _streamReconnectBaseDelay = Duration(seconds: 1);
+  static const Duration _streamReconnectMaxDelay = Duration(seconds: 20);
+
   /// استعلام منتجات مع join للإضافات والأحجام (PostgREST embed).
   static const String _selectWithRelations =
       '*, $addonsTableName(*), $variantsTableName(*)';
@@ -227,14 +230,100 @@ abstract final class SupabaseProductService {
   static Stream<List<ProductModel>> watchProducts({
     String? restaurantId,
   }) {
+    return _resilientProductsStream(
+      restaurantId: restaurantId,
+      streamTag: 'watchProducts(restaurantId=$restaurantId)',
+    );
+  }
+
+  static Stream<List<ProductModel>> _productsSourceStream({
+    required String? restaurantId,
+  }) {
     return _client
         .from(tableName)
         .stream(primaryKey: const ['id'])
         .asyncMap((rows) async {
           final products = _parseAndFilter(rows, restaurantId);
           return _enrichProductsWithRelations(products);
-        })
-        .asBroadcastStream();
+        });
+  }
+
+  /// اشتراك Realtime مع إلغاء آمن وإعادة اتصال عند انقطاع WebSocket (مثلاً 1006).
+  static Stream<List<ProductModel>> _resilientProductsStream({
+    required String? restaurantId,
+    required String streamTag,
+  }) {
+    return Stream<List<ProductModel>>.multi((controller) {
+      StreamSubscription<List<ProductModel>>? subscription;
+      bool closed = false;
+      int reconnectAttempt = 0;
+      DateTime lastDataAt = DateTime.now();
+      late Future<void> Function() subscribe;
+
+      Duration reconnectDelayForAttempt(int attempt) {
+        final seconds = 1 << (attempt - 1).clamp(0, 4);
+        final delay = Duration(seconds: seconds);
+        if (delay > _streamReconnectMaxDelay) return _streamReconnectMaxDelay;
+        if (delay < _streamReconnectBaseDelay) return _streamReconnectBaseDelay;
+        return delay;
+      }
+
+      Future<void> scheduleReconnect(String reason, {Object? error}) async {
+        reconnectAttempt += 1;
+        final delay = reconnectDelayForAttempt(reconnectAttempt);
+        debugPrint(
+          '[SupabaseProductService] $streamTag reconnect ($reason) '
+          'attempt=$reconnectAttempt delay=${delay.inMilliseconds}ms'
+          '${error != null ? ' error=$error' : ''}',
+        );
+        await Future<void>.delayed(delay);
+        if (!closed) {
+          unawaited(subscribe());
+        }
+      }
+
+      subscribe = () async {
+        if (closed) return;
+        await subscription?.cancel();
+        subscription = null;
+        subscription = _productsSourceStream(restaurantId: restaurantId).listen(
+          (products) {
+            if (closed) return;
+            reconnectAttempt = 0;
+            lastDataAt = DateTime.now();
+            controller.add(products);
+          },
+          onError: (Object error, StackTrace stackTrace) async {
+            debugPrint(
+              '[SupabaseProductService] $streamTag error: $error\n$stackTrace',
+            );
+            if (closed) return;
+            await subscription?.cancel();
+            subscription = null;
+            await scheduleReconnect('on_error', error: error);
+          },
+          onDone: () async {
+            if (closed) return;
+            final idleFor = DateTime.now().difference(lastDataAt);
+            if (idleFor > const Duration(seconds: 30)) {
+              debugPrint('[SupabaseProductService] $streamTag idle before close');
+            }
+            await subscription?.cancel();
+            subscription = null;
+            await scheduleReconnect('on_done');
+          },
+          cancelOnError: false,
+        );
+      };
+
+      unawaited(subscribe());
+
+      controller.onCancel = () async {
+        closed = true;
+        await subscription?.cancel();
+        subscription = null;
+      };
+    });
   }
 
   static Future<List<String>> fetchDistinctCategories({

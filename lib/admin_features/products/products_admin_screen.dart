@@ -21,6 +21,23 @@ class ProductsAdminScreen extends StatefulWidget {
 class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
   final AdminProductRepository _productRepository = AdminProductRepository();
   String? _deletingProductId;
+  Stream<List<ProductModel>>? _productsStream;
+  String? _streamRestaurantId;
+
+  Stream<List<ProductModel>> _productsStreamFor({
+    required String restaurantId,
+    required String slug,
+  }) {
+    if (_streamRestaurantId == restaurantId && _productsStream != null) {
+      return _productsStream!;
+    }
+    _streamRestaurantId = restaurantId;
+    _productsStream = _productRepository.watchProducts(
+      restaurantId: restaurantId,
+      slug: slug,
+    );
+    return _productsStream!;
+  }
 
   Future<void> _confirmDeleteProduct(ProductModel product) async {
     if (_deletingProductId != null) return;
@@ -98,7 +115,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
           }
 
           return StreamBuilder<List<ProductModel>>(
-              stream: _productRepository.watchProducts(
+              stream: _productsStreamFor(
                 restaurantId: restaurant.id,
                 slug: restaurant.slug,
               ),
