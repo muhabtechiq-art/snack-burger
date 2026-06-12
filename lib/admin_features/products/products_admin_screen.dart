@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,7 @@ import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import 'products_admin_controller.dart';
 
 /// صفحة إدارة المنتجات — استعراض وتعديل الأسعار.
 class ProductsAdminScreen extends StatefulWidget {
@@ -18,32 +21,77 @@ class ProductsAdminScreen extends StatefulWidget {
   State<ProductsAdminScreen> createState() => _ProductsAdminScreenState();
 }
 
-class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
+class _ProductsAdminScreenState extends State<ProductsAdminScreen>
+    with WidgetsBindingObserver {
   final AdminProductRepository _productRepository = AdminProductRepository();
-  String? _deletingProductId;
-  Stream<List<ProductModel>>? _productsStream;
-  String? _streamRestaurantId;
+  late final ProductsAdminController _productsController;
 
-  Stream<List<ProductModel>> _productsStreamFor({
+  String? _deletingProductId;
+  String? _boundRestaurantKey;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _productsController = ProductsAdminController(
+      repository: _productRepository,
+      onRealtimeDegraded: _showRealtimeDegradedToast,
+    );
+    _productsController.addListener(_onProductsControllerChanged);
+  }
+
+  void _onProductsControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _showRealtimeDegradedToast() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'تم تحميل البيانات، المزامنة المباشرة ستعود تلقائياً',
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+        backgroundColor: AdminPanelColors.charcoalLight,
+      ),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _productsController.handleLifecycleState(state);
+  }
+
+  void _bindProductsIfNeeded({
     required String restaurantId,
     required String slug,
   }) {
-    if (_streamRestaurantId == restaurantId && _productsStream != null) {
-      return _productsStream!;
-    }
-    _streamRestaurantId = restaurantId;
-    _productsStream = _productRepository.watchProducts(
-      restaurantId: restaurantId,
-      slug: slug,
-    );
-    return _productsStream!;
+    final key = '$restaurantId|$slug';
+    if (_boundRestaurantKey == key) return;
+    _boundRestaurantKey = key;
+    unawaited(_productsController.bind(restaurantId: restaurantId, slug: slug));
   }
 
   @override
   void dispose() {
-    _productsStream = null;
-    _streamRestaurantId = null;
+    WidgetsBinding.instance.removeObserver(this);
+    _productsController.removeListener(_onProductsControllerChanged);
+    _productsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openNewProduct(BuildContext context) async {
+    await context.push('/${widget.slug}/admin/products/new');
+    if (!mounted) return;
+    await _productsController.loadProducts();
+  }
+
+  Future<void> _openEditProduct(BuildContext context, String productId) async {
+    await context.push('/${widget.slug}/admin/products/$productId/edit');
+    if (!mounted) return;
+    await _productsController.loadProducts();
   }
 
   Future<void> _confirmDeleteProduct(ProductModel product) async {
@@ -80,6 +128,8 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
     try {
       await _productRepository.deleteProduct(productId: product.id);
       if (!mounted) return;
+      await _productsController.loadProducts();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم حذف «${product.name}»')),
       );
@@ -103,7 +153,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
       slug: widget.slug,
       title: 'إدارة المنتجات',
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/${widget.slug}/admin/products/new'),
+        onPressed: () => _openNewProduct(context),
         backgroundColor: AdminPanelColors.gold,
         foregroundColor: AdminPanelColors.charcoal,
         icon: const Icon(Icons.add_rounded),
@@ -121,121 +171,106 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen> {
             );
           }
 
-          return StreamBuilder<List<ProductModel>>(
-              stream: _productsStreamFor(
-                restaurantId: restaurant.id,
-                slug: restaurant.slug,
+          _bindProductsIfNeeded(
+            restaurantId: restaurant.id,
+            slug: restaurant.slug,
+          );
+
+          if (_productsController.loading && !_productsController.hasProducts) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: AdminPanelColors.gold,
               ),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    !snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: AdminPanelColors.gold,
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'تعذّر التحميل: ${snapshot.error}',
-                      style: const TextStyle(color: AdminPanelColors.textMuted),
-                    ),
-                  );
-                }
-
-                final products = snapshot.data ?? const [];
-                if (products.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'لا توجد منتجات — أضف وجبة جديدة',
-                      style: TextStyle(
-                        color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
-                        fontSize: 16,
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                  itemCount: products.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    final isDeleting = _deletingProductId == product.id;
-
-                    return ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(
-                          color: AdminPanelColors.gold.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      tileColor: AdminPanelColors.charcoalLight,
-                      title: Text(
-                        product.name,
-                        style: const TextStyle(
-                          color: AdminPanelColors.textLight,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      subtitle: Text(
-                        product.category.isNotEmpty
-                            ? product.category
-                            : 'بدون تصنيف',
-                        style: const TextStyle(color: AdminPanelColors.textMuted),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${product.price.toStringAsFixed(0)} د.ع',
-                            style: const TextStyle(
-                              color: AdminPanelColors.gold,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit_rounded,
-                              color: AdminPanelColors.gold,
-                            ),
-                            tooltip: 'تعديل',
-                            onPressed: isDeleting
-                                ? null
-                                : () => context.push(
-                                      '/${widget.slug}/admin/products/${product.id}/edit',
-                                    ),
-                          ),
-                          IconButton(
-                            icon: isDeleting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.redAccent,
-                                    ),
-                                  )
-                                : Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: Colors.red.shade400,
-                                  ),
-                            tooltip: 'حذف',
-                            onPressed: isDeleting
-                                ? null
-                                : () => _confirmDeleteProduct(product),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
             );
+          }
+
+          final products = _productsController.products;
+          if (products.isEmpty) {
+            return Center(
+              child: Text(
+                'لا توجد منتجات — أضف وجبة جديدة',
+                style: TextStyle(
+                  color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
+                  fontSize: 16,
+                ),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            itemCount: products.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              final isDeleting = _deletingProductId == product.id;
+
+              return ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: AdminPanelColors.gold.withValues(alpha: 0.2),
+                  ),
+                ),
+                tileColor: AdminPanelColors.charcoalLight,
+                title: Text(
+                  product.name,
+                  style: const TextStyle(
+                    color: AdminPanelColors.textLight,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                subtitle: Text(
+                  product.category.isNotEmpty
+                      ? product.category
+                      : 'بدون تصنيف',
+                  style: const TextStyle(color: AdminPanelColors.textMuted),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${product.price.toStringAsFixed(0)} د.ع',
+                      style: const TextStyle(
+                        color: AdminPanelColors.gold,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.edit_rounded,
+                        color: AdminPanelColors.gold,
+                      ),
+                      tooltip: 'تعديل',
+                      onPressed: isDeleting
+                          ? null
+                          : () => _openEditProduct(context, product.id),
+                    ),
+                    IconButton(
+                      icon: isDeleting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.redAccent,
+                              ),
+                            )
+                          : Icon(
+                              Icons.delete_outline_rounded,
+                              color: Colors.red.shade400,
+                            ),
+                      tooltip: 'حذف',
+                      onPressed: isDeleting
+                          ? null
+                          : () => _confirmDeleteProduct(product),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
         },
       ),
     );

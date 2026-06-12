@@ -17,6 +17,9 @@ abstract final class AppErrorHandler {
     String? operation,
     bool showSnackBar = true,
   }) {
+    if (error is RealtimeSubscribeException) {
+      showSnackBar = false;
+    }
     AppTelemetry.logError(
       'app_error',
       error: error,

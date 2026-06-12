@@ -141,6 +141,17 @@ class AdminProductRepository {
     return delegate(restaurantId: restaurantId, slug: slug);
   }
 
+  Future<List<ProductModel>> fetchProducts({
+    required String restaurantId,
+    required String slug,
+  }) {
+    return _delegateScoped(
+      restaurantId: restaurantId,
+      slug: slug,
+      delegate: _productRepository.fetchProductsForRestaurant,
+    );
+  }
+
   Stream<List<ProductModel>> watchProducts({
     required String restaurantId,
     required String slug,

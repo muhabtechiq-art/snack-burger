@@ -142,7 +142,6 @@ class DeliveryOrder {
     final missing = ModelParseValidation.collectMissing(
       data,
       const {
-        'restaurant_id': ['restaurant_id', 'restaurantId'],
         'customer_name': ['customer_name', 'customerName'],
         'phone_number': ['phone_number', 'customerPhone'],
         'address': ['address'],
@@ -151,6 +150,14 @@ class DeliveryOrder {
         'order_items': ['order_items', 'items'],
       },
     );
+    final hasRestaurantScope = ModelParseValidation.hasAnyValue(data, [
+          'restaurant_id',
+          'restaurantId',
+          'slug',
+        ]);
+    if (!hasRestaurantScope) {
+      missing.insert(0, 'restaurant_id_or_slug');
+    }
     if (ModelParseValidation.isMissing(id) &&
         ModelParseValidation.isMissing(data['id'])) {
       missing.insert(0, 'id');
