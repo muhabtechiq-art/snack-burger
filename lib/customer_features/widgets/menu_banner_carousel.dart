@@ -44,7 +44,10 @@ class MenuBannerCarousel extends StatelessWidget {
         ),
         itemBuilder: (context, index, _) {
           final banner = banners[index];
-          return _BannerSlide(banner: banner);
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _BannerSlide(banner: banner),
+          );
         },
       ),
     );
@@ -61,8 +64,8 @@ class _BannerSlide extends StatefulWidget {
 }
 
 class _BannerSlideState extends State<_BannerSlide> {
-  static const int _decodeWidth = 720;
-  static const int _decodeHeight = 400;
+  static const int _decodeWidth = 640;
+  static const int _decodeHeight = 240;
 
   bool _useOriginalUrl = false;
 
@@ -136,11 +139,11 @@ class _BannerSlideState extends State<_BannerSlide> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withValues(alpha: 0.55),
-                Colors.black.withValues(alpha: 0.08),
-                Colors.black.withValues(alpha: 0.42),
+                Colors.black.withValues(alpha: 0.35),
+                Colors.black.withValues(alpha: 0.04),
+                Colors.black.withValues(alpha: 0.5),
               ],
-              stops: const [0.0, 0.45, 1.0],
+              stops: const [0.0, 0.5, 1.0],
             ),
           ),
         ),
@@ -148,7 +151,7 @@ class _BannerSlideState extends State<_BannerSlide> {
           Align(
             alignment: Alignment.bottomRight,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 36),
               child: Text(
                 widget.banner.title,
                 textAlign: TextAlign.right,
@@ -156,7 +159,7 @@ class _BannerSlideState extends State<_BannerSlide> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFFFFD700),
-                  fontSize: 18,
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
                   shadows: [
                     Shadow(

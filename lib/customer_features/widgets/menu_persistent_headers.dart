@@ -5,13 +5,22 @@ import 'menu_category_bar.dart';
 
 /// ثوابت ارتفاع رؤوس المنيو المثبتة.
 abstract final class MenuHeaderMetrics {
-  static const double bannerExpandedHeight = 296;
+  static const double bannerExpandedHeightMobile = 160;
+  static const double bannerExpandedHeightDesktop = 220;
+  static const double bannerWidthBreakpoint = 600;
   static const double bannerToolbarHeight = 48;
   static const double searchHeight = 72;
   static const double categoriesHeight = 64;
 
-  static double collapseProgress(double scrollOffset) {
-    const collapseDistance = bannerExpandedHeight - bannerToolbarHeight;
+  static double bannerExpandedHeightFor(double viewportWidth) {
+    if (viewportWidth < bannerWidthBreakpoint) {
+      return bannerExpandedHeightMobile;
+    }
+    return bannerExpandedHeightDesktop;
+  }
+
+  static double collapseProgress(double scrollOffset, double bannerHeight) {
+    final collapseDistance = bannerHeight - bannerToolbarHeight;
     if (collapseDistance <= 0) return 1;
     return (scrollOffset / collapseDistance).clamp(0.0, 1.0);
   }
