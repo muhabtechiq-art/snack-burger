@@ -22,7 +22,7 @@ abstract final class AppErrorHandler {
       error: error,
       stackTrace: stackTrace,
       fields: <String, Object?>{
-        ?'operation': operation,
+        if (operation != null) 'operation': operation,
       },
     );
     debugPrint(

@@ -1,5 +1,7 @@
 import 'product_model.dart' show parseModelDate;
 
+import '../core/utils/model_parse_validation.dart';
+
 /// بانر ترويجي في المنيو — صف من جدول `banners`.
 class PromoBannerModel {
   const PromoBannerModel({
@@ -61,6 +63,7 @@ class PromoBannerModel {
   }
 
   static PromoBannerModel fromSupabase(Map<String, dynamic> data) {
+    _validateMandatoryFields(data);
     return PromoBannerModel(
       id: data['id']?.toString() ?? '',
       restaurantId: (data['restaurant_id'] ?? data['restaurantId'] ?? '')
@@ -71,6 +74,23 @@ class PromoBannerModel {
       isActive: _readBool(data['is_active'] ?? data['isActive']),
       sortOrder: _readInt(data['sort_order'] ?? data['sortOrder']),
       createdAt: parseModelDate(data['created_at'] ?? data['createdAt']),
+    );
+  }
+
+  static void _validateMandatoryFields(Map<String, dynamic> data) {
+    ModelParseValidation.warnMissingFields(
+      modelName: 'PromoBannerModel',
+      source: data,
+      missingFields: ModelParseValidation.collectMissing(
+        data,
+        const {
+          'id': ['id'],
+          'restaurant_id': ['restaurant_id', 'restaurantId'],
+          'image_url': ['image_url', 'imageUrl'],
+          'title': ['title'],
+          'created_at': ['created_at', 'createdAt'],
+        },
+      ),
     );
   }
 

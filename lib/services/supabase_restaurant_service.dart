@@ -27,11 +27,14 @@ abstract final class SupabaseRestaurantService {
 
       if (row == null) {
         debugPrint(
-          '[SupabaseRestaurantService] لا صف لـ slug=$normalized في $tableName',
+          '[SupabaseRestaurantService] fetchBySlug($normalized): 0 سجل',
         );
         return null;
       }
 
+      debugPrint(
+        '[SupabaseRestaurantService] fetchBySlug($normalized): 1 سجل',
+      );
       return RestaurantModel.fromMap(Map<String, dynamic>.from(row));
     } on PostgrestException catch (e, stack) {
       debugPrint(

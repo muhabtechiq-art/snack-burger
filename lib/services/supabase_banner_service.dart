@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/utils/model_parse_validation.dart';
 import '../models/promo_banner_model.dart';
 import 'supabase_error_reporter.dart';
 
@@ -21,14 +22,20 @@ abstract final class SupabaseBannerService {
   static List<PromoBannerModel> _parseRows(List<dynamic> rows) {
     final banners = <PromoBannerModel>[];
     for (final row in rows) {
+      final map = Map<String, dynamic>.from(row as Map);
       try {
-        banners.add(
-          PromoBannerModel.fromSupabase(Map<String, dynamic>.from(row)),
-        );
+        banners.add(PromoBannerModel.fromSupabase(map));
       } catch (e, st) {
-        debugPrint('[SupabaseBannerService] تخطي صف بانر: $e\n$st');
+        debugPrint(
+          '[SupabaseBannerService] تخطي صف بانر '
+          'id=${ModelParseValidation.recordIdFromMap(map)}: $e\n$st',
+        );
       }
     }
+    debugPrint(
+      '[SupabaseBannerService] _parseRows: ${rows.length} صف خام → '
+      '${banners.length} بانر',
+    );
     banners.sort((a, b) {
       final order = a.sortOrder.compareTo(b.sortOrder);
       if (order != 0) return order;
@@ -53,7 +60,7 @@ abstract final class SupabaseBannerService {
       final banners = _parseRows(rows as List);
       debugPrint(
         '[SupabaseBannerService] fetchActiveBanners($normalized): '
-        '${banners.length} بانر',
+        '${banners.length} بانر (${(rows as List).length} صف من Supabase)',
       );
       return banners;
     } catch (e, stack) {
@@ -222,7 +229,12 @@ abstract final class SupabaseBannerService {
         .order('sort_order', ascending: true)
         .order('created_at', ascending: false);
 
-    return _parseRows(rows as List);
+    final banners = _parseRows(rows as List);
+    debugPrint(
+      '[SupabaseBannerService] fetchAllBanners($normalized): '
+      '${banners.length} بانر',
+    );
+    return banners;
   }
 
   static bool _readIsActive(dynamic value) {

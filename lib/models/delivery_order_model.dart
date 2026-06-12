@@ -1,5 +1,6 @@
 import '../core/config/location_feature_flags.dart';
 import '../core/utils/delivery_coordinates.dart';
+import '../core/utils/model_parse_validation.dart';
 import 'delivery_order_status.dart';
 import 'order_model.dart';
 import 'product_model.dart' show parseModelDate;
@@ -80,6 +81,7 @@ class DeliveryOrder {
     Map<String, dynamic> data, {
     required String id,
   }) {
+    _validateMandatoryFields(data, id: id);
     final rawItems = data['order_items'] ?? data['items'];
     final items = <CartItem>[];
     if (rawItems is List) {
@@ -130,6 +132,33 @@ class DeliveryOrder {
       rejectionReason: _readNullableString(
         data['rejection_reason'] ?? data['rejectionReason'],
       ),
+    );
+  }
+
+  static void _validateMandatoryFields(
+    Map<String, dynamic> data, {
+    required String id,
+  }) {
+    final missing = ModelParseValidation.collectMissing(
+      data,
+      const {
+        'restaurant_id': ['restaurant_id', 'restaurantId'],
+        'customer_name': ['customer_name', 'customerName'],
+        'phone_number': ['phone_number', 'customerPhone'],
+        'address': ['address'],
+        'status': ['status'],
+        'created_at': ['created_at', 'createdAt'],
+        'order_items': ['order_items', 'items'],
+      },
+    );
+    if (ModelParseValidation.isMissing(id) &&
+        ModelParseValidation.isMissing(data['id'])) {
+      missing.insert(0, 'id');
+    }
+    ModelParseValidation.warnMissingFields(
+      modelName: 'DeliveryOrder',
+      source: data,
+      missingFields: missing,
     );
   }
 }

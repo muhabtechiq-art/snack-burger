@@ -7,6 +7,7 @@ import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/config/rejected_orders_config.dart';
 import '../core/observability/app_telemetry.dart';
+import '../core/utils/model_parse_validation.dart';
 import '../core/utils/iraqi_phone_validator.dart';
 import '../core/config/restaurant_ids.dart';
 import '../core/config/stability_phase1_flags.dart';
@@ -532,11 +533,15 @@ abstract final class SupabaseOrderService {
     try {
       return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
     } catch (e, st) {
-      if (rowIdForLog != null) {
-        debugPrint(
-          '[SupabaseOrderService] تخطي صف طلب $rowIdForLog: $e\n$st',
-        );
-      }
+      final rowId = rowIdForLog ??
+          (row is Map
+              ? ModelParseValidation.recordIdFromMap(
+                  Map<String, dynamic>.from(row),
+                )
+              : '(unknown)');
+      debugPrint(
+        '[SupabaseOrderService] تخطي صف طلب id=$rowId: $e\n$st',
+      );
       return null;
     }
   }
@@ -560,6 +565,10 @@ abstract final class SupabaseOrderService {
     if (compare != null) {
       orders.sort(compare);
     }
+    debugPrint(
+      '[SupabaseOrderService] _mapRowsToOrders: ${rows.length} صف خام → '
+      '${orders.length} طلب',
+    );
     return orders;
   }
 

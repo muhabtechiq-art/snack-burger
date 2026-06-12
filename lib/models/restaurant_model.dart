@@ -1,4 +1,5 @@
 import '../core/theme/tenant_palette.dart';
+import '../core/utils/model_parse_validation.dart';
 
 /// بيانات المطعم (مستأجر / جدول Supabase: `restaurants`).
 class RestaurantModel {
@@ -55,6 +56,7 @@ class RestaurantModel {
   }
 
   factory RestaurantModel.fromMap(Map<String, dynamic> map) {
+    _validateMandatoryFields(map);
     final slug = (map['slug'] ?? map['username'] ?? '') as String;
     return RestaurantModel(
       id: map['id']?.toString() ?? '',
@@ -95,6 +97,37 @@ class RestaurantModel {
           readStringField(map, ['orderRoutingMode', 'order_routing_mode']) ??
               'whatsapp',
       isActive: map['isActive'] as bool? ?? map['is_active'] as bool? ?? true,
+    );
+  }
+
+  static void _validateMandatoryFields(Map<String, dynamic> map) {
+    final missing = ModelParseValidation.collectMissing(
+      map,
+      const {
+        'id': ['id'],
+        'slug': ['slug', 'username'],
+        'name': ['name'],
+      },
+    );
+    if (!ModelParseValidation.hasAnyValue(map, [
+      'primaryColor',
+      'primary_color',
+      'primaryColorHex',
+    ])) {
+      missing.add('primary_color');
+    }
+    if (!ModelParseValidation.hasAnyValue(map, [
+      'accentColor',
+      'accent_color',
+      'accentColorHex',
+      'secondaryColor',
+    ])) {
+      missing.add('accent_color');
+    }
+    ModelParseValidation.warnMissingFields(
+      modelName: 'RestaurantModel',
+      source: map,
+      missingFields: missing,
     );
   }
 

@@ -1,4 +1,5 @@
 import '../core/theme/tenant_palette.dart';
+import '../core/utils/model_parse_validation.dart';
 
 /// منتج مرتبط دائماً بمطعم واحد (`restaurantId`).
 class ProductModel {
@@ -69,6 +70,7 @@ class ProductModel {
   }
 
   factory ProductModel.fromMap(Map<String, dynamic> map) {
+    _validateMandatoryFields(map);
     return ProductModel(
       id: map['id'] as String? ?? '',
       restaurantId: (map['restaurantId'] ?? map['restaurant_id'] ?? '') as String? ?? '',
@@ -88,7 +90,23 @@ class ProductModel {
         map['variants'] ?? map['product_variants'],
       ),
       isAvailable: map['isAvailable'] as bool? ?? true,
-      createdAt: parseModelDate(map['createdAt']),
+      createdAt: parseModelDate(map['createdAt'] ?? map['created_at']),
+    );
+  }
+
+  static void _validateMandatoryFields(Map<String, dynamic> map) {
+    ModelParseValidation.warnMissingFields(
+      modelName: 'ProductModel',
+      source: map,
+      missingFields: ModelParseValidation.collectMissing(
+        map,
+        const {
+          'id': ['id'],
+          'name': ['name', 'title', 'productName'],
+          'restaurant_id': ['restaurantId', 'restaurant_id'],
+          'created_at': ['createdAt', 'created_at'],
+        },
+      ),
     );
   }
 }

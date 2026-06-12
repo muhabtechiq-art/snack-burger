@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/utils/model_parse_validation.dart';
 import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
 import 'supabase_error_reporter.dart';
@@ -192,10 +193,15 @@ abstract final class SupabaseProductService {
       debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
       final fetchResult = await _fetchProductRowsWithRelations();
       final products = _parseAndFilter(fetchResult.rows, restaurantId);
-      return _enrichProductsWithRelations(
+      final enriched = await _enrichProductsWithRelations(
         products,
         relationsEmbedded: fetchResult.relationsEmbedded,
       );
+      debugPrint(
+        '[SupabaseProductService] fetchProducts: ${enriched.length} منتج '
+        '(restaurantId=$restaurantId)',
+      );
+      return enriched;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
       reportSupabaseError(e, stack, operation: 'fetchProducts');
@@ -364,12 +370,27 @@ abstract final class SupabaseProductService {
               return null;
             },
           );
-      if (row == null) return null;
+      if (row == null) {
+        debugPrint(
+          '[SupabaseProductService] fetchProductById($productId): 0 سجل',
+        );
+        return null;
+      }
 
       final product = _mapRowToProduct(Map<String, dynamic>.from(row));
-      if (product == null) return null;
+      if (product == null) {
+        debugPrint(
+          '[SupabaseProductService] fetchProductById($productId): '
+          '1 سجل — فشل التحليل',
+        );
+        return null;
+      }
 
       final enriched = await _enrichProductsWithRelations([product]);
+      debugPrint(
+        '[SupabaseProductService] fetchProductById($productId): '
+        '${enriched.isEmpty ? 1 : enriched.length} منتج',
+      );
       return enriched.isEmpty ? product : enriched.first;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProductById فشل: $e\n$stack');
@@ -1047,16 +1068,19 @@ abstract final class SupabaseProductService {
     String? restaurantId,
   ) {
     final rawRows = (rows as List<dynamic>).cast<Map<String, dynamic>>();
-    debugPrint('[SupabaseProductService] ${rawRows.length} صفاً من Supabase');
 
     final products = rawRows
         .map(_mapRowToProduct)
         .whereType<ProductModel>()
         .toList(growable: false);
 
-    return List<ProductModel>.unmodifiable(
-      _filterByRestaurant(products, restaurantId),
+    final filtered = _filterByRestaurant(products, restaurantId);
+    debugPrint(
+      '[SupabaseProductService] _parseAndFilter: ${rawRows.length} صف خام → '
+      '${products.length} منتج صالح → ${filtered.length} بعد فلترة المطعم',
     );
+
+    return List<ProductModel>.unmodifiable(filtered);
   }
 
   static List<ProductModel> _filterByRestaurant(
@@ -1071,6 +1095,20 @@ abstract final class SupabaseProductService {
 
   static ProductModel? _mapRowToProduct(Map<String, dynamic> row) {
     final normalized = Map<String, dynamic>.from(row);
+
+    ModelParseValidation.warnMissingFields(
+      modelName: 'ProductModel',
+      source: normalized,
+      missingFields: ModelParseValidation.collectMissing(
+        normalized,
+        const {
+          'id': ['id'],
+          'name': ['name', 'title', 'productName'],
+          'restaurant_id': ['restaurant_id', 'restaurantId'],
+          'created_at': ['created_at', 'createdAt'],
+        },
+      ),
+    );
 
     final id = _asString(normalized['id']);
     final name = _asString(normalized['name']);
