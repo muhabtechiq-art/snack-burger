@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/network/network_timeout.dart';
 import '../core/utils/model_parse_validation.dart';
 import '../models/promo_banner_model.dart';
 import 'supabase_error_reporter.dart';
@@ -49,20 +50,22 @@ abstract final class SupabaseBannerService {
   }) async {
     final normalized = restaurantId.trim().toLowerCase();
     try {
-      final rows = await _client
-          .from(tableName)
-          .select()
-          .eq('restaurant_id', normalized)
-          .eq('is_active', true)
-          .order('sort_order', ascending: true)
-          .order('created_at', ascending: false);
+      return await NetworkTimeouts.run(() async {
+        final rows = await _client
+            .from(tableName)
+            .select()
+            .eq('restaurant_id', normalized)
+            .eq('is_active', true)
+            .order('sort_order', ascending: true)
+            .order('created_at', ascending: false);
 
-      final banners = _parseRows(rows as List);
-      debugPrint(
-        '[SupabaseBannerService] fetchActiveBanners($normalized): '
-        '${banners.length} بانر (${(rows as List).length} صف من Supabase)',
-      );
-      return banners;
+        final banners = _parseRows(rows as List);
+        debugPrint(
+          '[SupabaseBannerService] fetchActiveBanners($normalized): '
+          '${banners.length} بانر (${(rows as List).length} صف من Supabase)',
+        );
+        return banners;
+      });
     } catch (e, stack) {
       debugPrint('[SupabaseBannerService] fetchActiveBanners فشل: $e\n$stack');
       reportSupabaseError(e, stack, operation: 'fetchActiveBanners');

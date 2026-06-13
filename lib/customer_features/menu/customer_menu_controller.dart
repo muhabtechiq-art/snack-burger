@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/cache/menu_catalog_cache.dart';
+import '../../core/network/network_timeout.dart';
 import '../../models/product_model.dart';
 import '../../services/product_repository.dart';
 import 'menu_mock_products.dart';
@@ -228,10 +230,46 @@ class CustomerMenuController extends ChangeNotifier {
 
     await _productsSubscription?.cancel();
     _productsSubscription = null;
-    _productsLoading = true;
     _streamError = null;
-    _initialLoadComplete = false;
-    if (!_disposed) notifyListeners();
+
+    final cached = await MenuCatalogCache.loadProducts(slug);
+    if (_disposed || generation != _bindGeneration) return;
+
+    if (cached != null && cached.isNotEmpty) {
+      _applyProducts(cached);
+      _productsLoading = false;
+      _initialLoadComplete = true;
+      notifyListeners();
+    } else {
+      _productsLoading = true;
+      _initialLoadComplete = false;
+      notifyListeners();
+    }
+
+    try {
+      final fetched = await _productRepository.fetchProductsForRestaurant(
+        restaurantId: restaurantId,
+        slug: slug,
+      );
+      if (_disposed || generation != _bindGeneration) return;
+      _applyProducts(fetched);
+      unawaited(MenuCatalogCache.saveProducts(slug, fetched));
+      _productsLoading = false;
+      _streamError = null;
+      _initialLoadComplete = true;
+      notifyListeners();
+    } catch (error, stack) {
+      debugPrint('CustomerMenuController fetch: $error\n$stack');
+      if (_disposed || generation != _bindGeneration) return;
+      if (!hasProducts) {
+        _streamError = error;
+      }
+      _productsLoading = false;
+      _initialLoadComplete = true;
+      notifyListeners();
+    }
+
+    if (_disposed || generation != _bindGeneration) return;
 
     _productsSubscription = _productRepository
         .watchProductsForRestaurant(
@@ -242,6 +280,7 @@ class CustomerMenuController extends ChangeNotifier {
       (List<ProductModel> items) {
         if (_disposed || generation != _bindGeneration) return;
         _applyProducts(items);
+        unawaited(MenuCatalogCache.saveProducts(slug, items));
         _productsLoading = false;
         _streamError = null;
         _initialLoadComplete = true;
@@ -337,7 +376,7 @@ class CustomerMenuController extends ChangeNotifier {
     if (error is AuthException) {
       return 'خطأ في مصادقة Supabase';
     }
-    if (error is TimeoutException) {
+    if (error is TimeoutException || error is NetworkTimeoutException) {
       return 'انتهت مهلة الاتصال. حاول مرة أخرى';
     }
     return 'تعذّر تحميل المنتجات';

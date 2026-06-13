@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../admin_features/orders/admin_order_notification_controller.dart';
+import '../../admin_features/orders/order_notification_player.dart';
 import '../../admin_features/shell/admin_panel_colors.dart';
 import '../../state/active_restaurant_notifier.dart';
 import 'auth_notifier.dart';
@@ -25,6 +26,14 @@ class AdminWrapper extends StatefulWidget {
 }
 
 class _AdminWrapperState extends State<AdminWrapper> {
+  bool _audioPrimed = false;
+
+  void _primeAudioOnUserGesture() {
+    if (_audioPrimed) return;
+    _audioPrimed = true;
+    unawaited(OrderNotificationPlayer.prepareOnUserGesture());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -107,7 +116,11 @@ class _AdminWrapperState extends State<AdminWrapper> {
       unawaited(_syncOrderSoundListener());
     });
 
-    return widget.child;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _primeAudioOnUserGesture(),
+      child: widget.child,
+    );
   }
 }
 

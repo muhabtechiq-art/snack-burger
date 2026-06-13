@@ -65,6 +65,17 @@ class AdminOrderRepository {
     );
   }
 
+  Future<List<DeliveryOrder>> fetchPendingOrdersCreatedAfter({
+    required String restaurantId,
+    required String slug,
+    required DateTime after,
+  }) {
+    return SupabaseOrderService.fetchPendingOrdersCreatedAfter(
+      slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
+      after: after,
+    );
+  }
+
   Stream<List<DeliveryOrder>> watchActiveOrders({
     required String restaurantId,
     required String slug,

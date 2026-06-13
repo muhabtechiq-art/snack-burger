@@ -8,8 +8,8 @@ import 'receipt_escpos_printer.dart';
 import 'thermal_printer_service.dart';
 
 /// طباعة الفاتورة — Windows: ESC/POS CP864 | غير ذلك: مسار قديم.
-Future<void> printOrderInvoice(DeliveryOrder order) async {
-  await safeExecuteVoid(
+Future<bool> printOrderInvoice(DeliveryOrder order) async {
+  return safeExecuteVoid(
     () async {
       if (kIsWeb) {
         throw UnsupportedError('استخدم مسار الويب لطباعة الفاتورة');

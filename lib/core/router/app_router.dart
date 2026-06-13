@@ -9,6 +9,7 @@ import '../../admin_features/products/product_form_controller.dart';
 import '../../admin_features/products/product_form_page.dart';
 import '../../admin_features/products/products_admin_screen.dart';
 import '../../admin_features/reports/end_of_day_report_screen.dart';
+import '../../admin_features/settings/about_system_screen.dart';
 import '../../admin_features/settings/printer_settings_page.dart';
 import '../../core/auth/admin_wrapper.dart';
 import '../../core/auth/auth_middleware.dart';
@@ -125,6 +126,19 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
             child: AdminWrapper(
               slug: slug,
               child: PrinterSettingsPage(slug: slug),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/:slug/admin/about',
+        name: 'about-system',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          return NoTransitionPage<void>(
+            child: AdminWrapper(
+              slug: slug,
+              child: AboutSystemScreen(slug: slug),
             ),
           );
         },

@@ -14,6 +14,7 @@ class AdminPageScaffold extends StatefulWidget {
     required this.slug,
     required this.title,
     required this.body,
+    this.titleIcon,
     this.actions,
     this.floatingActionButton,
   });
@@ -21,6 +22,7 @@ class AdminPageScaffold extends StatefulWidget {
   final String slug;
   final String title;
   final Widget body;
+  final IconData? titleIcon;
   final List<Widget>? actions;
   final Widget? floatingActionButton;
 
@@ -84,9 +86,21 @@ class _AdminPageScaffoldState extends State<AdminPageScaffold> {
                         onPressed: () => Scaffold.of(context).openDrawer(),
                       ),
                     ),
-              title: Text(
-                widget.title,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.titleIcon != null) ...[
+                    Icon(widget.titleIcon, size: 22),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
               actions: widget.actions,
             ),

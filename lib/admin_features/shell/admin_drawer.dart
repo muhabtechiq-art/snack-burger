@@ -158,14 +158,27 @@ class _AdminDrawerState extends State<AdminDrawer> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                  child: _AdminTile(
-                    icon: Icons.logout_rounded,
-                    title: 'تسجيل الخروج',
-                    subtitle: 'الخروج من لوحة الإدارة',
-                    onTap: () {
-                      Navigator.pop(context);
-                      unawaited(_signOut());
-                    },
+                  child: Column(
+                    children: [
+                      _AdminTile(
+                        icon: Icons.info_outline_rounded,
+                        title: 'حول النظام',
+                        subtitle: 'Snack Burger — أنظمة المهاب',
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.push('/${widget.slug}/admin/about');
+                        },
+                      ),
+                      _AdminTile(
+                        icon: Icons.logout_rounded,
+                        title: 'تسجيل الخروج',
+                        subtitle: 'الخروج من لوحة الإدارة',
+                        onTap: () {
+                          Navigator.pop(context);
+                          unawaited(_signOut());
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/config/rejected_orders_config.dart';
+import '../core/network/network_timeout.dart';
 import '../core/observability/app_telemetry.dart';
 import '../core/utils/model_parse_validation.dart';
 import '../core/utils/iraqi_phone_validator.dart';
@@ -153,11 +154,16 @@ abstract final class SupabaseOrderService {
     );
 
     try {
-      final row = await _client
-          .from(tableName)
-          .insert(payload)
-          .select('id')
-          .single();
+      final row = await NetworkTimeouts.run(
+        () => _client
+            .from(tableName)
+            .insert(payload)
+            .select('id')
+            .single(),
+        timeout: NetworkTimeouts.orderSubmit,
+        timeoutMessage:
+            'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى',
+      );
 
       final id = row['id']?.toString() ?? '';
       if (id.isEmpty) {
@@ -181,6 +187,44 @@ abstract final class SupabaseOrderService {
         fields: <String, Object?>{'slug': normalizedSlug},
       );
       reportSupabaseError(e, stack, operation: 'submitOrder');
+      rethrow;
+    }
+  }
+
+  /// جلب الطلبات المعلقة التي أُنشئت بعد وقت محدد — للـ polling الاحتياطي.
+  static Future<List<DeliveryOrder>> fetchPendingOrdersCreatedAfter({
+    required String slug,
+    required DateTime after,
+  }) async {
+    final normalized = _normalizeSlug(slug);
+    try {
+      return await NetworkTimeouts.run(() async {
+        final rows = await _client
+            .from(tableName)
+            .select()
+            .eq('status', DeliveryOrderStatus.pending)
+            .gte('created_at', after.toUtc().toIso8601String())
+            .order('created_at', ascending: false);
+
+        return _mapRowsToOrders(
+          rows: List<Map<String, dynamic>>.from(rows),
+          include: (order) =>
+              order.status == DeliveryOrderStatus.pending &&
+              _orderMatchesSlug(order, normalized),
+          compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+          logParseErrors: false,
+        );
+      });
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseOrderService] fetchPendingOrdersCreatedAfter فشل: $e\n$stack',
+      );
+      reportSupabaseError(
+        e,
+        stack,
+        operation: 'fetchPendingOrdersCreatedAfter',
+        showSnackBar: false,
+      );
       rethrow;
     }
   }
@@ -380,66 +424,68 @@ abstract final class SupabaseOrderService {
     final normalized = _normalizeSlug(slug);
 
     try {
-      final rows = await _client
-          .from(tableName)
-          .select()
-          .gte('created_at', dayStart.toUtc().toIso8601String())
-          .lt('created_at', dayEnd.toUtc().toIso8601String())
-          .order('created_at', ascending: false);
+      return await NetworkTimeouts.run(() async {
+        final rows = await _client
+            .from(tableName)
+            .select()
+            .gte('created_at', dayStart.toUtc().toIso8601String())
+            .lt('created_at', dayEnd.toUtc().toIso8601String())
+            .order('created_at', ascending: false);
 
-      final orders = _mapRowsToOrders(
-        rows: List<Map<String, dynamic>>.from(rows),
-        include: (order) =>
-            _closingCountableStatuses.contains(order.status) &&
-            _orderMatchesSlug(order, normalized),
-        logParseErrors: true,
-      );
+        final orders = _mapRowsToOrders(
+          rows: List<Map<String, dynamic>>.from(rows),
+          include: (order) =>
+              _closingCountableStatuses.contains(order.status) &&
+              _orderMatchesSlug(order, normalized),
+          logParseErrors: true,
+        );
 
-      var totalSales = 0.0;
-      final lineAggregates = <String, ClosingProductLine>{};
+        var totalSales = 0.0;
+        final lineAggregates = <String, ClosingProductLine>{};
 
-      for (final order in orders) {
-        totalSales += order.totalPrice;
-        for (final item in order.items) {
-          final name = item.printableName.trim();
-          if (name.isEmpty) continue;
+        for (final order in orders) {
+          totalSales += order.totalPrice;
+          for (final item in order.items) {
+            final name = item.printableName.trim();
+            if (name.isEmpty) continue;
 
-          final key = '$name|${item.unitPrice}';
-          final existing = lineAggregates[key];
-          if (existing == null) {
-            lineAggregates[key] = ClosingProductLine(
-              productName: name,
-              quantitySold: item.quantity,
-              unitPrice: item.unitPrice,
-            );
-          } else {
-            lineAggregates[key] = ClosingProductLine(
-              productName: name,
-              quantitySold: existing.quantitySold + item.quantity,
-              unitPrice: item.unitPrice,
-            );
+            final key = '$name|${item.unitPrice}';
+            final existing = lineAggregates[key];
+            if (existing == null) {
+              lineAggregates[key] = ClosingProductLine(
+                productName: name,
+                quantitySold: item.quantity,
+                unitPrice: item.unitPrice,
+              );
+            } else {
+              lineAggregates[key] = ClosingProductLine(
+                productName: name,
+                quantitySold: existing.quantitySold + item.quantity,
+                unitPrice: item.unitPrice,
+              );
+            }
           }
         }
-      }
 
-      final productLines = lineAggregates.values.toList()
-        ..sort((a, b) => a.productName.compareTo(b.productName));
+        final productLines = lineAggregates.values.toList()
+          ..sort((a, b) => a.productName.compareTo(b.productName));
 
-      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-      debugPrint(
-        '[SupabaseOrderService] تقرير إغلاق $dayStart — '
-        '${orders.length} طلب، $totalSales د.ع، '
-        '${productLines.length} منتج',
-      );
+        debugPrint(
+          '[SupabaseOrderService] تقرير إغلاق $dayStart — '
+          '${orders.length} طلب، $totalSales د.ع، '
+          '${productLines.length} منتج',
+        );
 
-      return EndOfDayReport(
-        reportDate: dayStart,
-        orderCount: orders.length,
-        totalSales: totalSales,
-        productLines: productLines,
-        orders: orders,
-      );
+        return EndOfDayReport(
+          reportDate: dayStart,
+          orderCount: orders.length,
+          totalSales: totalSales,
+          productLines: productLines,
+          orders: orders,
+        );
+      });
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] fetchTodayClosingReport فشل: $e\n$stack');
       reportSupabaseError(e, stack, operation: 'fetchTodayClosingReport');

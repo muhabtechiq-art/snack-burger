@@ -5,13 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/config/delivery_map_defaults.dart';
 import '../../../core/config/location_feature_flags.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../state/delivery_location_notifier.dart';
-
-/// مركز الخريطة قبل تحديد موقع — للعرض فقط ولا يُحفظ أبداً.
-const LatLng _mapViewportCenter = LatLng(20, 0);
-const double _mapViewportZoom = 3;
 
 /// خريطة تأكيدية — الإحداثيات النهائية من مكان الدبوس فقط.
 class DeliveryLocationMapDialog extends StatefulWidget {
@@ -20,24 +17,24 @@ class DeliveryLocationMapDialog extends StatefulWidget {
     required this.notifier,
     required this.palette,
     this.mapInitialCenter,
-    this.startGpsOnOpen = true,
+    this.restaurantFallbackCenter = DeliveryMapDefaults.serviceAreaCenter,
   });
 
   final DeliveryLocationNotifier notifier;
   final TenantPalette palette;
 
-  /// مركز الخريطة (مثلاً الموقع المحفوظ) — للعرض فقط.
+  /// مركز الخريطة (مثلاً الموقع المحفوظ) — للعرض فقط، لا يُحفظ.
   final LatLng? mapInitialCenter;
 
-  /// `true` = طلب GPS عند الفتح. `false` = انتظر زر «استخدم موقعي الحالي».
-  final bool startGpsOnOpen;
+  /// مركز مؤقت عند عدم وجود موقع محفوظ — للعرض فقط.
+  final LatLng restaurantFallbackCenter;
 
   static Future<bool?> show({
     required BuildContext context,
     required DeliveryLocationNotifier notifier,
     required TenantPalette palette,
     LatLng? mapInitialCenter,
-    bool startGpsOnOpen = true,
+    LatLng restaurantFallbackCenter = DeliveryMapDefaults.serviceAreaCenter,
   }) {
     return showDialog<bool>(
       context: context,
@@ -46,7 +43,7 @@ class DeliveryLocationMapDialog extends StatefulWidget {
         notifier: notifier,
         palette: palette,
         mapInitialCenter: mapInitialCenter,
-        startGpsOnOpen: startGpsOnOpen,
+        restaurantFallbackCenter: restaurantFallbackCenter,
       ),
     );
   }
@@ -60,6 +57,10 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
   final MapController _mapController = MapController();
   final GlobalKey _mapKey = GlobalKey();
 
+  late final LatLng _viewportCenter;
+  late final double _viewportZoom;
+  late final bool _openedOnSavedCenter;
+
   LatLng? _markerPoint;
   bool _pinIsAuthoritative = false;
   bool _isRefreshing = false;
@@ -70,21 +71,18 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
     super.initState();
     widget.notifier.addListener(_onNotifierChanged);
 
-    if (widget.mapInitialCenter != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _mapController.move(widget.mapInitialCenter!, 16);
-      });
-      _statusHint = widget.startGpsOnOpen
-          ? 'جاري جلب موقعك الحالي من GPS...'
-          : 'الخريطة على موقعك المحفوظ — حدّد نقطة جديدة أو اضغط «استخدم موقعي الحالي».';
-    }
+    final savedCenter = widget.mapInitialCenter;
+    _openedOnSavedCenter = savedCenter != null;
+    _viewportCenter = savedCenter ?? widget.restaurantFallbackCenter;
+    _viewportZoom = savedCenter != null
+        ? DeliveryMapDefaults.savedLocationZoom
+        : DeliveryMapDefaults.restaurantFallbackZoom;
 
-    if (widget.startGpsOnOpen) {
-      unawaited(_beginAcquisition());
-    } else if (widget.mapInitialCenter == null) {
-      _statusHint = 'اضغط على الخريطة أو اسحب الدبوس لتحديد موقعك.';
-    }
+    _statusHint = savedCenter != null
+        ? 'الخريطة على موقعك المحفوظ — جاري تحديد موقعك الحالي...'
+        : 'الخريطة على منطقة المطعم — جاري تحديد موقعك الحالي...';
+
+    unawaited(_beginAcquisition());
   }
 
   @override
@@ -96,7 +94,9 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
 
   Future<void> _beginAcquisition({int autoRetry = 0}) async {
     setState(() {
-      _statusHint = 'جاري جلب موقعك الحالي من GPS...';
+      _statusHint = _openedOnSavedCenter
+          ? 'جاري تحديد موقعك الحالي من GPS...'
+          : 'جاري جلب موقعك الحالي من GPS...';
     });
 
     final snapshot = await widget.notifier.startHighAccuracyAcquisition();
@@ -126,7 +126,7 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
       _statusHint = _buildStatusHint(snapshot);
     });
 
-    if (_markerPoint != null) {
+    if (_markerPoint != null && !_pinIsAuthoritative) {
       _moveMapToMarker();
     }
   }
@@ -175,7 +175,7 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
       _statusHint = _buildStatusHint(snapshot);
     });
 
-    if (_markerPoint != null) {
+    if (_markerPoint != null && !_pinIsAuthoritative) {
       _moveMapToMarker();
     }
   }
@@ -187,8 +187,17 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
     final lng = widget.notifier.previewLongitude;
     if (lat == null || lng == null) return;
 
+    final accuracy = widget.notifier.accuracyMeters;
+    if (accuracy != null &&
+        accuracy > LocationFeatureFlags.maxPreviewAccuracyMeters) {
+      return;
+    }
+
+    final point = LatLng(lat, lng);
+    final shouldMoveMap = _markerPoint == null;
+
     setState(() {
-      _markerPoint = LatLng(lat, lng);
+      _markerPoint = point;
       final accuracyLabel = widget.notifier.accuracyDisplayLabel;
       if (accuracyLabel != null) {
         _statusHint = '$accuracyLabel\n'
@@ -196,8 +205,8 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
       }
     });
 
-    if (widget.notifier.isAcquiring && _markerPoint != null) {
-      _mapController.move(_markerPoint!, _mapController.camera.zoom);
+    if (shouldMoveMap || widget.notifier.isAcquiring) {
+      _moveMapToMarker();
     }
   }
 
@@ -207,7 +216,7 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _mapController.move(point, 17);
+      _mapController.move(point, DeliveryMapDefaults.gpsLockZoom);
     });
   }
 
@@ -266,20 +275,17 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
     Navigator.of(context).pop(true);
   }
 
+  bool get _canConfirmLocation {
+    if (_markerPoint == null) return false;
+    if (_pinIsAuthoritative) return true;
+    return !widget.notifier.isAcquiring;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isGpsHintLoading = widget.notifier.isAcquiring && !_pinIsAuthoritative;
-    final viewHeight = MediaQuery.sizeOf(context).height;
-    final mapHeight = (viewHeight * 0.30).clamp(180.0, 240.0);
-    final canConfirm = !widget.notifier.isAcquiring && _markerPoint != null;
+    final canConfirm = _canConfirmLocation;
     final accuracyLabel = widget.notifier.accuracyDisplayLabel;
-    final mapCenter =
-        _markerPoint ?? widget.mapInitialCenter ?? _mapViewportCenter;
-    final mapZoom = _markerPoint != null
-        ? 17.0
-        : widget.mapInitialCenter != null
-            ? 16.0
-            : _mapViewportZoom;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -293,7 +299,9 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
         content: SizedBox(
           width: double.maxFinite,
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: viewHeight * 0.52),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.52,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -324,16 +332,17 @@ class _DeliveryLocationMapDialogState extends State<DeliveryLocationMapDialog> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: SizedBox(
-                      height: mapHeight,
+                      height: (MediaQuery.sizeOf(context).height * 0.30)
+                          .clamp(180.0, 240.0),
                       child: Stack(
                         children: [
                           FlutterMap(
                             key: _mapKey,
                             mapController: _mapController,
                             options: MapOptions(
-                              initialCenter: mapCenter,
-                              initialZoom: mapZoom,
-                              minZoom: 3,
+                              initialCenter: _viewportCenter,
+                              initialZoom: _viewportZoom,
+                              minZoom: 10,
                               maxZoom: 19,
                               onTap: (_, point) => _applyManualMarker(point),
                             ),

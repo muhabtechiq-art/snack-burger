@@ -7,9 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/config/location_feature_flags.dart';
+import '../../../core/network/network_timeout.dart';
 import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/iraqi_phone_validator.dart';
-import '../../../core/utils/safe_execute.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/saved_delivery_location_model.dart';
 import '../../../services/supabase_customer_location_service.dart';
@@ -288,13 +288,11 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
     location.setPendingMapIntent(intent);
 
-    final startGps = saved == null;
     final confirmed = await DeliveryLocationMapDialog.show(
       context: context,
       notifier: location,
       palette: widget.palette,
       mapInitialCenter: mapCenter,
-      startGpsOnOpen: startGps,
     );
 
     if (!mounted) return;
@@ -431,31 +429,21 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
     final normalizedPhone =
         IraqiPhoneValidator.normalize(_phoneController.text);
     try {
-      final orderId = await safeExecute(
-        () => _orderRepository.submitOrder(
-          restaurantId: widget.restaurant.id,
-          slug: widget.restaurant.slug,
-          customerName: _nameController.text.trim(),
-          customerPhone: normalizedPhone,
-          address: _addressController.text.trim(),
-          latitude: LocationFeatureFlags.enabled ? location.latitude : null,
-          longitude: LocationFeatureFlags.enabled ? location.longitude : null,
-          items: cart.items,
-          totalPrice: cart.totalPrice,
-          persistSavedLocation: location.persistSavedLocationAfterOrder,
-          locationSourceKind: location.orderSourceKind,
-        ),
-        tag: 'submitOrder',
+      final orderId = await _orderRepository.submitOrder(
+        restaurantId: widget.restaurant.id,
+        slug: widget.restaurant.slug,
+        customerName: _nameController.text.trim(),
+        customerPhone: normalizedPhone,
+        address: _addressController.text.trim(),
+        latitude: LocationFeatureFlags.enabled ? location.latitude : null,
+        longitude: LocationFeatureFlags.enabled ? location.longitude : null,
+        items: cart.items,
+        totalPrice: cart.totalPrice,
+        persistSavedLocation: location.persistSavedLocationAfterOrder,
+        locationSourceKind: location.orderSourceKind,
       );
 
       if (!sheetContext.mounted) return;
-
-      if (orderId == null) {
-        ScaffoldMessenger.of(sheetContext).showSnackBar(
-          const SnackBar(content: Text('تعذّر إرسال الطلب. حاول مرة أخرى')),
-        );
-        return;
-      }
 
       await customerSession.recordOrder(
         orderId: orderId,
@@ -466,6 +454,15 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
 
       cart.clearCart();
       Navigator.of(sheetContext).pop(orderId);
+    } catch (error) {
+      if (!sheetContext.mounted) return;
+      final message = error is NetworkTimeoutException ||
+              isLikelyNetworkFailure(error)
+          ? 'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى'
+          : 'تعذّر إرسال الطلب. حاول مرة أخرى';
+      ScaffoldMessenger.of(sheetContext).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

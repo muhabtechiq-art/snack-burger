@@ -3,6 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
+import '../../../models/delivery_order_status.dart';
+import '../../orders/order_invoice_reprint.dart';
 import '../../orders/widgets/order_item_receipt_lines.dart';
 
 /// نافذة تفاصيل طلب للأرشيف — للقراءة فقط (تقارير الإغلاق).
@@ -16,12 +18,21 @@ class ClosingOrderDetailDialog extends StatelessWidget {
   final DeliveryOrder order;
   final TenantPalette palette;
 
+  bool get _canReprint {
+    final status = order.status.trim().toLowerCase();
+    return status == DeliveryOrderStatus.accepted ||
+        status == DeliveryOrderStatus.preparing ||
+        status == DeliveryOrderStatus.delivering ||
+        status == DeliveryOrderStatus.delivered;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
     final maxHeight = screen.height * 0.85;
     const headerHeight = 52.0;
-    const footerHeight = 16.0;
+    const reprintFooterHeight = 72.0;
+    final bottomPadding = _canReprint ? reprintFooterHeight : 16.0;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -65,7 +76,7 @@ class ClosingOrderDetailDialog extends StatelessWidget {
               ),
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: maxHeight - headerHeight - footerHeight,
+                  maxHeight: maxHeight - headerHeight - bottomPadding,
                 ),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -129,6 +140,14 @@ class ClosingOrderDetailDialog extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_canReprint)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: ReprintInvoiceButton(
+                    order: order,
+                    palette: palette,
+                  ),
+                ),
             ],
           ),
         ),

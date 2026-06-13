@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/network/network_timeout.dart';
 import '../core/utils/model_parse_validation.dart';
 import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
@@ -190,18 +191,20 @@ abstract final class SupabaseProductService {
     String? restaurantId,
   }) async {
     try {
-      debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
-      final fetchResult = await _fetchProductRowsWithRelations();
-      final products = _parseAndFilter(fetchResult.rows, restaurantId);
-      final enriched = await _enrichProductsWithRelations(
-        products,
-        relationsEmbedded: fetchResult.relationsEmbedded,
-      );
-      debugPrint(
-        '[SupabaseProductService] fetchProducts: ${enriched.length} منتج '
-        '(restaurantId=$restaurantId)',
-      );
-      return enriched;
+      return await NetworkTimeouts.run(() async {
+        debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
+        final fetchResult = await _fetchProductRowsWithRelations();
+        final products = _parseAndFilter(fetchResult.rows, restaurantId);
+        final enriched = await _enrichProductsWithRelations(
+          products,
+          relationsEmbedded: fetchResult.relationsEmbedded,
+        );
+        debugPrint(
+          '[SupabaseProductService] fetchProducts: ${enriched.length} منتج '
+          '(restaurantId=$restaurantId)',
+        );
+        return enriched;
+      });
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProducts فشل: $e\n$stack');
       reportSupabaseError(e, stack, operation: 'fetchProducts');

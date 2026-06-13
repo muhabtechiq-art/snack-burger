@@ -62,6 +62,18 @@ class PromoBannerModel {
     };
   }
 
+  Map<String, dynamic> toCacheMap() {
+    return {
+      'id': id,
+      'restaurant_id': restaurantId,
+      'image_url': imageUrl,
+      'title': title,
+      'is_active': isActive,
+      'sort_order': sortOrder,
+      'created_at': createdAt.toUtc().toIso8601String(),
+    };
+  }
+
   static PromoBannerModel fromSupabase(Map<String, dynamic> data) {
     _validateMandatoryFields(data);
     return PromoBannerModel(

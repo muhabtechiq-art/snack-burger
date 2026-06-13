@@ -8,67 +8,120 @@ abstract final class OrderNotificationPlayer {
   OrderNotificationPlayer._();
 
   static const String _assetPath = 'sounds/alert.mp3';
+  static const Duration _playTimeout = Duration(seconds: 8);
 
-  static final AudioPlayer _player = AudioPlayer();
-  static bool _assetMissingLogged = false;
+  static AudioPlayer _player = AudioPlayer();
+  static bool _userGesturePrimed = false;
   static Future<void>? _initFuture;
   static Future<void> _playQueue = Future<void>.value();
 
-  /// مرة واحدة لكل دفعة طلبات جديدة (لا يُعاد عند إعادة بناء الواجهة).
+  /// تهيئة الصوت بعد أول تفاعل من المستخدم (Web/Android autoplay policy).
+  static Future<void> prepareOnUserGesture() {
+    if (_userGesturePrimed) return Future<void>.value();
+    _userGesturePrimed = true;
+    return _primeAudioContext();
+  }
+
+  static Future<void> _primeAudioContext() async {
+    try {
+      await _ensureInitialized();
+      await _player.setVolume(0);
+      await _player.stop();
+      await _player.play(AssetSource(_assetPath));
+      await _player.stop();
+      await _player.setVolume(1);
+      debugPrint('[QA][OrderSound] audio primed via user gesture');
+    } catch (error, stack) {
+      debugPrint(
+        '[QA][OrderSound] audio prime failed (autoplay/user gesture): $error\n$stack',
+      );
+    }
+  }
+
+  /// مرة واحدة لكل طلب — لا يُعاد عند إعادة بناء الواجهة.
   static Future<void> playNewPendingOrder() {
-    _playQueue = _playQueue.then((_) => _playNewPendingOrderInternal());
+    _playQueue = _playQueue
+        .then((_) => _playNewPendingOrderInternal())
+        .timeout(
+          _playTimeout,
+          onTimeout: () {
+            debugPrint(
+              '[QA][OrderSound] playing sound failed error=queue step timeout',
+            );
+          },
+        )
+        .catchError((Object error) {
+          debugPrint(
+            '[QA][OrderSound] playing sound failed error=$error',
+          );
+        });
     return _playQueue;
   }
 
   static Future<void> _ensureInitialized() {
-    return _initFuture ??= _initializePlayer().catchError((Object error) {
+    return _ensureInitializedFor(_player);
+  }
+
+  static Future<void> _ensureInitializedFor(AudioPlayer player) {
+    return _initFuture ??= _initializePlayer(player).catchError((Object error) {
       _initFuture = null;
       throw error;
     });
   }
 
-  static Future<void> _initializePlayer() async {
+  static Future<void> _initializePlayer(AudioPlayer player) async {
     await AudioPlayer.global.ensureInitialized();
-    await _player.setAudioContext(
+    await player.setAudioContext(
       AudioContextConfig(
         focus: AudioContextConfigFocus.duckOthers,
         respectSilence: false,
       ).build(),
     );
-    await _player.setReleaseMode(ReleaseMode.stop);
-    await _player.setSourceAsset(_assetPath);
+    await player.setReleaseMode(ReleaseMode.stop);
+  }
+
+  static Future<void> _playWithCurrentPlayer() async {
+    await _ensureInitialized().timeout(_playTimeout);
+    await _player.stop();
+    await _player.play(AssetSource(_assetPath)).timeout(_playTimeout);
   }
 
   static Future<void> _playNewPendingOrderInternal() async {
+    debugPrint('[QA][OrderSound] playing sound start');
     try {
-      await _ensureInitialized();
-      await _playPreparedAlert();
-    } catch (_) {
-      _initFuture = null;
+      await _playWithCurrentPlayer();
+      debugPrint('[QA][OrderSound] playing sound success');
+    } catch (firstError) {
+      debugPrint(
+        '[QA][OrderSound] playing sound failed error=$firstError',
+      );
       try {
-        await _ensureInitialized();
-        await _playPreparedAlert();
-      } catch (retryError, retryStack) {
-        _logAssetMissingOnce(retryError, retryStack);
+        _recreatePlayer();
+        await _playWithCurrentPlayer();
+        debugPrint('[QA][OrderSound] playing sound success');
+      } catch (retryError) {
+        debugPrint(
+          '[QA][OrderSound] playing sound failed error=$retryError',
+        );
       }
     }
   }
 
-  static Future<void> _playPreparedAlert() async {
-    if (_player.state == PlayerState.playing ||
-        _player.state == PlayerState.paused) {
-      await _player.stop();
-    }
-    await _player.seek(Duration.zero);
-    await _player.resume();
+  static void _recreatePlayer() {
+    debugPrint('[QA][OrderSound] recreating AudioPlayer');
+    final oldPlayer = _player;
+    _player = AudioPlayer();
+    _initFuture = null;
+    unawaited(oldPlayer.dispose());
   }
 
-  static void _logAssetMissingOnce(Object e, StackTrace stack) {
-    if (!_assetMissingLogged) {
-      _assetMissingLogged = true;
-      debugPrint(
-        '[OrderNotificationPlayer] ضع assets/$_assetPath — $e\n$stack',
-      );
-    }
+  /// يُستدعى فقط عند تسجيل الخروج أو إيقاف لوحة الإدارة.
+  static Future<void> dispose() async {
+    _initFuture = null;
+    _playQueue = Future<void>.value();
+    _userGesturePrimed = false;
+    await _player.dispose();
+    _player = AudioPlayer();
+    debugPrint('[QA][OrderSound] AudioPlayer disposed');
   }
 }

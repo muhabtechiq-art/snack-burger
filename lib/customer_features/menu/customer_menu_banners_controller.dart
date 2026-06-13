@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/cache/menu_catalog_cache.dart';
 import '../../models/promo_banner_model.dart';
 import '../../services/banner_repository.dart';
 
@@ -37,6 +38,13 @@ class CustomerMenuBannersController extends ChangeNotifier {
     unawaited(_reload(restaurantId: restaurantId, slug: slug));
   }
 
+  Future<void> retryLoad({
+    required String restaurantId,
+    required String slug,
+  }) {
+    return _reload(restaurantId: restaurantId, slug: slug);
+  }
+
   Future<void> _reload({
     required String restaurantId,
     required String slug,
@@ -45,8 +53,18 @@ class CustomerMenuBannersController extends ChangeNotifier {
 
     await _subscription?.cancel();
     _subscription = null;
-    _loading = true;
-    if (!_disposed) notifyListeners();
+
+    final cached = await MenuCatalogCache.loadBanners(slug);
+    if (_disposed || generation != _bindGeneration) return;
+
+    if (cached != null && cached.isNotEmpty) {
+      _activeBanners = List<PromoBannerModel>.unmodifiable(cached);
+      _loading = false;
+      notifyListeners();
+    } else {
+      _loading = true;
+      notifyListeners();
+    }
 
     try {
       final items = await _bannerRepository.fetchActiveBanners(
@@ -55,13 +73,16 @@ class CustomerMenuBannersController extends ChangeNotifier {
       );
       if (_disposed || generation != _bindGeneration) return;
       _activeBanners = List<PromoBannerModel>.unmodifiable(items);
+      unawaited(MenuCatalogCache.saveBanners(slug, items));
       debugPrint(
         '[CustomerMenuBannersController] جُلب ${items.length} بانر نشط',
       );
     } catch (error, stack) {
       debugPrint('CustomerMenuBannersController fetch: $error\n$stack');
       if (_disposed || generation != _bindGeneration) return;
-      _activeBanners = const [];
+      if (!hasActiveBanners) {
+        _activeBanners = const [];
+      }
     }
 
     if (_disposed || generation != _bindGeneration) return;
@@ -76,6 +97,7 @@ class CustomerMenuBannersController extends ChangeNotifier {
       (banners) {
         if (_disposed || generation != _bindGeneration) return;
         _activeBanners = List<PromoBannerModel>.unmodifiable(banners);
+        unawaited(MenuCatalogCache.saveBanners(slug, banners));
         _loading = false;
         notifyListeners();
       },

@@ -65,9 +65,10 @@ class ProductsAdminController extends ChangeNotifier {
     final generation = ++_bindGeneration;
 
     await stopRealtime();
-    _loading = true;
-    _realtimeActive = false;
-    notifyListeners();
+    if (!hasProducts) {
+      _loading = true;
+      notifyListeners();
+    }
 
     await loadProducts();
     if (_disposed || generation != _bindGeneration) return;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -6,73 +7,106 @@ import '../../models/delivery_order_model.dart';
 import '../../services/order_realtime_notification_service.dart';
 import 'order_notification_player.dart';
 
-/// يكتشف الطلبات المعلقة الجديدة ويشغّل التنبيه مرة واحدة لكل طلب.
+/// يكتشف الطلبات المعلقة الجديدة ويشغّل التنبيه مرة واحدة لكل [orderId].
 class PendingOrdersNotificationCoordinator {
   PendingOrdersNotificationCoordinator({
-    this.recentOrderWindow = const Duration(minutes: 10),
+    this.maxNotifiedIds = 100,
   });
 
-  /// يُعتبر الطلب «جديداً» إذا كان `created_at` ضمن هذه النافذة.
-  final Duration recentOrderWindow;
+  static const int defaultMaxNotifiedIds = 100;
 
-  final Set<String> _knownPendingIds = {};
-  final Set<String> _notifiedOrderIds = {};
+  final int maxNotifiedIds;
+
+  final LinkedHashSet<String> _notifiedOrderIds = LinkedHashSet<String>();
+  DateTime? _listeningStartedAt;
   bool _baselineReady = false;
 
-  /// يُستدعى عند كل حدث من بث Supabase (ليس من `build` مباشرة).
-  void onPendingOrdersUpdated(List<DeliveryOrder> orders) {
-    final currentIds = orders.map((o) => o.id).toSet();
+  DateTime? get listeningStartedAt => _listeningStartedAt;
+
+  /// يُستدعى عند بدء الاستماع لأول مرة (وليس عند إعادة الاشتراك).
+  void reset() {
+    _notifiedOrderIds.clear();
+    _listeningStartedAt = DateTime.now().toUtc();
+    _baselineReady = false;
+    debugPrint(
+      '[QA][OrderSound] coordinator reset listeningStartedAt=$_listeningStartedAt',
+    );
+  }
+
+  /// يُستدعى عند إيقاف الاستماع — بدون baseline جديد.
+  void clear() {
+    _notifiedOrderIds.clear();
+    _listeningStartedAt = null;
+    _baselineReady = false;
+  }
+
+  /// يُستدعى عند كل حدث Realtime أو دورة Polling.
+  void onOrdersBatch(List<DeliveryOrder> orders, {required String source}) {
+    final pending = orders.where((o) => o.isPending).toList(growable: false);
+
+    for (final order in pending) {
+      debugPrint(
+        '[QA][OrderSound] realtime event received orderId=${order.id} source=$source',
+      );
+    }
 
     if (!_baselineReady) {
-      _knownPendingIds
-        ..clear()
-        ..addAll(currentIds);
-      _notifiedOrderIds.addAll(currentIds);
+      for (final order in pending) {
+        _rememberNotified(order.id);
+      }
       _baselineReady = true;
       debugPrint(
-        '[QA][OrderSound] initial baseline pending=${currentIds.length}',
+        '[QA][OrderSound] initial baseline pending=${pending.length}',
       );
       return;
     }
 
-    for (final order in orders) {
-      final isNew = !_knownPendingIds.contains(order.id);
-      final notYetNotified = !_notifiedOrderIds.contains(order.id);
-      final isRecent = _isRecentlyCreated(order);
+    final startedAt = _listeningStartedAt;
+    if (startedAt == null) return;
 
-      if (isNew && notYetNotified && isRecent) {
-        debugPrint(
-          '[QA][OrderSound] new pending order detected id=${order.id}',
-        );
-        _notifiedOrderIds.add(order.id);
-        // على الجوال: التنبيه يأتي من OrderRealtimeNotificationService فقط.
-        if (!OrderRealtimeNotificationService.instance.handlesAlerts) {
-          unawaited(
-            OrderNotificationPlayer.playNewPendingOrder().then((_) {
-              debugPrint(
-                '[QA][OrderSound] sound played id=${order.id}',
-              );
-            }),
-          );
-        }
+    for (final order in pending) {
+      if (!_isEligibleNewOrder(order, startedAt)) continue;
+
+      final alreadyNotified = _notifiedOrderIds.contains(order.id);
+      debugPrint(
+        '[QA][OrderSound] pending insert detected orderId=${order.id}',
+      );
+      debugPrint(
+        '[QA][OrderSound] already notified? $alreadyNotified',
+      );
+
+      if (alreadyNotified) continue;
+
+      _rememberNotified(order.id);
+
+      if (OrderRealtimeNotificationService.instance.handlesAlerts) {
+        continue;
       }
+
+      unawaited(_playSoundForOrder(order.id));
     }
-
-    _knownPendingIds
-      ..clear()
-      ..addAll(currentIds);
-
-    _notifiedOrderIds.removeWhere((id) => !currentIds.contains(id));
   }
 
-  bool _isRecentlyCreated(DeliveryOrder order) {
-    final age = DateTime.now().difference(order.createdAt.toLocal());
-    return !age.isNegative && age <= recentOrderWindow;
+  bool _isEligibleNewOrder(DeliveryOrder order, DateTime startedAt) {
+    final grace = startedAt.subtract(const Duration(seconds: 2));
+    return !order.createdAt.toUtc().isBefore(grace);
   }
 
-  void reset() {
-    _knownPendingIds.clear();
-    _notifiedOrderIds.clear();
-    _baselineReady = false;
+  Future<void> _playSoundForOrder(String orderId) async {
+    try {
+      await OrderNotificationPlayer.playNewPendingOrder();
+    } catch (error, stack) {
+      debugPrint(
+        '[QA][OrderSound] playing sound failed error=$error\n$stack',
+      );
+    }
+  }
+
+  void _rememberNotified(String orderId) {
+    _notifiedOrderIds.remove(orderId);
+    _notifiedOrderIds.add(orderId);
+    while (_notifiedOrderIds.length > maxNotifiedIds) {
+      _notifiedOrderIds.remove(_notifiedOrderIds.first);
+    }
   }
 }

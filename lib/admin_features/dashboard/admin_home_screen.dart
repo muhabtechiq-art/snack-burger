@@ -61,11 +61,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+      final hadStats = _loadedStatsKey != null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'تعذّر تحميل الإحصائيات. تحقق من الإنترنت وحاول مرة أخرى',
+          ),
+          action: SnackBarAction(
+            label: 'إعادة المحاولة',
+            onPressed: () {
+              _loadedStatsKey = null;
+              unawaited(
+                _ensureDashboardStats(
+                  restaurantId: restaurantId,
+                  slug: slug,
+                ),
+              );
+            },
+          ),
+        ),
+      );
       setState(() {
-        _todayOrderCount = 0;
-        _todaySales = 0;
-        _productCount = 0;
-        _loadedStatsKey = key;
+        if (!hadStats) {
+          _todayOrderCount = 0;
+          _todaySales = 0;
+          _productCount = 0;
+        }
         _loadingStats = false;
       });
     }
@@ -108,7 +129,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             builder: (context, snapshot) {
               final pending = snapshot.data ?? const <DeliveryOrder>[];
               final pendingCount = pending.length;
-              final recent = pending.take(3).toList();
+              final recent = pending.take(2).toList();
 
               return DecoratedBox(
                 decoration: BoxDecoration(
@@ -116,35 +137,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 ),
                 child: SafeArea(
                   top: false,
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _DashboardWelcomeHeader(),
-                          const SizedBox(height: 14),
-                          _DashboardStatsGrid(
-                            pendingCount: pendingCount,
-                            todayOrderCount: _todayOrderCount,
-                            todaySales: _todaySales,
-                            productCount: _productCount,
-                          ),
-                          const SizedBox(height: 20),
-                          _RecentOrdersSection(
-                            orders: recent,
-                            onViewAll: _openOrders,
-                            onOrderTap: _openOrders,
-                          ),
-                          const SizedBox(height: 16),
-                          _PendingOrdersCta(
-                            pendingCount: pendingCount,
-                            onTap: _openOrders,
-                          ),
-                        ],
-                      ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _DashboardWelcomeHeader(),
+                        const SizedBox(height: 14),
+                        _DashboardStatsGrid(
+                          pendingCount: pendingCount,
+                          todayOrderCount: _todayOrderCount,
+                          todaySales: _todaySales,
+                          productCount: _productCount,
+                        ),
+                        const SizedBox(height: 20),
+                        _RecentOrdersSection(
+                          orders: recent,
+                          showViewAll: pendingCount > 2,
+                          onViewAll: _openOrders,
+                          onOrderTap: _openOrders,
+                        ),
+                        const SizedBox(height: 16),
+                        _PendingOrdersCta(
+                          pendingCount: pendingCount,
+                          onTap: _openOrders,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -394,17 +413,20 @@ class _DashboardStatTile extends StatelessWidget {
 class _RecentOrdersSection extends StatelessWidget {
   const _RecentOrdersSection({
     required this.orders,
+    required this.showViewAll,
     required this.onViewAll,
     required this.onOrderTap,
   });
 
   final List<DeliveryOrder> orders;
+  final bool showViewAll;
   final VoidCallback onViewAll;
   final VoidCallback onOrderTap;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
@@ -419,17 +441,18 @@ class _RecentOrdersSection extends StatelessWidget {
           ),
           child: Row(
             children: [
-              TextButton(
-                onPressed: onViewAll,
-                style: TextButton.styleFrom(
-                  foregroundColor: AdminPanelColors.gold,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+              if (showViewAll)
+                TextButton(
+                  onPressed: onViewAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AdminPanelColors.gold,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: const Text(
+                    'عرض الكل',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
                 ),
-                child: const Text(
-                  'عرض الكل',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                ),
-              ),
               const Spacer(),
               const Text(
                 'أحدث الطلبات',
@@ -445,7 +468,7 @@ class _RecentOrdersSection extends StatelessWidget {
         const SizedBox(height: 12),
         if (orders.isEmpty)
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
             decoration: BoxDecoration(
               color: AdminPanelColors.cardCream,
               borderRadius: BorderRadius.circular(14),
@@ -454,10 +477,11 @@ class _RecentOrdersSection extends StatelessWidget {
               ),
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.inbox_rounded,
-                  size: 22,
+                  size: 20,
                   color: AdminPanelColors.charcoal.withValues(alpha: 0.35),
                 ),
                 const SizedBox(width: 10),
@@ -468,7 +492,7 @@ class _RecentOrdersSection extends StatelessWidget {
                     style: TextStyle(
                       color: AdminPanelColors.charcoal.withValues(alpha: 0.65),
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontSize: 13,
                     ),
                   ),
                 ),
