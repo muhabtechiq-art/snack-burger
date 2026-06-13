@@ -55,6 +55,7 @@ class CustomerMenuController extends ChangeNotifier {
   String _cachedSearchQuery = '';
   String? _cachedSelectedCategory;
   List<MapEntry<String, List<ProductModel>>>? _cachedCategorySections;
+  List<MapEntry<String, List<ProductModel>>>? _cachedCatalogCategorySections;
   int _visibleProductLimit = productsPageSize;
 
   String? get restaurantId => _restaurantId;
@@ -137,6 +138,25 @@ class CustomerMenuController extends ChangeNotifier {
     _cachedCategorySections = sections;
     return sections;
   }
+
+  /// أقسام الكatalog الكامل — للصفحة الرئيسية (لا تتأثر بالبحث).
+  List<MapEntry<String, List<ProductModel>>> get catalogCategorySections {
+    return _cachedCatalogCategorySections ??=
+        orderedCategoryEntries(products);
+  }
+
+  /// أقسام الصفحة الرئيسية — بدون «قائمة عامة».
+  List<MapEntry<String, List<ProductModel>>> get homeCategorySections {
+    return catalogCategorySections
+        .where((section) => section.key != _hiddenMenuCategoryLabel)
+        .toList(growable: false);
+  }
+
+  bool get hasHomeCategories => homeCategorySections.isNotEmpty;
+
+  /// نتائج البحث الحالية (منتجات فقط — لا أقسام).
+  List<ProductModel> get searchResults =>
+      isSearching ? filteredProducts : const [];
 
   /// أقسام مع تحميل تدريجي — أول [visibleProductLimit] منتجاً فقط.
   List<MapEntry<String, List<ProductModel>>> get visibleCategorySections {
@@ -253,7 +273,6 @@ class CustomerMenuController extends ChangeNotifier {
     _searchQuery = query;
     _resetVisibleProductLimit();
     _invalidateProductCaches();
-    _syncCategoriesFromProducts();
     if (!_disposed) notifyListeners();
   }
 
@@ -262,13 +281,13 @@ class CustomerMenuController extends ChangeNotifier {
     _searchQuery = '';
     _resetVisibleProductLimit();
     _invalidateProductCaches();
-    _syncCategoriesFromProducts();
     if (!_disposed) notifyListeners();
   }
 
   void _applyProducts(List<ProductModel> items) {
     _products = List<ProductModel>.unmodifiable(items);
     _resetVisibleProductLimit();
+    _cachedCatalogCategorySections = null;
     _invalidateProductCaches();
     _syncCategoriesFromProducts();
   }

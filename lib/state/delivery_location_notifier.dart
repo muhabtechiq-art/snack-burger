@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/utils/device_location_reader.dart';
 import '../core/utils/location_position_validator.dart';
+import '../models/delivery_location_source_kind.dart';
 
 enum DeliveryLocationStatus {
   idle,
@@ -49,6 +50,10 @@ class DeliveryLocationNotifier extends ChangeNotifier {
   double? _accuracyMeters;
   bool _manualPin = false;
   DeliveryLocationSource _source = DeliveryLocationSource.none;
+  Position? _lastPrecisePosition;
+  DeliveryLocationSourceKind? _orderSourceKind;
+  bool _persistSavedLocationAfterOrder = false;
+  OrderLocationIntent _pendingMapIntent = OrderLocationIntent.none;
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _acquisitionTimer;
@@ -62,6 +67,12 @@ class DeliveryLocationNotifier extends ChangeNotifier {
   bool get isManualPin => _manualPin;
   DeliveryLocationSource get source => _source;
 
+  DeliveryLocationSourceKind? get orderSourceKind => _orderSourceKind;
+
+  bool get persistSavedLocationAfterOrder => _persistSavedLocationAfterOrder;
+
+  OrderLocationIntent get pendingMapIntent => _pendingMapIntent;
+
   bool get isAcquiring => _status == DeliveryLocationStatus.loading;
 
   bool get isManualConfirmReady => _status == DeliveryLocationStatus.refining;
@@ -72,16 +83,52 @@ class DeliveryLocationNotifier extends ChangeNotifier {
         manualPin: _manualPin,
       );
 
+  bool get hasPreciseReading => _lastPrecisePosition != null;
+
+  double? get lastPreciseLatitude => _lastPrecisePosition?.latitude;
+
+  double? get lastPreciseLongitude => _lastPrecisePosition?.longitude;
+
+  double? get lastPreciseAccuracyMeters => _lastPrecisePosition?.accuracy;
+
+  String? get accuracyDisplayLabel {
+    final meters = _accuracyMeters;
+    if (meters == null) return null;
+    return 'دقة الموقع: ${meters.toStringAsFixed(0)} متر';
+  }
+
   bool get hasLocation =>
       _latitude != null &&
       _longitude != null &&
       _status == DeliveryLocationStatus.granted;
 
-  bool get hasAcceptableLocation =>
-      hasLocation &&
-      (_source == DeliveryLocationSource.saved || hasAcceptableAccuracy);
+  bool get hasAcceptableLocation {
+    if (!hasLocation) return false;
+    if (_orderSourceKind == DeliveryLocationSourceKind.savedHome) return true;
+    if (_orderSourceKind == DeliveryLocationSourceKind.manualMarker) return true;
+    if (_manualPin) return true;
+    return hasAcceptableAccuracy;
+  }
 
-  /// اعتماد موقع محفوظ — بدون تشغيل GPS.
+  void setPendingMapIntent(OrderLocationIntent intent) {
+    _pendingMapIntent = intent;
+  }
+
+  void applyOrderOnlyIntent() {
+    _persistSavedLocationAfterOrder = false;
+    _orderSourceKind = _manualPin
+        ? DeliveryLocationSourceKind.manualMarker
+        : DeliveryLocationSourceKind.temporaryNew;
+    notifyListeners();
+  }
+
+  void applyUpdateSavedIntent() {
+    _persistSavedLocationAfterOrder = true;
+    _orderSourceKind = DeliveryLocationSourceKind.updatedHome;
+    notifyListeners();
+  }
+
+  /// اعتماد موقع محفوظ — بدون تشغيل GPS ولا تحديث profiles.
   void applySavedLocation({
     required double latitude,
     required double longitude,
@@ -92,9 +139,17 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     _accuracyMeters = null;
     _manualPin = false;
     _source = DeliveryLocationSource.saved;
+    _orderSourceKind = DeliveryLocationSourceKind.savedHome;
+    _persistSavedLocationAfterOrder = false;
+    _pendingMapIntent = OrderLocationIntent.none;
     _previewLatitude = null;
     _previewLongitude = null;
     _status = DeliveryLocationStatus.granted;
+    _logConfirmed(
+      latitude: latitude,
+      longitude: longitude,
+      sourceKind: DeliveryLocationSourceKind.savedHome,
+    );
     notifyListeners();
   }
 
@@ -104,11 +159,14 @@ class DeliveryLocationNotifier extends ChangeNotifier {
         return 'جاري تثبيت موقعك بدقة (GPS)...';
       case DeliveryLocationStatus.refining:
         if (_accuracyMeters != null) {
-          return 'الدقة الحالية ~${_accuracyMeters!.toStringAsFixed(0)}م — '
-              'اسحب الدبوس أو أعد المحاولة';
+          return '${accuracyDisplayLabel!} — '
+              'اسحب الدبوس أو اضغط «استخدم موقعي الحالي»';
         }
-        return 'اسحب الدبوس أو أعد المحاولة';
+        return 'انتظر إشارة GPS أو اسحب الدبوس يدوياً';
       case DeliveryLocationStatus.granted:
+        if (_orderSourceKind != null) {
+          return _orderSourceKind!.displayLabel;
+        }
         if (_source == DeliveryLocationSource.saved) {
           return 'تم اعتماد عنوانك المحفوظ للتوصيل';
         }
@@ -134,7 +192,7 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     }
   }
 
-  /// يبدأ PositionStream — قفل تلقائي عند دقة ≤ 15م خلال 4 ثوانٍ.
+  /// يبدأ PositionStream — قفل تلقائي عند دقة ≤ 15م خلال 10 ثوانٍ.
   Future<LocationAcquisitionSnapshot?> startHighAccuracyAcquisition() async {
     await _stopAcquisition();
     _status = DeliveryLocationStatus.loading;
@@ -143,6 +201,7 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     _accuracyMeters = null;
     _manualPin = false;
     _source = DeliveryLocationSource.none;
+    _lastPrecisePosition = null;
     notifyListeners();
 
     if (!await _ensureLocationReady()) {
@@ -155,10 +214,7 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     final initial = await DeviceLocationReader.getCurrentLocation();
     if (initial != null) {
       bestPosition = initial;
-      _previewLatitude = initial.latitude;
-      _previewLongitude = initial.longitude;
-      _accuracyMeters = initial.accuracy;
-      notifyListeners();
+      _applyPreviewFromPosition(initial);
     }
 
     _positionSubscription = Geolocator.getPositionStream(
@@ -171,10 +227,21 @@ class DeliveryLocationNotifier extends ChangeNotifier {
 
         if (bestPosition == null || position.accuracy < bestPosition!.accuracy) {
           bestPosition = position;
-          _previewLatitude = position.latitude;
-          _previewLongitude = position.longitude;
-          _accuracyMeters = position.accuracy;
-          notifyListeners();
+          _applyPreviewFromPosition(position);
+        }
+
+        if (LocationPositionValidator.isLockInQuality(position)) {
+          _lastPrecisePosition = position;
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+            '[DeliveryLocationNotifier] stream: '
+            'latitude=${position.latitude}, '
+            'longitude=${position.longitude}, '
+            'accuracy=${position.accuracy}, '
+            'source=positionStream',
+          );
         }
 
         if (!LocationPositionValidator.isUsableReading(position)) {
@@ -206,11 +273,9 @@ class DeliveryLocationNotifier extends ChangeNotifier {
           return;
         }
 
-        if (bestPosition != null) {
-          _status = DeliveryLocationStatus.refining;
-          _previewLatitude = bestPosition!.latitude;
-          _previewLongitude = bestPosition!.longitude;
-          _accuracyMeters = bestPosition!.accuracy;
+        if (bestPosition != null &&
+            LocationPositionValidator.isPreviewReading(bestPosition!)) {
+          _applyPreviewFromPosition(bestPosition!);
           notifyListeners();
           completer.complete(
             LocationAcquisitionSnapshot(
@@ -224,7 +289,7 @@ class DeliveryLocationNotifier extends ChangeNotifier {
           return;
         }
 
-        _status = DeliveryLocationStatus.refining;
+        _status = DeliveryLocationStatus.weakSignal;
         notifyListeners();
         completer.complete(null);
       },
@@ -265,9 +330,24 @@ class DeliveryLocationNotifier extends ChangeNotifier {
         return;
       }
 
-      _status = DeliveryLocationStatus.refining;
-      _previewLatitude = bestPosition!.latitude;
-      _previewLongitude = bestPosition!.longitude;
+      if (LocationPositionValidator.isPreviewReading(bestPosition!)) {
+        _status = DeliveryLocationStatus.refining;
+        _applyPreviewFromPosition(bestPosition!);
+        notifyListeners();
+
+        completer.complete(
+          LocationAcquisitionSnapshot(
+            latitude: bestPosition!.latitude,
+            longitude: bestPosition!.longitude,
+            accuracyMeters: bestPosition!.accuracy,
+            reachedTargetAccuracy: false,
+            timedOut: true,
+          ),
+        );
+        return;
+      }
+
+      _status = DeliveryLocationStatus.weakSignal;
       _accuracyMeters = bestPosition!.accuracy;
       notifyListeners();
 
@@ -285,44 +365,93 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     return completer.future;
   }
 
-  /// جلب فوري من نظام التشغيل (زر «تحديث») — يتخطى last-known cache.
-  Future<LocationAcquisitionSnapshot?> refreshCurrentLocation() async {
-    await _stopAcquisition();
-    _status = DeliveryLocationStatus.loading;
-    _previewLatitude = null;
-    _previewLongitude = null;
-    _accuracyMeters = null;
-    notifyListeners();
-
-    if (!await _ensureLocationReady()) {
-      return null;
-    }
-
-    final position = await DeviceLocationReader.getCurrentLocation();
-    if (position == null) {
-      _status = DeliveryLocationStatus.refining;
-      notifyListeners();
-      return null;
-    }
-
-    return _applyPreviewPosition(
-      position,
-      reachedTargetAccuracy:
-          LocationPositionValidator.isLockInQuality(position),
-    );
+  /// جلب موقع حالي من GPS (زر «تحديث موقعي الحالي») — انتظار قراءة جديدة.
+  Future<LocationAcquisitionSnapshot?> refreshCurrentLocation() {
+    return startHighAccuracyAcquisition();
   }
 
   Future<LocationAcquisitionSnapshot?> refreshHighAccuracyAcquisition() {
     return refreshCurrentLocation();
   }
 
-  /// يثبّت الموقع — يرفض إحداثيات GPS الضعيفة ما لم يكن تأكيداً يدوياً بالدبوس.
+  /// يثبّت الموقع من الخريطة — الإحداثيات من الدبوس فقط.
+  bool confirmMapLocation({
+    required double latitude,
+    required double longitude,
+    required bool fromManualMarker,
+  }) {
+    if (!latitude.isFinite || !longitude.isFinite) {
+      return false;
+    }
+
+    unawaited(_stopAcquisition());
+
+    final sourceKind = _resolveSourceKindForMapConfirm(fromManualMarker);
+
+    _latitude = latitude;
+    _longitude = longitude;
+    _accuracyMeters = fromManualMarker ? null : _accuracyMeters;
+    _manualPin = fromManualMarker;
+    _source = DeliveryLocationSource.gps;
+    _orderSourceKind = sourceKind;
+    _persistSavedLocationAfterOrder =
+        _pendingMapIntent == OrderLocationIntent.updateSaved ||
+        sourceKind == DeliveryLocationSourceKind.updatedHome;
+    _previewLatitude = null;
+    _previewLongitude = null;
+    _lastPrecisePosition = null;
+    _status = DeliveryLocationStatus.granted;
+    _pendingMapIntent = OrderLocationIntent.none;
+
+    _logConfirmed(
+      latitude: latitude,
+      longitude: longitude,
+      sourceKind: sourceKind,
+    );
+    notifyListeners();
+    return true;
+  }
+
+  DeliveryLocationSourceKind _resolveSourceKindForMapConfirm(bool fromManual) {
+    if (_pendingMapIntent == OrderLocationIntent.updateSaved) {
+      return DeliveryLocationSourceKind.updatedHome;
+    }
+    if (_pendingMapIntent == OrderLocationIntent.orderOnly) {
+      return fromManual
+          ? DeliveryLocationSourceKind.manualMarker
+          : DeliveryLocationSourceKind.temporaryNew;
+    }
+    return fromManual
+        ? DeliveryLocationSourceKind.manualMarker
+        : DeliveryLocationSourceKind.gps;
+  }
+
+  void _logConfirmed({
+    required double latitude,
+    required double longitude,
+    required DeliveryLocationSourceKind sourceKind,
+  }) {
+    if (!kDebugMode) return;
+    debugPrint(
+      '[DeliveryLocationNotifier] order location: '
+      'delivery_latitude=$latitude, '
+      'delivery_longitude=$longitude, '
+      'delivery_location_source=${sourceKind.logValue}, '
+      'persist_saved=$_persistSavedLocationAfterOrder',
+    );
+  }
+
+  /// للتوافق — يُفضَّل `confirmMapLocation`.
   bool tryConfirmLocation({
     required double latitude,
     required double longitude,
     double? accuracyMeters,
     required bool manualPin,
   }) {
+    if (!latitude.isFinite || !longitude.isFinite) {
+      return false;
+    }
+
     unawaited(_stopAcquisition());
 
     if (!manualPin &&
@@ -345,7 +474,40 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     _previewLongitude = null;
     _status = DeliveryLocationStatus.granted;
     notifyListeners();
+
+    if (kDebugMode) {
+      debugPrint(
+        '[DeliveryLocationNotifier] confirmed: '
+        'latitude=$latitude, longitude=$longitude, '
+        'accuracy=${accuracyMeters ?? 'manual'}, '
+        'source=${manualPin ? 'manual' : 'gps'}',
+      );
+    }
     return true;
+  }
+
+  /// تحديث إحداثيات المعاينة عند سحب الدبوس يدوياً.
+  void applyManualPreview({
+    required double latitude,
+    required double longitude,
+  }) {
+    if (!latitude.isFinite || !longitude.isFinite) return;
+
+    _previewLatitude = latitude;
+    _previewLongitude = longitude;
+    _manualPin = true;
+    if (_status == DeliveryLocationStatus.loading) {
+      _status = DeliveryLocationStatus.refining;
+    }
+    notifyListeners();
+
+    if (kDebugMode) {
+      debugPrint(
+        '[DeliveryLocationNotifier] manual preview: '
+        'latitude=$latitude, longitude=$longitude, '
+        'accuracy=manual, source=manual',
+      );
+    }
   }
 
   void stopAcquisitionForManualPin() {
@@ -366,6 +528,20 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     _accuracyMeters = null;
     _manualPin = false;
     _source = DeliveryLocationSource.none;
+    _lastPrecisePosition = null;
+    _orderSourceKind = null;
+    _persistSavedLocationAfterOrder = false;
+    _pendingMapIntent = OrderLocationIntent.none;
+    notifyListeners();
+  }
+
+  void _applyPreviewFromPosition(Position position) {
+    if (!LocationPositionValidator.isPreviewReading(position)) {
+      return;
+    }
+    _previewLatitude = position.latitude;
+    _previewLongitude = position.longitude;
+    _accuracyMeters = position.accuracy;
     notifyListeners();
   }
 
@@ -378,24 +554,24 @@ class DeliveryLocationNotifier extends ChangeNotifier {
   LocationSettings _buildLocationSettings() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
-        accuracy: LocationAccuracy.best,
+        accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        forceLocationManager: true,
-        intervalDuration: const Duration(milliseconds: 300),
+        forceLocationManager: false,
+        intervalDuration: const Duration(milliseconds: 500),
       );
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       return AppleSettings(
-        accuracy: LocationAccuracy.best,
-        activityType: ActivityType.other,
+        accuracy: LocationAccuracy.bestForNavigation,
+        activityType: ActivityType.otherNavigation,
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
       );
     }
 
     return const LocationSettings(
-      accuracy: LocationAccuracy.best,
+      accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 0,
     );
   }
@@ -428,10 +604,19 @@ class DeliveryLocationNotifier extends ChangeNotifier {
     required bool reachedTargetAccuracy,
     bool timedOut = false,
   }) {
-    _status = DeliveryLocationStatus.refining;
-    _previewLatitude = position.latitude;
-    _previewLongitude = position.longitude;
-    _accuracyMeters = position.accuracy;
+    if (LocationPositionValidator.isLockInQuality(position)) {
+      _lastPrecisePosition = position;
+    }
+
+    if (LocationPositionValidator.isPreviewReading(position)) {
+      _status = DeliveryLocationStatus.refining;
+      _previewLatitude = position.latitude;
+      _previewLongitude = position.longitude;
+      _accuracyMeters = position.accuracy;
+    } else {
+      _status = DeliveryLocationStatus.weakSignal;
+      _accuracyMeters = position.accuracy;
+    }
     notifyListeners();
 
     return LocationAcquisitionSnapshot(

@@ -3,7 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/theme/tenant_palette.dart';
 import '../../models/saved_delivery_location_model.dart';
 
-/// نافذة منبثقة: اعتماد العنوان المحفوظ أو تغيير الموقع.
+/// خيارات الموقع المحفوظ عند إتمام الطلب.
+enum SavedLocationChoice {
+  useSaved,
+  orderOnly,
+  updateSaved,
+}
+
+/// نافذة: الموقع المحفوظ + 3 خيارات واضحة.
 class SavedDeliveryLocationDialog extends StatelessWidget {
   const SavedDeliveryLocationDialog({
     super.key,
@@ -14,15 +21,14 @@ class SavedDeliveryLocationDialog extends StatelessWidget {
   final SavedDeliveryLocation saved;
   final TenantPalette palette;
 
-  /// `true` = نعم (اعتماد المحفوظ)، `false` = تغيير الموقع، `null` = إلغاء.
-  static Future<bool?> show({
+  static Future<SavedLocationChoice?> show({
     required BuildContext context,
     required SavedDeliveryLocation saved,
     required TenantPalette palette,
   }) {
-    return showDialog<bool>(
+    return showDialog<SavedLocationChoice>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => SavedDeliveryLocationDialog(
         saved: saved,
         palette: palette,
@@ -37,40 +43,85 @@ class SavedDeliveryLocationDialog extends StatelessWidget {
       child: AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          'عنوان التوصيل',
+          'الموقع المحفوظ',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             color: palette.primary,
           ),
         ),
-        content: Text(
-          'هل نعتمد عنوانك السابق: ${saved.addressLabel}؟',
-          textAlign: TextAlign.right,
-          style: const TextStyle(height: 1.5, fontSize: 15),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'تغيير الموقع',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: palette.primary,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              saved.addressLabel,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                height: 1.45,
               ),
             ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: palette.primary,
-              foregroundColor: palette.onPrimary,
+            const SizedBox(height: 8),
+            Text(
+              '${saved.latitude.toStringAsFixed(5)}, '
+              '${saved.longitude.toStringAsFixed(5)}',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 12,
+                color: palette.primary.withValues(alpha: 0.65),
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: const Text(
-              'نعم',
-              style: TextStyle(fontWeight: FontWeight.w800),
+            const SizedBox(height: 12),
+            Text(
+              'اختر كيف تريد استخدام موقع التوصيل:',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: palette.primary.withValues(alpha: 0.8),
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(SavedLocationChoice.useSaved),
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.primary,
+                foregroundColor: palette.onPrimary,
+              ),
+              child: const Text(
+                'استخدام موقعي المحفوظ',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(SavedLocationChoice.orderOnly),
+              child: Text(
+                'موقع جديد — هذه الطلبية فقط',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: palette.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(SavedLocationChoice.updateSaved),
+              child: Text(
+                'تحديث موقعي المحفوظ بهذا الموقع',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: palette.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

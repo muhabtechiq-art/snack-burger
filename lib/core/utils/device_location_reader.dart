@@ -3,16 +3,77 @@ import 'package:geolocator/geolocator.dart';
 
 import 'location_position_validator.dart';
 
-/// جلب موقع حالي من نظام التشغيل — بدون `getLastKnownPosition` (لا كاش قديم).
+/// جلب موقع حالي من نظام التشغيل — GPS جديد أولاً، ثم lastKnown بدقة عالية جداً فقط.
 abstract final class DeviceLocationReader {
   DeviceLocationReader._();
 
-  /// `LocationAccuracy.best` + طباعة في وضع التطوير/المحاكي.
+  /// يطلب قراءة GPS جديدة؛ إن فشلت يُجرّب `getLastKnownPosition` بدقة ≤ 15م فقط.
   static Future<Position?> getCurrentLocation() async {
+    if (!await _ensureReady()) return null;
+
+    final fresh = await _readFreshPosition();
+    if (fresh != null) return fresh;
+
+    return _readLastKnownIfPrecise();
+  }
+
+  static Future<Position?> _readFreshPosition() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: _freshLocationSettings(),
+      );
+
+      if (!LocationPositionValidator.isPreviewReading(position)) {
+        _log(
+          'getCurrentPosition rejected: '
+          'latitude=${position.latitude}, '
+          'longitude=${position.longitude}, '
+          'accuracy=${position.accuracy}, '
+          'source=getCurrentPosition',
+        );
+        return null;
+      }
+
+      _logReading(source: 'getCurrentPosition', position: position);
+      return position;
+    } catch (e, stack) {
+      _log('getCurrentPosition failed: $e\n$stack');
+      return null;
+    }
+  }
+
+  static Future<Position?> _readLastKnownIfPrecise() async {
+    try {
+      final position = await Geolocator.getLastKnownPosition();
+      if (position == null) {
+        _log('lastKnownPosition unavailable');
+        return null;
+      }
+
+      if (!LocationPositionValidator.isLastKnownFallback(position)) {
+        _log(
+          'lastKnownPosition rejected: '
+          'latitude=${position.latitude}, '
+          'longitude=${position.longitude}, '
+          'accuracy=${position.accuracy}, '
+          'source=lastKnownPosition',
+        );
+        return null;
+      }
+
+      _logReading(source: 'lastKnownPosition', position: position);
+      return position;
+    } catch (e, stack) {
+      _log('lastKnownPosition failed: $e\n$stack');
+      return null;
+    }
+  }
+
+  static Future<bool> _ensureReady() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _log('GPS service disabled');
-      return null;
+      return false;
     }
 
     var permission = await Geolocator.checkPermission();
@@ -22,67 +83,49 @@ abstract final class DeviceLocationReader {
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       _log('location permission denied: $permission');
-      return null;
+      return false;
     }
 
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: _freshLocationSettings(),
-      );
-
-      _logPosition('getCurrentPosition', position);
-
-      if (!LocationPositionValidator.isPreviewReading(position)) {
-        _log(
-          'reading rejected for preview '
-          '(mocked=${position.isMocked}, accuracy=${position.accuracy}m)',
-        );
-        return null;
-      }
-
-      return position;
-    } catch (e, stack) {
-      _log('getCurrentPosition failed: $e\n$stack');
-      return null;
-    }
+    return true;
   }
 
   static LocationSettings _freshLocationSettings() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
-        accuracy: LocationAccuracy.best,
+        accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        forceLocationManager: true,
-        intervalDuration: const Duration(milliseconds: 300),
-        timeLimit: const Duration(seconds: 25),
+        forceLocationManager: false,
+        intervalDuration: const Duration(milliseconds: 500),
+        timeLimit: const Duration(seconds: 30),
       );
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       return AppleSettings(
-        accuracy: LocationAccuracy.best,
-        activityType: ActivityType.other,
+        accuracy: LocationAccuracy.bestForNavigation,
+        activityType: ActivityType.otherNavigation,
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
-        timeLimit: const Duration(seconds: 25),
+        timeLimit: const Duration(seconds: 30),
       );
     }
 
     return const LocationSettings(
-      accuracy: LocationAccuracy.best,
+      accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 0,
-      timeLimit: Duration(seconds: 25),
+      timeLimit: Duration(seconds: 30),
     );
   }
 
-  static void _logPosition(String source, Position position) {
+  static void _logReading({
+    required String source,
+    required Position position,
+  }) {
     _log(
-      '$source ← OS: '
-      'lat=${position.latitude.toStringAsFixed(6)}, '
-      'lng=${position.longitude.toStringAsFixed(6)}, '
-      'accuracy=${position.accuracy.toStringAsFixed(1)}m, '
-      'mocked=${position.isMocked}, '
-      'ts=${position.timestamp.toIso8601String()}',
+      'latitude=${position.latitude}, '
+      'longitude=${position.longitude}, '
+      'accuracy=${position.accuracy}, '
+      'source=$source',
     );
   }
 

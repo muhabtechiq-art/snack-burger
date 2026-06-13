@@ -41,6 +41,7 @@ abstract final class SupabaseCustomerLocationService {
   }
 
   static Map<String, dynamic> _buildLocationUpdatePayload({
+    required String restaurantId,
     required String phone,
     required double latitude,
     required double longitude,
@@ -48,11 +49,18 @@ abstract final class SupabaseCustomerLocationService {
   }) {
     return <String, dynamic>{
       'phone_number': phone,
+      'restaurant_id': restaurantId,
       'lat': latitude,
       'lng': longitude,
       if (address != null && address.trim().isNotEmpty)
         'address': address.trim(),
     };
+  }
+
+  static String? _normalizeRestaurantId(String? restaurantId) {
+    final id = restaurantId?.trim();
+    if (id == null || id.isEmpty) return null;
+    return id;
   }
 
   static Future<T?> _runRpcSafely<T>({
@@ -65,22 +73,6 @@ abstract final class SupabaseCustomerLocationService {
       _log(method, 'failed', error: e, stack: stack);
       reportSupabaseError(e, stack, operation: method);
       return null;
-    }
-  }
-
-  static Future<void> _runRpcVoid({
-    required String method,
-    required Future<void> Function() action,
-    String? successMessage,
-  }) async {
-    try {
-      await action();
-      if (successMessage != null) {
-        _log(method, successMessage);
-      }
-    } catch (e, stack) {
-      _log(method, 'failed', error: e, stack: stack);
-      reportSupabaseError(e, stack, operation: method);
     }
   }
 
@@ -115,7 +107,9 @@ abstract final class SupabaseCustomerLocationService {
   }
 
   /// كل حفظ موقع يمر عبر `update_customer_location` (تحديث أو إدراج مرة واحدة).
+  /// فشل الحفظ لا يُبلّغ الزبون — الطلب قد يكون اكتمل بنجاح.
   static Future<void> updateCustomerLocation({
+    required String restaurantId,
     required String phoneNumber,
     required double latitude,
     required double longitude,
@@ -124,20 +118,39 @@ abstract final class SupabaseCustomerLocationService {
     final phone = _normalizePhone(phoneNumber);
     if (phone == null) return;
 
-    await _runRpcVoid(
-      method: 'updateCustomerLocation',
-      successMessage:
-          'update_customer_location phone=$phone lat=$latitude lng=$longitude',
-      action: () => _client.rpc(
+    final normalizedRestaurantId = _normalizeRestaurantId(restaurantId);
+    if (normalizedRestaurantId == null) {
+      _log(
+        'updateCustomerLocation',
+        'skipped: restaurant_id is missing (phone=$phone)',
+      );
+      return;
+    }
+
+    try {
+      await _client.rpc(
         CustomerLocationRpc.updateLocation,
         params: _buildLocationUpdatePayload(
+          restaurantId: normalizedRestaurantId,
           phone: phone,
           latitude: latitude,
           longitude: longitude,
           address: address,
         ),
-      ),
-    );
+      );
+      _log(
+        'updateCustomerLocation',
+        'saved phone=$phone restaurant_id=$normalizedRestaurantId '
+        'lat=$latitude lng=$longitude',
+      );
+    } catch (e, stack) {
+      _log(
+        'updateCustomerLocation',
+        'failed silently after order (phone=$phone): $e',
+        error: e,
+        stack: stack,
+      );
+    }
   }
 
   static Map<String, dynamic>? _parseRpcJsonMap(dynamic raw) {

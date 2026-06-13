@@ -45,7 +45,7 @@ class MenuBannerCarousel extends StatelessWidget {
         itemBuilder: (context, index, _) {
           final banner = banners[index];
           return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             child: _BannerSlide(banner: banner),
           );
         },

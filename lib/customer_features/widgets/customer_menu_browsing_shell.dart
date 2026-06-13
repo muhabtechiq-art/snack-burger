@@ -14,6 +14,7 @@ import '../theme/customer_menu_theme.dart';
 import 'category_grid_card.dart';
 import 'category_section_header.dart';
 import 'customer_bottom_nav.dart';
+import 'customer_home_promo_banner.dart';
 import 'customer_menu_header.dart';
 import 'customer_welcome_screen.dart';
 import 'menu_cart_bar.dart';
@@ -140,9 +141,7 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
           ),
           appBar: CustomerMenuHeader(
             title: headerTitle,
-            cartItemCount: cartCount,
             onOpenMenu: () => widget.scaffoldKey.currentState?.openDrawer(),
-            onOpenCart: _openCart,
             leading: _activeCategory == null
                 ? null
                 : IconButton(
@@ -156,7 +155,11 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
           body: _activeCategory == null
               ? _CategoryHomeBody(
                   palette: _palette,
+                  searchController: widget.searchController,
+                  onClearSearch: widget.onClearSearch,
                   onCategoryTap: _openCategory,
+                  onQuickAdd: widget.onQuickAdd,
+                  onOpenDetails: widget.onOpenDetails,
                 )
               : _CategoryProductsBody(
                   palette: _palette,
@@ -189,11 +192,21 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
 class _CategoryHomeBody extends StatelessWidget {
   const _CategoryHomeBody({
     required this.palette,
+    required this.searchController,
+    required this.onClearSearch,
     required this.onCategoryTap,
+    required this.onQuickAdd,
+    required this.onOpenDetails,
   });
 
   final TenantPalette palette;
+  final TextEditingController searchController;
+  final VoidCallback onClearSearch;
   final ValueChanged<String> onCategoryTap;
+  final Future<void> Function(BuildContext context, ProductModel product)
+      onQuickAdd;
+  final Future<void> Function(BuildContext context, ProductModel product)
+      onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -202,13 +215,10 @@ class _CategoryHomeBody extends StatelessWidget {
         loading: menu.productsLoading && !menu.hasProducts,
         error: menu.showProductsError,
         errorMessage: menu.productsErrorMessage,
-        sections: menu.categorySections
-            .where(
-              (section) =>
-                  section.key != CustomerMenuController.allCategoryLabel &&
-                  section.key != 'قائمة عامة',
-            )
-            .toList(growable: false),
+        isSearching: menu.isSearching,
+        hasCatalogCategories: menu.hasHomeCategories,
+        catalogSections: menu.homeCategorySections,
+        searchProducts: menu.searchResults,
       ),
       builder: (context, snapshot, _) {
         final menu = context.read<CustomerMenuController>();
@@ -226,80 +236,157 @@ class _CategoryHomeBody extends StatelessWidget {
           );
         }
 
-        if (snapshot.sections.isEmpty) {
-          return const Center(
-            child: Text(
-              'لا توجد أقسام في القائمة حالياً.',
-              style: TextStyle(
-                color: CustomerMenuTheme.inkMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          );
-        }
-
         return CustomScrollView(
           slivers: [
+            const SliverToBoxAdapter(child: CustomerHomePromoBanner()),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                child: Text(
-                  'اختر القسم',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: CustomerMenuTheme.ink.withValues(alpha: 0.92),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  controller: searchController,
+                  textAlign: TextAlign.right,
+                  textDirection: TextDirection.rtl,
+                  textInputAction: TextInputAction.search,
+                  onChanged: menu.setSearchQuery,
+                  decoration: InputDecoration(
+                    hintText: 'ابحث في القائمة...',
+                    hintTextDirection: TextDirection.rtl,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: snapshot.isSearching
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: onClearSearch,
+                          )
+                        : null,
                   ),
                 ),
               ),
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.78,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final section = snapshot.sections[index];
-                    return CategoryGridCard(
-                      key: ValueKey(section.key),
-                      categoryName: section.key,
-                      products: section.value,
-                      palette: palette,
-                      onTap: () => onCategoryTap(section.key),
-                    );
-                  },
-                  childCount: snapshot.sections.length,
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: TextButton.icon(
-                  onPressed: () =>
-                      context.push('/${menu.slug}/admin/login'),
-                  icon: Icon(
-                    Icons.admin_panel_settings_outlined,
-                    size: 18,
-                    color: CustomerMenuTheme.mutedRed.withValues(alpha: 0.45),
+            if (snapshot.isSearching) ...[
+              if (snapshot.searchProducts.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'لا توجد نتائج مطابقة للبحث',
+                          style: TextStyle(color: CustomerMenuTheme.inkMuted),
+                        ),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: onClearSearch,
+                          icon: const Icon(Icons.close_rounded),
+                          label: const Text('مسح البحث'),
+                        ),
+                      ],
+                    ),
                   ),
-                  label: Text(
-                    'دخول الإدارة',
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.76,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final product = snapshot.searchProducts[index];
+                        return MenuProductCard(
+                          key: ValueKey('search-${product.id}'),
+                          product: product,
+                          palette: palette,
+                          layout: MenuProductCardLayout.grid,
+                          onQuickAdd: () => onQuickAdd(context, product),
+                          onOpenDetails: () => onOpenDetails(context, product),
+                        );
+                      },
+                      childCount: snapshot.searchProducts.length,
+                    ),
+                  ),
+                ),
+            ] else if (!snapshot.hasCatalogCategories)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text(
+                    'لا توجد أقسام في القائمة حالياً.',
                     style: TextStyle(
-                      color:
-                          CustomerMenuTheme.mutedRed.withValues(alpha: 0.45),
+                      color: CustomerMenuTheme.inkMuted,
                       fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Text(
+                    'اختر القسم',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: CustomerMenuTheme.ink.withValues(alpha: 0.92),
                     ),
                   ),
                 ),
               ),
-            ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 0.78,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final section = snapshot.catalogSections[index];
+                      return CategoryGridCard(
+                        key: ValueKey(section.key),
+                        categoryName: section.key,
+                        products: section.value,
+                        palette: palette,
+                        onTap: () => onCategoryTap(section.key),
+                      );
+                    },
+                    childCount: snapshot.catalogSections.length,
+                  ),
+                ),
+              ),
+            ],
+            if (!snapshot.isSearching)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        context.push('/${menu.slug}/admin/login'),
+                    icon: Icon(
+                      Icons.admin_panel_settings_outlined,
+                      size: 18,
+                      color: CustomerMenuTheme.mutedRed.withValues(alpha: 0.45),
+                    ),
+                    label: Text(
+                      'دخول الإدارة',
+                      style: TextStyle(
+                        color:
+                            CustomerMenuTheme.mutedRed.withValues(alpha: 0.45),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -349,7 +436,7 @@ class _CategoryProductsBody extends StatelessWidget {
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: TextField(
                   controller: searchController,
                   textAlign: TextAlign.right,
@@ -529,13 +616,19 @@ class _CategoryHomeSnapshot {
     required this.loading,
     required this.error,
     required this.errorMessage,
-    required this.sections,
+    required this.isSearching,
+    required this.hasCatalogCategories,
+    required this.catalogSections,
+    required this.searchProducts,
   });
 
   final bool loading;
   final bool error;
   final String? errorMessage;
-  final List<MapEntry<String, List<ProductModel>>> sections;
+  final bool isSearching;
+  final bool hasCatalogCategories;
+  final List<MapEntry<String, List<ProductModel>>> catalogSections;
+  final List<ProductModel> searchProducts;
 
   @override
   bool operator ==(Object other) {
@@ -543,7 +636,19 @@ class _CategoryHomeSnapshot {
         loading == other.loading &&
         error == other.error &&
         errorMessage == other.errorMessage &&
-        _sectionsEqual(sections, other.sections);
+        isSearching == other.isSearching &&
+        hasCatalogCategories == other.hasCatalogCategories &&
+        _sectionsEqual(catalogSections, other.catalogSections) &&
+        _productsEqual(searchProducts, other.searchProducts);
+  }
+
+  static bool _productsEqual(List<ProductModel> a, List<ProductModel> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 
   static bool _sectionsEqual(
@@ -561,7 +666,15 @@ class _CategoryHomeSnapshot {
   }
 
   @override
-  int get hashCode => Object.hash(loading, error, errorMessage, sections.length);
+  int get hashCode => Object.hash(
+        loading,
+        error,
+        errorMessage,
+        isSearching,
+        hasCatalogCategories,
+        catalogSections.length,
+        searchProducts.length,
+      );
 }
 
 @immutable

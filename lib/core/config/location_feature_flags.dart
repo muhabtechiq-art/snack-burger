@@ -10,11 +10,14 @@ abstract final class LocationFeatureFlags {
   /// فوق هذا الحد = إشارة ضعيفة / برج اتصال — لا يُستخدم كقفل GPS.
   static const double maxRejectAccuracyMeters = 80;
 
-  /// حد أقصى لتحريك الدبوس أثناء التحديث (المحاكي غالباً > 80م).
-  static const double maxPreviewAccuracyMeters = 500;
+  /// حد أقصى لعرض قراءة GPS على الخريطة — فوقه = كاش/ضعيف ويُرفض.
+  static const double maxPreviewAccuracyMeters = 30;
 
-  /// مدة تثبيت GPS في الخلفية.
-  static const Duration acquisitionDuration = Duration(seconds: 4);
+  /// أقصى عمر مقبول لقراءة GPS (تجاهل الكاش القديم).
+  static const Duration maxReadingAge = Duration(seconds: 15);
+
+  /// مدة انتظار تحسّن إشارة GPS قبل التثبيت اليدوي.
+  static const Duration acquisitionDuration = Duration(seconds: 10);
 
   static const String maintenanceMessage =
       'خدمة تحديد الموقع غير متاحة حالياً';
@@ -23,9 +26,14 @@ abstract final class LocationFeatureFlags {
       'خدمة الموقع (GPS) مغلقة — فعّلها من إعدادات الهاتف ثم أعد المحاولة';
 
   static const String weakSignalMessage =
-      'إشارة GPS ضعيفة — انتقل لمكان مكشوف أو أعد المحاولة، '
-      'أو اسحب الدبوس يدوياً على الخريطة';
+      'دقة الموقع ضعيفة، اقترب من مكان مفتوح أو فعّل GPS';
+
+  static const String locationFailedMessage =
+      'تعذّر تحديد الموقع — فعّل GPS أو حدّد موقعك يدوياً على الخريطة';
 
   static const String locationRequiredMessage =
-      'يجب تحديد موقع التوصيل قبل إرسال الطلب';
+      'يرجى تحديد موقع التوصيل';
+
+  /// إذا تجاوز الفرق عن الموقع المحفوظ هذا الحد — نسأل الزبون.
+  static const double savedLocationDiffThresholdMeters = 100;
 }

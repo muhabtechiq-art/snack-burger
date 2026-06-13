@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/config/location_feature_flags.dart';
+import '../../models/delivery_location_source_kind.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/order_model.dart';
 import '../../services/supabase_customer_location_service.dart';
@@ -32,17 +33,27 @@ class CustomerOrderRepository {
     );
   }
 
-  /// يحفظ موقع التوصيل بعد إرسال الطلب إذا كانت ميزة الموقع مفعّلة.
-  Future<void> _syncCustomerLocationIfEnabled({
+  Future<void> _persistSavedHomeIfRequested({
+    required String restaurantId,
     required String customerPhone,
     required String address,
-    double? latitude,
-    double? longitude,
+    required double latitude,
+    required double longitude,
+    DeliveryLocationSourceKind? locationSourceKind,
   }) async {
     if (!LocationFeatureFlags.enabled) return;
-    if (latitude == null || longitude == null) return;
+
+    if (kDebugMode) {
+      debugPrint(
+        '[CustomerOrderRepository] delivery_address=$address, '
+        'delivery_latitude=$latitude, '
+        'delivery_longitude=$longitude, '
+        'delivery_location_source=${locationSourceKind?.logValue ?? 'unknown'}',
+      );
+    }
 
     await SupabaseCustomerLocationService.updateCustomerLocation(
+      restaurantId: restaurantId,
       phoneNumber: customerPhone,
       latitude: latitude,
       longitude: longitude,
@@ -60,7 +71,25 @@ class CustomerOrderRepository {
     double? longitude,
     required List<CartItem> items,
     required double totalPrice,
+    bool persistSavedLocation = false,
+    DeliveryLocationSourceKind? locationSourceKind,
   }) async {
+    if (LocationFeatureFlags.enabled &&
+        (latitude == null || longitude == null)) {
+      throw StateError('delivery coordinates are required');
+    }
+
+    if (kDebugMode && LocationFeatureFlags.enabled) {
+      debugPrint(
+        '[CustomerOrderRepository] submit order location: '
+        'delivery_latitude=$latitude, '
+        'delivery_longitude=$longitude, '
+        'delivery_address=$address, '
+        'delivery_location_source=${locationSourceKind?.logValue ?? 'unknown'}, '
+        'persist_saved=$persistSavedLocation',
+      );
+    }
+
     final orderId = await SupabaseOrderService.submitOrder(
       restaurantId: restaurantId,
       slug: slug,
@@ -73,12 +102,19 @@ class CustomerOrderRepository {
       totalPrice: totalPrice,
     );
 
-    await _syncCustomerLocationIfEnabled(
-      customerPhone: customerPhone,
-      address: address,
-      latitude: latitude,
-      longitude: longitude,
-    );
+    if (persistSavedLocation &&
+        latitude != null &&
+        longitude != null &&
+        locationSourceKind == DeliveryLocationSourceKind.updatedHome) {
+      await _persistSavedHomeIfRequested(
+        restaurantId: restaurantId,
+        customerPhone: customerPhone,
+        address: address,
+        latitude: latitude,
+        longitude: longitude,
+        locationSourceKind: locationSourceKind,
+      );
+    }
 
     return orderId;
   }

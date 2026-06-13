@@ -44,26 +44,13 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final Map<int, int> _addonQuantities = <int, int>{};
-  int? _selectedVariantIndex;
+  final Set<int> _selectedVariantIndices = <int>{};
   int _quantity = 1;
   bool _favorite = false;
 
   ProductModel get product => widget.product;
 
   bool get _hasVariants => product.hasVariants;
-
-  ProductVariant? get _selectedVariant {
-    if (!_hasVariants || _selectedVariantIndex == null) return null;
-    return product.variants[_selectedVariantIndex!];
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (_hasVariants) {
-      _selectedVariantIndex = 0;
-    }
-  }
 
   List<CartItemAddon> _buildSelectedAddons() {
     return _addonQuantities.keys
@@ -78,28 +65,64 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         .toList(growable: false);
   }
 
+  double _selectedVariantsPriceSum() {
+    var sum = 0.0;
+    for (final index in _selectedVariantIndices) {
+      sum += product.variants[index].price;
+    }
+    return sum;
+  }
+
   double _unitTotal() {
-    final basePrice =
-        product.resolveBasePrice(selectedVariant: _selectedVariant);
     final addonsTotal = _buildSelectedAddons().fold<double>(
       0,
       (sum, addon) => sum + addon.lineTotal,
     );
-    return basePrice + addonsTotal;
+    if (_hasVariants) {
+      return _selectedVariantsPriceSum() + addonsTotal;
+    }
+    return product.price + addonsTotal;
   }
 
   double get _lineTotal => _unitTotal() * _quantity;
 
+  void _toggleVariant(int index) {
+    setState(() {
+      if (_selectedVariantIndices.contains(index)) {
+        _selectedVariantIndices.remove(index);
+      } else {
+        _selectedVariantIndices.add(index);
+      }
+    });
+  }
+
   void _submitAdd() {
-    final variant = _selectedVariant;
     final selectedAddons = _buildSelectedAddons();
-    for (var i = 0; i < _quantity; i++) {
-      widget.onAdd(
-        selectedAddons: selectedAddons,
-        selectedVariant: variant == null
-            ? null
-            : CartItemVariant.fromProductVariant(variant),
-      );
+
+    if (_hasVariants) {
+      if (_selectedVariantIndices.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اختر نوعاً واحداً على الأقل')),
+        );
+        return;
+      }
+      final sortedIndices = _selectedVariantIndices.toList()..sort();
+      for (final index in sortedIndices) {
+        final variant = product.variants[index];
+        for (var i = 0; i < _quantity; i++) {
+          widget.onAdd(
+            selectedAddons: selectedAddons,
+            selectedVariant: CartItemVariant.fromProductVariant(variant),
+          );
+        }
+      }
+    } else {
+      for (var i = 0; i < _quantity; i++) {
+        widget.onAdd(
+          selectedAddons: selectedAddons,
+          selectedVariant: null,
+        );
+      }
     }
     Navigator.of(context).pop();
   }
@@ -187,10 +210,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   product: product,
                   palette: widget.palette,
                   hasVariants: _hasVariants,
-                  selectedVariantIndex: _selectedVariantIndex ?? 0,
-                  onVariantSelected: (index) {
-                    setState(() => _selectedVariantIndex = index);
-                  },
+                  selectedVariantIndices: _selectedVariantIndices,
+                  onVariantToggled: _toggleVariant,
                   addonQuantities: _addonQuantities,
                   onAddonChanged: (index, quantity) {
                     setState(() {
@@ -251,8 +272,8 @@ class _ProductDetailSheet extends StatelessWidget {
     required this.product,
     required this.palette,
     required this.hasVariants,
-    required this.selectedVariantIndex,
-    required this.onVariantSelected,
+    required this.selectedVariantIndices,
+    required this.onVariantToggled,
     required this.addonQuantities,
     required this.onAddonChanged,
     required this.quantity,
@@ -263,8 +284,8 @@ class _ProductDetailSheet extends StatelessWidget {
   final ProductModel product;
   final TenantPalette palette;
   final bool hasVariants;
-  final int selectedVariantIndex;
-  final ValueChanged<int> onVariantSelected;
+  final Set<int> selectedVariantIndices;
+  final ValueChanged<int> onVariantToggled;
   final Map<int, int> addonQuantities;
   final void Function(int index, int quantity) onAddonChanged;
   final int quantity;
@@ -335,7 +356,7 @@ class _ProductDetailSheet extends StatelessWidget {
             if (hasVariants) ...[
               const SizedBox(height: 18),
               const Text(
-                'اختر الحجم',
+                'اختر النوع',
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
@@ -350,8 +371,8 @@ class _ProductDetailSheet extends StatelessWidget {
                 children: product.variants.asMap().entries.map((entry) {
                   final index = entry.key;
                   final variant = entry.value;
-                  final selected = index == selectedVariantIndex;
-                  return ChoiceChip(
+                  final selected = selectedVariantIndices.contains(index);
+                  return FilterChip(
                     label: Text(
                       '${variant.name} — ${variant.price.toStringAsFixed(0)} د.ع',
                       style: TextStyle(
@@ -360,6 +381,7 @@ class _ProductDetailSheet extends StatelessWidget {
                       ),
                     ),
                     selected: selected,
+                    showCheckmark: true,
                     selectedColor:
                         CustomerMenuTheme.mutedRed.withValues(alpha: 0.14),
                     checkmarkColor: CustomerMenuTheme.mutedRed,
@@ -368,8 +390,9 @@ class _ProductDetailSheet extends StatelessWidget {
                           ? CustomerMenuTheme.mutedRed
                           : CustomerMenuTheme.mutedRed
                               .withValues(alpha: 0.2),
+                      width: selected ? 1.5 : 1,
                     ),
-                    onSelected: (_) => onVariantSelected(index),
+                    onSelected: (_) => onVariantToggled(index),
                   );
                 }).toList(growable: false),
               ),

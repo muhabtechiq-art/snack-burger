@@ -42,7 +42,8 @@ CREATE OR REPLACE FUNCTION public.update_customer_location(
   phone_number text,
   lat double precision,
   lng double precision,
-  address text DEFAULT NULL
+  address text DEFAULT NULL,
+  restaurant_id text DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -51,9 +52,10 @@ SET search_path = public
 AS $$
 DECLARE
   v_phone text := trim(coalesce(phone_number, ''));
+  v_restaurant_id text := trim(coalesce(restaurant_id, ''));
   v_rows int;
 BEGIN
-  IF v_phone = '' OR lat IS NULL OR lng IS NULL THEN
+  IF v_phone = '' OR lat IS NULL OR lng IS NULL OR v_restaurant_id = '' THEN
     RETURN;
   END IF;
 
@@ -65,7 +67,8 @@ BEGIN
     last_delivery_address = COALESCE(
       NULLIF(trim(coalesce(address, '')), ''),
       last_delivery_address
-    )
+    ),
+    restaurant_id = v_restaurant_id
   WHERE profiles.phone_number = v_phone;
 
   GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -76,6 +79,7 @@ BEGIN
   INSERT INTO public.profiles (
     id,
     phone_number,
+    restaurant_id,
     last_latitude,
     last_longitude,
     has_saved_location,
@@ -85,6 +89,7 @@ BEGIN
   VALUES (
     gen_random_uuid(),
     v_phone,
+    v_restaurant_id,
     lat,
     lng,
     true,
@@ -96,13 +101,13 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_customer_delivery_by_phone(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.update_customer_location(
-  text, double precision, double precision, text
+  text, double precision, double precision, text, text
 ) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.get_customer_delivery_by_phone(text)
   TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.update_customer_location(
-  text, double precision, double precision, text
+  text, double precision, double precision, text, text
 ) TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';

@@ -1,17 +1,22 @@
 import 'dart:async';
 
+import 'package:latlong2/latlong.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/config/location_feature_flags.dart';
+import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/iraqi_phone_validator.dart';
 import '../../../core/utils/safe_execute.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/saved_delivery_location_model.dart';
 import '../../../services/supabase_customer_location_service.dart';
 import '../delivery/delivery_location_map_dialog.dart';
+import '../delivery/location_far_from_saved_dialog.dart';
 import '../delivery/saved_delivery_location_dialog.dart';
+import '../../../models/delivery_location_source_kind.dart';
 import '../../../models/order_model.dart';
 import '../../../models/restaurant_model.dart';
 import '../data/customer_order_repository.dart';
@@ -241,26 +246,6 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
       _loadingSavedLocation = false;
       _savedLocation = profile?.savedLocation;
     });
-
-    if (profile != null && profile.shouldConfirmSavedAddress) {
-      await _showSavedLocationModal(profile.savedLocation!);
-    }
-  }
-
-  Future<void> _showSavedLocationModal(SavedDeliveryLocation saved) async {
-    final choice = await SavedDeliveryLocationDialog.show(
-      context: context,
-      saved: saved,
-      palette: widget.palette,
-    );
-
-    if (!mounted) return;
-
-    if (choice == true) {
-      _useSavedLocation();
-    } else if (choice == false) {
-      await _changeLocation();
-    }
   }
 
   void _useSavedLocation() {
@@ -280,21 +265,106 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
     setState(() => _locationChosen = true);
   }
 
-  Future<void> _changeLocation() async {
+  Future<void> _handleSavedLocationChoice(SavedLocationChoice choice) async {
+    switch (choice) {
+      case SavedLocationChoice.useSaved:
+        _useSavedLocation();
+      case SavedLocationChoice.orderOnly:
+        await _openLocationMap(intent: OrderLocationIntent.orderOnly);
+      case SavedLocationChoice.updateSaved:
+        await _openLocationMap(intent: OrderLocationIntent.updateSaved);
+    }
+  }
+
+  Future<void> _openLocationMap({required OrderLocationIntent intent}) async {
     final location = context.read<DeliveryLocationNotifier>();
     location.clear();
     setState(() => _locationChosen = false);
 
+    final saved = _savedLocation;
+    final mapCenter = saved != null
+        ? LatLng(saved.latitude, saved.longitude)
+        : null;
+
+    location.setPendingMapIntent(intent);
+
+    final startGps = saved == null;
     final confirmed = await DeliveryLocationMapDialog.show(
       context: context,
       notifier: location,
       palette: widget.palette,
-      startGpsOnOpen: true,
+      mapInitialCenter: mapCenter,
+      startGpsOnOpen: startGps,
     );
 
     if (!mounted) return;
     if (confirmed == true && location.hasAcceptableLocation) {
       setState(() => _locationChosen = true);
+    }
+  }
+
+  Future<void> _changeLocation() async {
+    final saved = _savedLocation;
+    if (saved != null) {
+      final choice = await SavedDeliveryLocationDialog.show(
+        context: context,
+        saved: saved,
+        palette: widget.palette,
+      );
+      if (!mounted || choice == null) return;
+      await _handleSavedLocationChoice(choice);
+      return;
+    }
+
+    await _openLocationMap(intent: OrderLocationIntent.none);
+  }
+
+  Future<bool> _resolveLocationBeforeSubmit(
+    DeliveryLocationNotifier location,
+  ) async {
+    if (!location.hasLocation) return false;
+
+    final saved = _savedLocation;
+    if (saved == null ||
+        location.orderSourceKind == DeliveryLocationSourceKind.savedHome) {
+      return true;
+    }
+
+    if (location.persistSavedLocationAfterOrder ||
+        location.orderSourceKind == DeliveryLocationSourceKind.temporaryNew ||
+        location.orderSourceKind == DeliveryLocationSourceKind.updatedHome) {
+      return true;
+    }
+
+    final lat = location.latitude;
+    final lng = location.longitude;
+    if (lat == null || lng == null) return false;
+
+    final distance = GeoDistance.metersBetween(
+      fromLatitude: saved.latitude,
+      fromLongitude: saved.longitude,
+      toLatitude: lat,
+      toLongitude: lng,
+    );
+
+    if (distance <= LocationFeatureFlags.savedLocationDiffThresholdMeters) {
+      return true;
+    }
+
+    final choice = await LocationFarFromSavedDialog.show(
+      context: context,
+      palette: widget.palette,
+      distanceMeters: distance,
+    );
+    if (!mounted || choice == null) return false;
+
+    switch (choice) {
+      case FarFromSavedChoice.orderOnly:
+        location.applyOrderOnlyIntent();
+        return true;
+      case FarFromSavedChoice.updateSaved:
+        location.applyUpdateSavedIntent();
+        return true;
     }
   }
 
@@ -352,6 +422,9 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
         );
         return;
       }
+
+      final canProceed = await _resolveLocationBeforeSubmit(location);
+      if (!canProceed) return;
     }
 
     setState(() => _isSubmitting = true);
@@ -369,6 +442,8 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
           longitude: LocationFeatureFlags.enabled ? location.longitude : null,
           items: cart.items,
           totalPrice: cart.totalPrice,
+          persistSavedLocation: location.persistSavedLocationAfterOrder,
+          locationSourceKind: location.orderSourceKind,
         ),
         tag: 'submitOrder',
       );
@@ -559,7 +634,10 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
                                             ) ==
                                             null,
                                         location: location,
+                                        savedLocation: _savedLocation,
                                         onChangeLocation: _changeLocation,
+                                        onSavedLocationChoice:
+                                            _handleSavedLocationChoice,
                                       ),
                                     ],
                                   ],
@@ -841,7 +919,7 @@ class _CartLineItem extends StatelessWidget {
   }
 }
 
-/// حالة الموقع — الاعتماد على المحفوظ عبر Modal؛ GPS عند «تغيير الموقع» فقط.
+/// حالة الموقع — محفوظ أساسي أو جديد لهذه الطلبية فقط.
 class _DeliveryLocationSection extends StatelessWidget {
   const _DeliveryLocationSection({
     required this.palette,
@@ -850,7 +928,9 @@ class _DeliveryLocationSection extends StatelessWidget {
     required this.hasSavedProfile,
     required this.phoneValid,
     required this.location,
+    required this.savedLocation,
     required this.onChangeLocation,
+    required this.onSavedLocationChoice,
   });
 
   final TenantPalette palette;
@@ -859,7 +939,9 @@ class _DeliveryLocationSection extends StatelessWidget {
   final bool hasSavedProfile;
   final bool phoneValid;
   final DeliveryLocationNotifier location;
+  final SavedDeliveryLocation? savedLocation;
   final VoidCallback onChangeLocation;
+  final Future<void> Function(SavedLocationChoice choice) onSavedLocationChoice;
 
   @override
   Widget build(BuildContext context) {
@@ -936,8 +1018,85 @@ class _DeliveryLocationSection extends StatelessWidget {
       );
     }
 
-    if (hasSavedProfile && !locationChosen) {
-      return const SizedBox.shrink();
+    if (hasSavedProfile && !locationChosen && savedLocation != null) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: palette.surfaceTint,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: palette.primary.withValues(alpha: 0.15)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.home_rounded, color: palette.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'الموقع المحفوظ: ${savedLocation!.addressLabel}',
+                    style: TextStyle(
+                      color: palette.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: () =>
+                  unawaited(onSavedLocationChoice(SavedLocationChoice.useSaved)),
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.primary,
+                foregroundColor: palette.onPrimary,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: const Text(
+                'استخدام موقعي المحفوظ',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => unawaited(
+                onSavedLocationChoice(SavedLocationChoice.orderOnly),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: BorderSide(color: palette.primary.withValues(alpha: 0.35)),
+              ),
+              child: Text(
+                'موقع جديد — هذه الطلبية فقط',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: palette.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => unawaited(
+                onSavedLocationChoice(SavedLocationChoice.updateSaved),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: BorderSide(color: palette.primary.withValues(alpha: 0.25)),
+              ),
+              child: Text(
+                'تحديث موقعي المحفوظ بهذا الموقع',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: palette.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Container(
