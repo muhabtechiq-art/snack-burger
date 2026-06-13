@@ -97,172 +97,259 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     context.go('/${widget.slug}');
   }
 
+  InputDecoration _fieldDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(
+        color: AdminPanelColors.charcoal.withValues(alpha: 0.7),
+        fontWeight: FontWeight.w600,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: AdminPanelColors.charcoal.withValues(alpha: 0.55),
+      ),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: const Color(0xFFF8F8F8),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: AdminPanelColors.charcoal.withValues(alpha: 0.12),
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: AdminPanelColors.charcoal.withValues(alpha: 0.1),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: AdminPanelColors.gold.withValues(alpha: 0.85),
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AdminPanelColors.charcoal,
-        appBar: AppBar(
-          backgroundColor: AdminPanelColors.charcoal,
-          foregroundColor: AdminPanelColors.gold,
-          elevation: 0,
-          centerTitle: true,
-          title: const Text(
-            'دخول الإدارة',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
-            tooltip: 'العودة للمنيو',
-            onPressed: _isSubmitting ? null : _exitToCustomerMenu,
-          ),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(1),
-            child: Container(
-              height: 1,
-              color: AdminPanelColors.gold.withValues(alpha: 0.2),
-            ),
-          ),
-        ),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'لوحة تحكم Snack Burger',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AdminPanelColors.gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'سجّل دخولك كمسؤول للوصول إلى لوحة التحكم',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: InputDecoration(
-                        labelText: 'البريد الإلكتروني',
-                        prefixIcon: Icon(
-                          Icons.email_outlined,
-                          color: AdminPanelColors.gold.withValues(alpha: 0.8),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.08),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'أدخل البريد الإلكتروني';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.password],
-                      onFieldSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        labelText: 'كلمة المرور',
-                        prefixIcon: Icon(
-                          Icons.lock_outline_rounded,
-                          color: AdminPanelColors.gold.withValues(alpha: 0.8),
-                        ),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() => _obscurePassword = !_obscurePassword);
-                          },
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: AdminPanelColors.textMuted,
-                          ),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.08),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'أدخل كلمة المرور';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: _isSubmitting ? null : _submit,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AdminPanelColors.gold,
-                        foregroundColor: AdminPanelColors.charcoal,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AdminPanelColors.charcoal,
+        body: DecoratedBox(
+          decoration: BoxDecoration(gradient: AdminPanelColors.loginGradient),
+          child: SafeArea(
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    color: AdminPanelColors.gold,
+                    tooltip: 'العودة للمنيو',
+                    onPressed: _isSubmitting ? null : _exitToCustomerMenu,
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 96,
+                              height: 96,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.15),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
                               ),
-                            )
-                          : const Text(
-                              'تسجيل الدخول',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
+                              padding: const EdgeInsets.all(4),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/images/menu_logo.png',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Icon(
+                                    Icons.restaurant_rounded,
+                                    size: 44,
+                                    color: AdminPanelColors.charcoal
+                                        .withValues(alpha: 0.7),
+                                  ),
+                                ),
                               ),
                             ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton.icon(
-                      onPressed: _isSubmitting ? null : _exitToCustomerMenu,
-                      icon: Icon(
-                        Icons.storefront_outlined,
-                        size: 20,
-                        color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
-                      ),
-                      label: Text(
-                        'العودة للمنيو',
-                        style: TextStyle(
-                          color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
-                          fontWeight: FontWeight.w600,
+                            const SizedBox(height: 24),
+                            const Text(
+                              'لوحة إدارة المطعم',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AdminPanelColors.gold,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'إدارة الطلبات والمنتجات والتقارير',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AdminPanelColors.textMuted
+                                    .withValues(alpha: 0.92),
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            Container(
+                              padding: const EdgeInsets.all(22),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.14),
+                                    blurRadius: 24,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    TextFormField(
+                                      controller: _emailController,
+                                      keyboardType: TextInputType.emailAddress,
+                                      textInputAction: TextInputAction.next,
+                                      autofillHints: const [
+                                        AutofillHints.email,
+                                      ],
+                                      decoration: _fieldDecoration(
+                                        label: 'البريد الإلكتروني',
+                                        icon: Icons.email_outlined,
+                                      ),
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'أدخل البريد الإلكتروني';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextFormField(
+                                      controller: _passwordController,
+                                      obscureText: _obscurePassword,
+                                      textInputAction: TextInputAction.done,
+                                      autofillHints: const [
+                                        AutofillHints.password,
+                                      ],
+                                      onFieldSubmitted: (_) => _submit(),
+                                      decoration: _fieldDecoration(
+                                        label: 'كلمة المرور',
+                                        icon: Icons.lock_outline_rounded,
+                                        suffix: IconButton(
+                                          onPressed: () {
+                                            setState(() => _obscurePassword =
+                                                !_obscurePassword);
+                                          },
+                                          icon: Icon(
+                                            _obscurePassword
+                                                ? Icons.visibility_outlined
+                                                : Icons.visibility_off_outlined,
+                                            color: AdminPanelColors.charcoal
+                                                .withValues(alpha: 0.45),
+                                          ),
+                                        ),
+                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'أدخل كلمة المرور';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 22),
+                                    FilledButton(
+                                      onPressed:
+                                          _isSubmitting ? null : _submit,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AdminPanelColors.gold,
+                                        foregroundColor:
+                                            AdminPanelColors.charcoal,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: _isSubmitting
+                                          ? const SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color:
+                                                    AdminPanelColors.charcoal,
+                                              ),
+                                            )
+                                          : const Text(
+                                              'تسجيل الدخول',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            TextButton.icon(
+                              onPressed:
+                                  _isSubmitting ? null : _exitToCustomerMenu,
+                              icon: Icon(
+                                Icons.storefront_outlined,
+                                size: 20,
+                                color: AdminPanelColors.textMuted
+                                    .withValues(alpha: 0.9),
+                              ),
+                              label: Text(
+                                'العودة للمنيو',
+                                style: TextStyle(
+                                  color: AdminPanelColors.textMuted
+                                      .withValues(alpha: 0.9),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),

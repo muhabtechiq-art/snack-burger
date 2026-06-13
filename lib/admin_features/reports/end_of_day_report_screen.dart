@@ -14,6 +14,7 @@ import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import '../shell/admin_panel_widgets.dart';
 import 'closing_report_csv_exporter.dart';
 import 'widgets/closing_order_detail_dialog.dart';
 
@@ -223,87 +224,81 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
     final palette = TenantPalette.fromRestaurant(
       context.read<ActiveRestaurantNotifier>().restaurant,
     );
+    final averageOrder = report.orderCount > 0
+        ? (report.totalSales / report.orderCount).toStringAsFixed(0)
+        : '—';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'تقرير يوم ${_formatReportDate(report.reportDate)}',
-                style: const TextStyle(
-                  color: AdminPanelColors.gold,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'اضغط على أي طلب لعرض التفاصيل الكاملة (الزبون، العنوان، GPS، الوجبات).',
-                style: TextStyle(
-                  color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.receipt_long_rounded,
-                      label: 'عدد الطلبات',
-                      value: '${report.orderCount}',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.payments_rounded,
-                      label: 'إجمالي المبيعات',
-                      value: '${report.totalSales.toStringAsFixed(0)} د.ع',
-                    ),
-                  ),
-                ],
+              _ReportHeader(dateLabel: _formatReportDate(report.reportDate)),
+              const SizedBox(height: 12),
+              _ClosingSummaryGrid(
+                orderCount: '${report.orderCount}',
+                totalSales: '${report.totalSales.toStringAsFixed(0)} د.ع',
+                averageOrder:
+                    averageOrder == '—' ? '—' : '$averageOrder د.ع',
               ),
             ],
           ),
         ),
+        const SizedBox(height: 20),
         Expanded(
           child: DefaultTabController(
             length: 2,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TabBar(
-                  labelColor: AdminPanelColors.gold,
-                  unselectedLabelColor: AdminPanelColors.textMuted,
-                  indicatorColor: AdminPanelColors.gold,
-                  tabs: [
-                    Tab(text: 'الطلبات (${report.orders.length})'),
-                    const Tab(text: 'ملخص المنتجات'),
-                  ],
+                Material(
+                  color: AdminPanelColors.charcoalLight.withValues(alpha: 0.35),
+                  child: TabBar(
+                    labelColor: AdminPanelColors.gold,
+                    unselectedLabelColor:
+                        AdminPanelColors.textMuted.withValues(alpha: 0.9),
+                    indicatorColor: AdminPanelColors.gold,
+                    indicatorWeight: 3,
+                    labelStyle: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                    tabs: [
+                      Tab(text: 'الطلبات (${report.orders.length})'),
+                      const Tab(text: 'ملخص المنتجات'),
+                    ],
+                  ),
                 ),
                 Expanded(
                   child: TabBarView(
                     children: [
                       report.orders.isEmpty
-                          ? Center(
-                              child: Text(
-                                'لا توجد طلبات مسجّلة لهذا اليوم.',
-                                style: TextStyle(
-                                  color: AdminPanelColors.textMuted
-                                      .withValues(alpha: 0.9),
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: _ClosingEmptyBox(
+                                  message:
+                                      'لا توجد طلبات مسجّلة لهذا اليوم.',
                                 ),
                               ),
                             )
                           : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                12,
+                                20,
+                                8,
+                              ),
                               itemCount: report.orders.length,
                               separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 10),
                               itemBuilder: (context, index) {
                                 final order = report.orders[index];
                                 return _ClosingOrderRow(
@@ -318,23 +313,30 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
                               },
                             ),
                       report.productLines.isEmpty
-                          ? Center(
-                              child: Text(
-                                'لا توجد مبيعات مسجّلة لهذا اليوم.',
-                                style: TextStyle(
-                                  color: AdminPanelColors.textMuted
-                                      .withValues(alpha: 0.9),
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: _ClosingEmptyBox(
+                                  message:
+                                      'لا توجد مبيعات مسجّلة لهذا اليوم.',
                                 ),
                               ),
                             )
-                          : SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: SingleChildScrollView(
-                                child: _ProductSalesTable(
-                                  lines: report.productLines,
-                                ),
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                12,
+                                20,
+                                8,
                               ),
+                              itemCount: report.productLines.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                return _ProductSummaryRow(
+                                  line: report.productLines[index],
+                                );
+                              },
                             ),
                     ],
                   ),
@@ -344,7 +346,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -353,7 +355,10 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
                 style: FilledButton.styleFrom(
                   backgroundColor: AdminPanelColors.gold,
                   foregroundColor: AdminPanelColors.charcoal,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 icon: _exporting
                     ? const SizedBox(
@@ -363,7 +368,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
                       )
                     : const Icon(Icons.download_rounded),
                 label: const Text(
-                  'Export to CSV',
+                  'Export CSV',
                   style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                 ),
               ),
@@ -372,10 +377,16 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
                 onPressed: _printing ? null : _printReport,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AdminPanelColors.gold,
+                  backgroundColor: AdminPanelColors.charcoalLight
+                      .withValues(alpha: 0.35),
                   side: BorderSide(
-                    color: AdminPanelColors.gold.withValues(alpha: 0.45),
+                    color: AdminPanelColors.gold.withValues(alpha: 0.55),
+                    width: 1.5,
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 icon: _printing
                     ? const SizedBox(
@@ -386,13 +397,212 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
                     : const Icon(Icons.print_rounded),
                 label: const Text(
                   'طباعة تقرير الإغلاق',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ReportHeader extends StatelessWidget {
+  const _ReportHeader({required this.dateLabel});
+
+  final String dateLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'تقرير اليوم',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          dateLabel,
+          textAlign: TextAlign.right,
+          style: const TextStyle(
+            color: AdminPanelColors.gold,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'اضغط على أي طلب لعرض التفاصيل الكاملة',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: AdminPanelColors.textMuted.withValues(alpha: 0.88),
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ClosingSummaryGrid extends StatelessWidget {
+  const _ClosingSummaryGrid({
+    required this.orderCount,
+    required this.totalSales,
+    required this.averageOrder,
+  });
+
+  final String orderCount;
+  final String totalSales;
+  final String averageOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ClosingStatTile(
+                icon: Icons.receipt_long_rounded,
+                label: 'عدد الطلبات',
+                value: orderCount,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ClosingStatTile(
+                icon: Icons.payments_rounded,
+                label: 'إجمالي المبيعات',
+                value: totalSales,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _ClosingStatTile(
+          icon: Icons.analytics_rounded,
+          label: 'متوسط الطلب',
+          value: averageOrder,
+        ),
+      ],
+    );
+  }
+}
+
+class _ClosingStatTile extends StatelessWidget {
+  const _ClosingStatTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  static const _maxHeight = 85.0;
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: _maxHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AdminPanelColors.cardCream,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AdminPanelColors.gold.withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: AdminPanelColors.gold.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: AdminPanelColors.charcoal, size: 17),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AdminPanelColors.charcoal,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AdminPanelColors.charcoal.withValues(alpha: 0.58),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClosingEmptyBox extends StatelessWidget {
+  const _ClosingEmptyBox({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      decoration: BoxDecoration(
+        color: AdminPanelColors.cardCream.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AdminPanelColors.gold.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: AdminPanelColors.charcoal.withValues(alpha: 0.62),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
@@ -412,173 +622,79 @@ class _ClosingOrderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AdminPanelColors.charcoalLight,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AdminPanelColors.gold.withValues(alpha: 0.22),
-            ),
+    return AdminSurfaceCard(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Icon(
+            Icons.chevron_left_rounded,
+            color: AdminPanelColors.charcoal.withValues(alpha: 0.35),
+            size: 24,
           ),
-          child: Row(
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(
-                Icons.chevron_left_rounded,
-                color: AdminPanelColors.gold.withValues(alpha: 0.75),
+              Text(
+                '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                style: const TextStyle(
+                  color: AdminPanelColors.charcoal,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
               ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    order.customerName,
-                    style: const TextStyle(
-                      color: AdminPanelColors.textLight,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                    ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AdminPanelColors.gold.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: const TextStyle(
+                    color: AdminPanelColors.charcoal,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${order.customerPhone} • ${order.items.length} وجبة',
-                    style: const TextStyle(
-                      color: AdminPanelColors.textMuted,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${order.totalPrice.toStringAsFixed(0)} د.ع',
-                    style: const TextStyle(
-                      color: AdminPanelColors.gold,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$timeLabel • $statusLabel',
-                    style: TextStyle(
-                      color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProductSalesTable extends StatelessWidget {
-  const _ProductSalesTable({required this.lines});
-
-  final List<ClosingProductLine> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return DataTable(
-      headingRowColor: WidgetStateProperty.all(
-        AdminPanelColors.charcoalLight,
-      ),
-      dataRowMinHeight: 44,
-      headingRowHeight: 48,
-      columnSpacing: 24,
-      headingTextStyle: const TextStyle(
-        color: AdminPanelColors.gold,
-        fontWeight: FontWeight.w800,
-        fontSize: 13,
-      ),
-      dataTextStyle: const TextStyle(
-        color: AdminPanelColors.textLight,
-        fontSize: 13,
-      ),
-      columns: const [
-        DataColumn(label: Text('Product Name')),
-        DataColumn(label: Text('Quantity Sold'), numeric: true),
-        DataColumn(label: Text('Unit Price'), numeric: true),
-        DataColumn(label: Text('Total'), numeric: true),
-      ],
-      rows: lines
-          .map(
-            (line) => DataRow(
-              cells: [
-                DataCell(
-                  SizedBox(
-                    width: 220,
-                    child: Text(
-                      line.productName,
-                      textAlign: TextAlign.right,
-                    ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  order.customerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AdminPanelColors.charcoal,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
                   ),
                 ),
-                DataCell(Text('${line.quantitySold}')),
-                DataCell(Text('${line.unitPrice.toStringAsFixed(0)} د.ع')),
-                DataCell(Text('${line.lineTotal.toStringAsFixed(0)} د.ع')),
+                const SizedBox(height: 4),
+                Text(
+                  order.customerPhone,
+                  style: TextStyle(
+                    color: AdminPanelColors.charcoal.withValues(alpha: 0.62),
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  timeLabel,
+                  style: TextStyle(
+                    color: AdminPanelColors.charcoal.withValues(alpha: 0.48),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
-            ),
-          )
-          .toList(),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AdminPanelColors.charcoalLight,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AdminPanelColors.gold.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Icon(icon, color: AdminPanelColors.gold, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AdminPanelColors.textMuted,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AdminPanelColors.textLight,
-              fontWeight: FontWeight.w900,
-              fontSize: 18,
             ),
           ),
         ],
@@ -586,3 +702,52 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+
+class _ProductSummaryRow extends StatelessWidget {
+  const _ProductSummaryRow({required this.line});
+
+  final ClosingProductLine line;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurfaceCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Text(
+            '${line.lineTotal.toStringAsFixed(0)} د.ع',
+            style: const TextStyle(
+              color: AdminPanelColors.charcoal,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+            ),
+          ),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                line.productName,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: AdminPanelColors.charcoal,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'الكمية: ${line.quantitySold}',
+                style: TextStyle(
+                  color: AdminPanelColors.charcoal.withValues(alpha: 0.58),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+

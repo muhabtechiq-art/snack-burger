@@ -9,6 +9,7 @@ import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import '../shell/admin_panel_widgets.dart';
 import 'products_admin_controller.dart';
 
 /// صفحة إدارة المنتجات — استعراض وتعديل الأسعار.
@@ -205,66 +206,103 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
               final product = products[index];
               final isDeleting = _deletingProductId == product.id;
 
-              return ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(
-                    color: AdminPanelColors.gold.withValues(alpha: 0.2),
-                  ),
-                ),
-                tileColor: AdminPanelColors.charcoalLight,
-                title: Text(
-                  product.name,
-                  style: const TextStyle(
-                    color: AdminPanelColors.textLight,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                subtitle: Text(
-                  product.category.isNotEmpty
-                      ? product.category
-                      : 'بدون تصنيف',
-                  style: const TextStyle(color: AdminPanelColors.textMuted),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+              return AdminSurfaceCard(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      '${product.price.toStringAsFixed(0)} د.ع',
-                      style: const TextStyle(
-                        color: AdminPanelColors.gold,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.edit_rounded,
-                        color: AdminPanelColors.gold,
-                      ),
-                      tooltip: 'تعديل',
-                      onPressed: isDeleting
-                          ? null
-                          : () => _openEditProduct(context, product.id),
-                    ),
-                    IconButton(
-                      icon: isDeleting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.redAccent,
-                              ),
-                            )
-                          : Icon(
-                              Icons.delete_outline_rounded,
-                              color: Colors.red.shade400,
+                    _ProductImagePreview(imageUrl: product.imageUrl),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            product.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: AdminPanelColors.charcoal,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
                             ),
-                      tooltip: 'حذف',
-                      onPressed: isDeleting
-                          ? null
-                          : () => _confirmDeleteProduct(product),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            product.category.isNotEmpty
+                                ? product.category
+                                : 'بدون تصنيف',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              color: AdminPanelColors.charcoal
+                                  .withValues(alpha: 0.6),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${product.price.toStringAsFixed(0)} د.ع',
+                          style: const TextStyle(
+                            color: AdminPanelColors.charcoal,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 40,
+                                minHeight: 40,
+                              ),
+                              icon: const Icon(
+                                Icons.edit_rounded,
+                                color: AdminPanelColors.gold,
+                              ),
+                              tooltip: 'تعديل',
+                              onPressed: isDeleting
+                                  ? null
+                                  : () =>
+                                      _openEditProduct(context, product.id),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 40,
+                                minHeight: 40,
+                              ),
+                              icon: isDeleting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.redAccent,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.red.shade400,
+                                    ),
+                              tooltip: 'حذف',
+                              onPressed: isDeleting
+                                  ? null
+                                  : () => _confirmDeleteProduct(product),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -272,6 +310,103 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _ProductImagePreview extends StatelessWidget {
+  const _ProductImagePreview({required this.imageUrl});
+
+  static const _size = 56.0;
+
+  final String? imageUrl;
+
+  bool get _hasValidUrl {
+    final trimmed = imageUrl?.trim();
+    return trimmed != null && trimmed.isNotEmpty;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_hasValidUrl) {
+      return const _ProductNoImageBadge();
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: _size,
+        height: _size,
+        child: Image.network(
+          imageUrl!.trim(),
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: AdminPanelColors.cardLight,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AdminPanelColors.gold.withValues(alpha: 0.85),
+                  value: progress.expectedTotalBytes != null
+                      ? progress.cumulativeBytesLoaded /
+                          progress.expectedTotalBytes!
+                      : null,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (_, _, _) => const _ProductNoImageBadge(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductNoImageBadge extends StatelessWidget {
+  const _ProductNoImageBadge();
+
+  static const _size = 56.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _size,
+      height: _size,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: AdminPanelColors.gold.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AdminPanelColors.gold.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.hide_image_outlined,
+            size: 18,
+            color: Colors.orange.shade800.withValues(alpha: 0.85),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'بدون صورة',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.orange.shade900.withValues(alpha: 0.88),
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+            ),
+          ),
+        ],
       ),
     );
   }

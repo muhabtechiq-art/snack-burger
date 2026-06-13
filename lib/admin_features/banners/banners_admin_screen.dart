@@ -9,6 +9,7 @@ import '../../services/banner_repository.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import '../shell/admin_panel_widgets.dart';
 
 /// إدارة بانرات المنيو التفاعلية.
 class BannersAdminScreen extends StatefulWidget {
@@ -354,56 +355,76 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                   final isBusy = _busyBannerId == banner.id;
                   final displayActive = _displayBannerActive(banner);
 
-                  return ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: BorderSide(
-                        color: AdminPanelColors.gold.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    tileColor: AdminPanelColors.charcoalLight,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        banner.imageUrl,
-                        width: 72,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 72,
-                          height: 56,
-                          color: AdminPanelColors.charcoal,
-                          child: const Icon(
-                            Icons.image_not_supported_outlined,
-                            color: AdminPanelColors.textMuted,
+                  return AdminSurfaceCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            banner.imageUrl,
+                            width: 88,
+                            height: 64,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(
+                              width: 88,
+                              height: 64,
+                              color: AdminPanelColors.cardLight,
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                color: AdminPanelColors.charcoal
+                                    .withValues(alpha: 0.45),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    title: Text(
-                      banner.title.trim().isEmpty
-                          ? 'بانر بدون عنوان'
-                          : banner.title,
-                      style: const TextStyle(
-                        color: AdminPanelColors.textLight,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    subtitle: Text(
-                      displayActive ? 'نشط — يظهر في المنيو' : 'مخفي',
-                      style: TextStyle(
-                        color: displayActive
-                            ? AdminPanelColors.gold.withValues(alpha: 0.85)
-                            : AdminPanelColors.textMuted,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                banner.title.trim().isEmpty
+                                    ? 'بانر بدون عنوان'
+                                    : banner.title,
+                                style: const TextStyle(
+                                  color: AdminPanelColors.charcoal,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: displayActive
+                                      ? AdminPanelColors.gold
+                                          .withValues(alpha: 0.28)
+                                      : AdminPanelColors.charcoal
+                                          .withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  displayActive
+                                      ? 'نشط — يظهر في المنيو'
+                                      : 'مخفي',
+                                  style: TextStyle(
+                                    color: displayActive
+                                        ? AdminPanelColors.charcoal
+                                        : AdminPanelColors.charcoal
+                                            .withValues(alpha: 0.55),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         Switch.adaptive(
                           value: displayActive,
                           activeThumbColor: AdminPanelColors.gold,

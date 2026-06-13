@@ -10,10 +10,10 @@ import '../../services/supabase_order_service.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../orders/pending_order_actions.dart';
-import '../orders/pending_orders_notification_coordinator.dart';
 import '../orders/widgets/rejected_order_reason_sheet.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import '../shell/admin_panel_widgets.dart';
 
 /// لوحة إدارة الطلبات — تبويب جديد / مرفوض مع بث Supabase.
 class OrdersDashboardScreen extends StatefulWidget {
@@ -29,8 +29,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     with SingleTickerProviderStateMixin {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
   final PendingOrderActions _orderActions = PendingOrderActions();
-  final PendingOrdersNotificationCoordinator _notifications =
-      PendingOrdersNotificationCoordinator();
 
   final Set<String> _locallyRemovedIds = {};
   final Set<String> _rejectingOrderIds = {};
@@ -53,7 +51,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _notifications.reset();
     super.dispose();
   }
 
@@ -142,12 +139,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     return (pending: pending, rejected: rejected);
   }
 
-  void _handleStreamData(List<DeliveryOrder> orders) {
-    _notifications.onPendingOrdersUpdated(
-      orders.where((o) => o.isPending).toList(),
-    );
-  }
-
   void _handleStreamHealth(StreamHealth health) {
     if (!mounted || _streamHealth == health) return;
     final phase = SchedulerBinding.instance.schedulerPhase;
@@ -180,7 +171,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
           final palette = TenantPalette.fromRestaurant(restaurant);
           if (_streamKey != streamKey || _ordersStream == null) {
             _streamKey = streamKey;
-            _notifications.reset();
             _streamHealth = StreamHealth.connecting;
             _ordersStream = _orderRepository.watchKitchenDashboardOrders(
               restaurantId: restaurant.id,
@@ -205,7 +195,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
                 return _ErrorState(
                   message: snapshot.error.toString(),
                   onRetry: () => setState(() {
-                    _notifications.reset();
                     _streamKey = null;
                     _ordersStream = null;
                     _streamHealth = StreamHealth.connecting;
@@ -214,10 +203,6 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
               }
 
               final rawOrders = snapshot.data ?? const <DeliveryOrder>[];
-              SchedulerBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                _handleStreamData(rawOrders);
-              });
 
               final lists = _lists(rawOrders);
               final pendingCount = lists.pending.length;
@@ -517,24 +502,18 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderColor = isNewTab
-        ? AdminPanelColors.gold.withValues(alpha: 0.3)
+        ? AdminPanelColors.gold.withValues(alpha: 0.45)
         : (order.needsRejectionReason
-            ? Colors.orange.withValues(alpha: 0.55)
-            : Colors.red.withValues(alpha: 0.35));
+            ? Colors.orange.shade700
+            : Colors.red.shade300);
 
-    return Material(
-      color: AdminPanelColors.charcoalLight,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: isRejecting ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor, width: order.needsRejectionReason ? 1.5 : 1),
-          ),
-          child: Row(
+    return AdminSurfaceCard(
+      borderColor: borderColor,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (onQuickReject != null) ...[
@@ -560,96 +539,161 @@ class _OrderCard extends StatelessWidget {
                         : const Icon(Icons.close_rounded, size: 22),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
               ],
-              Icon(
-                isNewTab
-                    ? Icons.receipt_long_rounded
-                    : Icons.block_rounded,
-                color: isNewTab
-                    ? AdminPanelColors.gold.withValues(alpha: 0.9)
-                    : Colors.red.shade300,
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _OrderStatusBadge(
+                          order: order,
+                          isNewTab: isNewTab,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            order.customerName,
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AdminPanelColors.charcoal,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 19,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Text(
-                      order.customerName,
-                      style: const TextStyle(
-                        color: AdminPanelColors.textLight,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
+                      order.customerPhone,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: AdminPanelColors.charcoal.withValues(alpha: 0.62),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: AdminPanelColors.charcoal,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 22,
+                        height: 1.1,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${order.items.length} وجبة — '
-                      '${order.totalPrice.toStringAsFixed(0)} د.ع',
-                      style: const TextStyle(
-                        color: AdminPanelColors.textMuted,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      order.customerPhone,
+                      '${order.items.length} وجبة',
+                      textAlign: TextAlign.right,
                       style: TextStyle(
-                        color: AdminPanelColors.goldMuted.withValues(alpha: 0.9),
+                        color: AdminPanelColors.charcoal.withValues(alpha: 0.5),
                         fontSize: 12,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    if (isNewTab)
-                      Text(
-                        'بانتظار التأكيد',
-                        style: TextStyle(
-                          color: AdminPanelColors.gold.withValues(alpha: 0.95),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
-                    else if (order.needsRejectionReason)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'بانتظار سبب الرفض',
-                          style: TextStyle(
-                            color: Colors.orange.shade200,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      )
-                    else
+                    if (!isNewTab && !order.needsRejectionReason) ...[
+                      const SizedBox(height: 8),
                       Text(
                         order.rejectionReason ?? 'مرفوض',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
                         style: TextStyle(
-                          color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
+                          color: AdminPanelColors.charcoal.withValues(alpha: 0.65),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_left_rounded,
-                color: AdminPanelColors.gold.withValues(alpha: 0.7),
-              ),
             ],
           ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isRejecting ? null : onTap,
+              icon: Icon(
+                isNewTab
+                    ? Icons.receipt_long_rounded
+                    : Icons.info_outline_rounded,
+                size: 20,
+              ),
+              label: Text(
+                isNewTab ? 'التفاصيل والفاتورة' : 'عرض التفاصيل',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: isNewTab
+                    ? AdminPanelColors.gold
+                    : AdminPanelColors.charcoalLight.withValues(alpha: 0.35),
+                foregroundColor: AdminPanelColors.charcoal,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderStatusBadge extends StatelessWidget {
+  const _OrderStatusBadge({
+    required this.order,
+    required this.isNewTab,
+  });
+
+  final DeliveryOrder order;
+  final bool isNewTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = isNewTab
+        ? 'معلّق'
+        : order.needsRejectionReason
+            ? 'سبب الرفض'
+            : 'مرفوض';
+
+    final background = isNewTab
+        ? AdminPanelColors.gold.withValues(alpha: 0.28)
+        : order.needsRejectionReason
+            ? Colors.orange.withValues(alpha: 0.22)
+            : Colors.red.withValues(alpha: 0.14);
+
+    final foreground = isNewTab
+        ? AdminPanelColors.charcoal
+        : order.needsRejectionReason
+            ? Colors.orange.shade900
+            : Colors.red.shade700;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_profile_session.dart';
+import '../../admin_features/orders/admin_order_notification_controller.dart';
 
 /// حالة المصادقة — لا يُعتبر المسؤول مخوّلاً إلا بعد await لجلب profiles.
 class AuthNotifier extends ChangeNotifier {
@@ -238,6 +239,7 @@ class AuthNotifier extends ChangeNotifier {
 
   Future<void> signOut() async {
     debugPrint('[AuthNotifier] signOut');
+    await AdminOrderNotificationController.instance.stop();
     await Supabase.instance.client.auth.signOut();
     await AdminProfileSession.clear();
     _session = null;

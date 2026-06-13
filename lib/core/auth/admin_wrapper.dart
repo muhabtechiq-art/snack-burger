@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../admin_features/orders/admin_order_notification_controller.dart';
 import '../../admin_features/shell/admin_panel_colors.dart';
+import '../../state/active_restaurant_notifier.dart';
 import 'auth_notifier.dart';
 
 /// يغلّف شاشات الإدارة — Loading أثناء التحميل، خطأ إن فشل profile.
-class AdminWrapper extends StatelessWidget {
+class AdminWrapper extends StatefulWidget {
   const AdminWrapper({
     super.key,
     required this.slug,
@@ -15,6 +19,51 @@ class AdminWrapper extends StatelessWidget {
 
   final String slug;
   final Widget child;
+
+  @override
+  State<AdminWrapper> createState() => _AdminWrapperState();
+}
+
+class _AdminWrapperState extends State<AdminWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_syncOrderSoundListener());
+    });
+  }
+
+  @override
+  void didUpdateWidget(AdminWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_syncOrderSoundListener());
+    });
+  }
+
+  Future<void> _syncOrderSoundListener() async {
+    if (!mounted) return;
+
+    final auth = context.read<AuthNotifier>();
+    if (!auth.isAdminAuthorized) {
+      await AdminOrderNotificationController.instance.stop();
+      return;
+    }
+
+    final tenant = context.read<ActiveRestaurantNotifier>();
+    var restaurant = tenant.restaurant;
+    if (restaurant == null) {
+      await tenant.resolveSlug(widget.slug);
+      if (!mounted) return;
+      restaurant = context.read<ActiveRestaurantNotifier>().restaurant;
+    }
+    if (restaurant == null) return;
+
+    await AdminOrderNotificationController.instance.ensureListening(
+      restaurantId: restaurant.id,
+      slug: widget.slug,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,18 +90,24 @@ class AdminWrapper extends StatelessWidget {
         onRetry: () async {
           final notifier = context.read<AuthNotifier>();
           await notifier.ensureReadyForRouting(needsAdminProfile: true);
+          if (!mounted) return;
+          unawaited(_syncOrderSoundListener());
         },
         showSignOut: true,
         onSignOut: () async {
           await context.read<AuthNotifier>().signOut();
           if (context.mounted) {
-            context.go('/$slug/admin/login');
+            context.go('/${widget.slug}/admin/login');
           }
         },
       );
     }
 
-    return child;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_syncOrderSoundListener());
+    });
+
+    return widget.child;
   }
 }
 

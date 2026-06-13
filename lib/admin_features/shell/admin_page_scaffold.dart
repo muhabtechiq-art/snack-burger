@@ -70,14 +70,20 @@ class _AdminPageScaffoldState extends State<AdminPageScaffold> {
             appBar: AppBar(
               backgroundColor: AdminPanelColors.charcoal,
               foregroundColor: AdminPanelColors.gold,
-              automaticallyImplyLeading: true,
+              automaticallyImplyLeading: false,
               leading: context.canPop()
                   ? IconButton(
                       tooltip: 'رجوع',
                       icon: const Icon(Icons.arrow_forward_ios_rounded),
                       onPressed: () => context.pop(),
                     )
-                  : null,
+                  : Builder(
+                      builder: (context) => IconButton(
+                        tooltip: 'القائمة',
+                        icon: const Icon(Icons.menu_rounded),
+                        onPressed: () => Scaffold.of(context).openDrawer(),
+                      ),
+                    ),
               title: Text(
                 widget.title,
                 style: const TextStyle(fontWeight: FontWeight.w800),

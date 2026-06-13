@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
 import '../../models/delivery_order_model.dart';
 import '../../services/order_realtime_notification_service.dart';
 import 'order_notification_player.dart';
@@ -12,7 +16,7 @@ class PendingOrdersNotificationCoordinator {
   final Duration recentOrderWindow;
 
   final Set<String> _knownPendingIds = {};
-  final Set<String> _alertedOrderIds = {};
+  final Set<String> _notifiedOrderIds = {};
   bool _baselineReady = false;
 
   /// يُستدعى عند كل حدث من بث Supabase (ليس من `build` مباشرة).
@@ -23,20 +27,33 @@ class PendingOrdersNotificationCoordinator {
       _knownPendingIds
         ..clear()
         ..addAll(currentIds);
+      _notifiedOrderIds.addAll(currentIds);
       _baselineReady = true;
+      debugPrint(
+        '[QA][OrderSound] initial baseline pending=${currentIds.length}',
+      );
       return;
     }
 
     for (final order in orders) {
       final isNew = !_knownPendingIds.contains(order.id);
-      final notYetAlerted = !_alertedOrderIds.contains(order.id);
+      final notYetNotified = !_notifiedOrderIds.contains(order.id);
       final isRecent = _isRecentlyCreated(order);
 
-      if (isNew && notYetAlerted && isRecent) {
-        _alertedOrderIds.add(order.id);
+      if (isNew && notYetNotified && isRecent) {
+        debugPrint(
+          '[QA][OrderSound] new pending order detected id=${order.id}',
+        );
+        _notifiedOrderIds.add(order.id);
         // على الجوال: التنبيه يأتي من OrderRealtimeNotificationService فقط.
         if (!OrderRealtimeNotificationService.instance.handlesAlerts) {
-          OrderNotificationPlayer.playNewPendingOrder();
+          unawaited(
+            OrderNotificationPlayer.playNewPendingOrder().then((_) {
+              debugPrint(
+                '[QA][OrderSound] sound played id=${order.id}',
+              );
+            }),
+          );
         }
       }
     }
@@ -44,6 +61,8 @@ class PendingOrdersNotificationCoordinator {
     _knownPendingIds
       ..clear()
       ..addAll(currentIds);
+
+    _notifiedOrderIds.removeWhere((id) => !currentIds.contains(id));
   }
 
   bool _isRecentlyCreated(DeliveryOrder order) {
@@ -53,7 +72,7 @@ class PendingOrdersNotificationCoordinator {
 
   void reset() {
     _knownPendingIds.clear();
-    _alertedOrderIds.clear();
+    _notifiedOrderIds.clear();
     _baselineReady = false;
   }
 }
