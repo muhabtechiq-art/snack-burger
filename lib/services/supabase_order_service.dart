@@ -15,6 +15,7 @@ import '../core/config/stability_phase1_flags.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
+import 'supabase_app_settings_service.dart';
 import 'supabase_error_reporter.dart';
 import '../models/end_of_day_report_model.dart';
 import '../models/order_model.dart';
@@ -103,6 +104,8 @@ abstract final class SupabaseOrderService {
         : null;
   }
 
+  static const String maintenanceBlockedCode = 'maintenance_mode_active';
+
   /// يحفظ طلباً جديداً ويعيد معرّف الصف.
   static Future<String> submitOrder({
     required String restaurantId,
@@ -115,6 +118,11 @@ abstract final class SupabaseOrderService {
     required List<CartItem> items,
     required double totalPrice,
   }) async {
+    final settings = await SupabaseAppSettingsService.fetch();
+    if (settings.maintenanceMode) {
+      throw StateError(maintenanceBlockedCode);
+    }
+
     final correlationId = AppTelemetry.newCorrelationId(scope: 'order_submit');
     final orderItems = items.map((item) => item.toMap()).toList();
     final locationCoordinates = _resolveLocationCoordinates(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/auth/customer_wrapper.dart';
 import '../../core/utils/price_utils.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -8,7 +9,7 @@ import '../../models/delivery_order_status.dart';
 import '../../services/supabase_order_service.dart';
 import '../data/customer_order_repository.dart';
 
-class OrderStatusScreen extends StatefulWidget {
+class OrderStatusScreen extends StatelessWidget {
   const OrderStatusScreen({
     super.key,
     required this.slug,
@@ -19,10 +20,31 @@ class OrderStatusScreen extends StatefulWidget {
   final String orderId;
 
   @override
-  State<OrderStatusScreen> createState() => _OrderStatusScreenState();
+  Widget build(BuildContext context) {
+    return CustomerWrapper(
+      slug: slug,
+      child: _OrderStatusBody(
+        slug: slug,
+        orderId: orderId,
+      ),
+    );
+  }
 }
 
-class _OrderStatusScreenState extends State<OrderStatusScreen>
+class _OrderStatusBody extends StatefulWidget {
+  const _OrderStatusBody({
+    required this.slug,
+    required this.orderId,
+  });
+
+  final String slug;
+  final String orderId;
+
+  @override
+  State<_OrderStatusBody> createState() => _OrderStatusBodyState();
+}
+
+class _OrderStatusBodyState extends State<_OrderStatusBody>
     with WidgetsBindingObserver {
   final CustomerOrderRepository _repository = CustomerOrderRepository();
   int _retrySeed = 0;

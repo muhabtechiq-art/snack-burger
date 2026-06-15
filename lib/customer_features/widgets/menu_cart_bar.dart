@@ -24,6 +24,8 @@ import '../data/customer_order_repository.dart';
 import '../services/customer_order_session.dart';
 import '../services/customer_last_order_notifier.dart';
 import 'order_confirmation_dialog.dart';
+import '../../../services/supabase_order_service.dart';
+import '../../../state/app_settings_notifier.dart';
 import '../../../state/cart_notifier.dart';
 import '../../../state/delivery_location_notifier.dart';
 
@@ -404,6 +406,18 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
   }) async {
     if (!_formKey.currentState!.validate() || _isSubmitting) return;
 
+    final appSettings = sheetContext.read<AppSettingsNotifier>();
+    if (appSettings.shouldBlockCustomerApp) {
+      ScaffoldMessenger.of(sheetContext).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'الخدمة متوقفة مؤقتاً للصيانة — يمكنكم الطلب عبر الهاتف',
+          ),
+        ),
+      );
+      return;
+    }
+
     if (LocationFeatureFlags.enabled) {
       if (!location.hasLocation) {
         ScaffoldMessenger.of(sheetContext).showSnackBar(
@@ -457,10 +471,13 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
       Navigator.of(sheetContext).pop(orderId);
     } catch (error) {
       if (!sheetContext.mounted) return;
-      final message = error is NetworkTimeoutException ||
-              isLikelyNetworkFailure(error)
-          ? 'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى'
-          : 'تعذّر إرسال الطلب. حاول مرة أخرى';
+      final isMaintenance = error is StateError &&
+          error.message == SupabaseOrderService.maintenanceBlockedCode;
+      final message = isMaintenance
+          ? 'الخدمة متوقفة مؤقتاً للصيانة — يمكنكم الطلب عبر الهاتف'
+          : error is NetworkTimeoutException || isLikelyNetworkFailure(error)
+              ? 'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى'
+              : 'تعذّر إرسال الطلب. حاول مرة أخرى';
       ScaffoldMessenger.of(sheetContext).showSnackBar(
         SnackBar(content: Text(message)),
       );

@@ -161,6 +161,17 @@ class _AdminDrawerState extends State<AdminDrawer> {
                   child: Column(
                     children: [
                       _AdminTile(
+                        icon: Icons.construction_rounded,
+                        title: 'وضع الصيانة',
+                        subtitle: 'إيقاف استقبال طلبات الزبائن مؤقتاً',
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.push(
+                            '/${widget.slug}/admin/settings/maintenance',
+                          );
+                        },
+                      ),
+                      _AdminTile(
                         icon: Icons.info_outline_rounded,
                         title: 'حول النظام',
                         subtitle: 'Snack Burger — أنظمة المهاب',

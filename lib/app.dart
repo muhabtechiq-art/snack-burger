@@ -9,6 +9,7 @@ import 'package:universal_html/html.dart' as html;
 import 'core/errors/app_error_handler.dart';
 import 'core/theme/dynamic_theme.dart';
 import 'state/active_restaurant_notifier.dart';
+import 'state/app_settings_notifier.dart';
 
 class AlMahabMenuApp extends StatefulWidget {
   const AlMahabMenuApp({super.key, required this.router});
@@ -75,7 +76,9 @@ class _AlMahabMenuAppState extends State<AlMahabMenuApp>
   void _refreshRestaurantFromForeground() {
     if (!mounted) return;
     final tenant = context.read<ActiveRestaurantNotifier>();
+    final appSettings = context.read<AppSettingsNotifier>();
     unawaited(tenant.refreshRestaurant());
+    unawaited(appSettings.refresh());
   }
 
   @override

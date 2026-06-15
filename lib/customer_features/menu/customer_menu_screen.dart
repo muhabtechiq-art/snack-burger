@@ -6,6 +6,7 @@ import '../../core/theme/tenant_palette.dart';
 import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
+import '../../state/app_settings_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
 import 'customer_menu_banners_controller.dart';
@@ -142,11 +143,20 @@ class _CustomerMenuBodyState extends State<_CustomerMenuBody> {
     super.initState();
     _menuController = context.read<CustomerMenuController>();
     _bannersController = context.read<CustomerMenuBannersController>();
+    _menuController.addListener(_onMenuControllerChanged);
     _scrollController.addListener(_onScrollForLoadMore);
+  }
+
+  void _onMenuControllerChanged() {
+    if (!mounted) return;
+    if (_menuController.showProductsError) {
+      context.read<AppSettingsNotifier>().activateEmergencyFallback();
+    }
   }
 
   @override
   void dispose() {
+    _menuController.removeListener(_onMenuControllerChanged);
     _scrollController.removeListener(_onScrollForLoadMore);
     _scrollController.dispose();
     _searchController.dispose();
