@@ -241,7 +241,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
               const SizedBox(height: 12),
               _ClosingSummaryGrid(
                 orderCount: '${report.orderCount}',
-                totalSales: '${PriceUtils.formatPriceWithCurrency(report.totalSales)}',
+                totalSales: PriceUtils.formatPriceWithCurrency(report.totalSales),
                 averageOrder:
                     averageOrder == '—' ? '—' : '$averageOrder د.ع',
               ),
@@ -638,7 +638,7 @@ class _ClosingOrderRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                PriceUtils.formatPriceWithCurrency(order.totalPrice),
                 style: const TextStyle(
                   color: AdminPanelColors.charcoal,
                   fontWeight: FontWeight.w900,
@@ -716,7 +716,7 @@ class _ProductSummaryRow extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${PriceUtils.formatPriceWithCurrency(line.lineTotal)}',
+            PriceUtils.formatPriceWithCurrency(line.lineTotal),
             style: const TextStyle(
               color: AdminPanelColors.charcoal,
               fontWeight: FontWeight.w900,

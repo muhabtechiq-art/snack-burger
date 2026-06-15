@@ -68,7 +68,7 @@ class MenuCartBar extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${PriceUtils.formatPriceWithCurrency(cart.totalPrice)}',
+                          PriceUtils.formatPriceWithCurrency(cart.totalPrice),
                           style: TextStyle(
                             color: palette.primary.withValues(alpha: 0.75),
                             fontWeight: FontWeight.w600,
@@ -686,7 +686,7 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '${PriceUtils.formatPriceWithCurrency(cart.totalPrice)}',
+                                  PriceUtils.formatPriceWithCurrency(cart.totalPrice),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                     color: widget.palette.primary,
@@ -827,7 +827,7 @@ class _CartLineItem extends StatelessWidget {
           textDirection: TextDirection.ltr,
           children: [
             Text(
-              '${PriceUtils.formatPriceWithCurrency(item.lineTotal)}',
+              PriceUtils.formatPriceWithCurrency(item.lineTotal),
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: palette.primary,

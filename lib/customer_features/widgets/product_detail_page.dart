@@ -352,7 +352,7 @@ class _ProductDetailSheet extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${PriceUtils.formatPriceWithCurrency(unitTotal)}',
+                  PriceUtils.formatPriceWithCurrency(unitTotal),
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -581,7 +581,7 @@ class _AddToCartBar extends StatelessWidget {
           child: Row(
             children: [
               Text(
-                '${PriceUtils.formatPriceWithCurrency(total)}',
+                PriceUtils.formatPriceWithCurrency(total),
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,

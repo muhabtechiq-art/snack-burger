@@ -38,7 +38,7 @@ class OrderItemReceiptLines extends StatelessWidget {
             Text('x${item.quantity}'),
             const SizedBox(width: 12),
             Text(
-              '${PriceUtils.formatPriceWithCurrency(item.baseLineTotal)}',
+              PriceUtils.formatPriceWithCurrency(item.baseLineTotal),
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: color,
@@ -75,7 +75,7 @@ class OrderItemReceiptLines extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${PriceUtils.formatPriceWithCurrency(item.receiptAddonLineTotal(addon))}',
+                      PriceUtils.formatPriceWithCurrency(item.receiptAddonLineTotal(addon)),
                       style: TextStyle(
                         fontSize: compact ? 12 : 13,
                         fontWeight: FontWeight.w700,

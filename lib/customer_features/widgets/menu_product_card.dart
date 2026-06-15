@@ -339,7 +339,7 @@ class _PriceBadge extends StatelessWidget {
       child: Text(
         product.hasVariants
             ? 'من ${PriceUtils.formatPriceWithCurrency(product.displayPrice)}'
-            : '${PriceUtils.formatPriceWithCurrency(product.displayPrice)}',
+            : PriceUtils.formatPriceWithCurrency(product.displayPrice),
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

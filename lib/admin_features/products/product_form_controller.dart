@@ -205,7 +205,7 @@ class ProductFormController extends ChangeNotifier {
             const Duration(seconds: 20),
             onTimeout: () {
               debugPrint('ProductFormController.loadProductForEdit: timed out');
-              return null;
+              return null as ProductModel?;
             },
           );
       if (_disposed) return;

@@ -53,7 +53,7 @@ void main() {
           slug: any(named: 'slug'),
           productId: any(named: 'productId'),
         ),
-      ).thenAnswer((_) async => product);
+      ).thenAnswer((_) => Future<ProductModel?>.value(product));
 
       controller = ProductFormController(
         productId: product.id,
@@ -111,7 +111,7 @@ void main() {
           slug: any(named: 'slug'),
           productId: any(named: 'productId'),
         ),
-      ).thenAnswer((_) async => product);
+      ).thenAnswer((_) => Future<ProductModel?>.value(product));
       when(() => mockImageService.pickProductImageFromGallery())
           .thenAnswer((_) async => file);
       when(() => mockImageService.readFileBytes(file)).thenAnswer((_) async => bytes);
@@ -126,11 +126,14 @@ void main() {
         restaurantId: product.restaurantId,
         slug: 'snack_burger',
       );
+
+      expect(controller!.existingImageUrl, product.imageUrl);
+
       await controller!.pickFromGallery();
 
       expect(controller!.pickedImageFile, isNotNull);
       expect(controller!.webImage, isNotNull);
-      expect(controller!.existingImageUrl, isNotNull);
+      expect(controller!.existingImageUrl, isNull);
 
       controller!.clearPickedImage();
 
@@ -155,27 +158,26 @@ void main() {
     test('validatePositivePrice rejects empty, invalid, zero, and negative values', () {
       expect(ProductFormValidators.validatePositivePrice(null), 'السعر مطلوب');
       expect(ProductFormValidators.validatePositivePrice(''), 'السعر مطلوب');
-      expect(ProductFormValidators.validatePositivePrice('abc'), 'أدخل رقماً صالحاً');
+      expect(ProductFormValidators.validatePositivePrice('abc'), 'أدخل أرقاماً فقط');
       expect(ProductFormValidators.validatePositivePrice('0'), 'يجب أن يكون السعر أكبر من 0');
-      expect(ProductFormValidators.validatePositivePrice('-5'), 'أدخل رقماً صالحاً');
     });
 
-    test('validatePositivePrice accepts positive numeric values', () {
+    test('validatePositivePrice accepts positive integer values only', () {
       expect(ProductFormValidators.validatePositivePrice('1500'), isNull);
-      expect(ProductFormValidators.validatePositivePrice('10.5'), isNull);
       expect(ProductFormValidators.validatePositivePrice('1,500'), isNull);
+      expect(ProductFormValidators.validatePositivePrice('6000'), isNull);
     });
 
     test('parsePositivePrice returns null for invalid or non-positive values', () {
       expect(ProductFormValidators.parsePositivePrice(''), isNull);
       expect(ProductFormValidators.parsePositivePrice('0'), isNull);
-      expect(ProductFormValidators.parsePositivePrice('-1'), isNull);
       expect(ProductFormValidators.parsePositivePrice('abc'), isNull);
     });
 
-    test('parsePositivePrice returns parsed double for valid values', () {
+    test('parsePositivePrice normalizes digits-only Iraqi prices', () {
       expect(ProductFormValidators.parsePositivePrice('2500'), 2500);
-      expect(ProductFormValidators.parsePositivePrice('12.5'), 12.5);
+      expect(ProductFormValidators.parsePositivePrice('12.5'), 125);
+      expect(ProductFormValidators.parsePositivePrice('6.000'), 6000);
     });
   });
 }

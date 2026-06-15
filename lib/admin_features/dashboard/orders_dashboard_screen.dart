@@ -581,7 +581,7 @@ class _OrderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                      PriceUtils.formatPriceWithCurrency(order.totalPrice),
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         color: AdminPanelColors.charcoal,

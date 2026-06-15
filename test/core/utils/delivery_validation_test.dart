@@ -30,13 +30,20 @@ void main() {
     });
 
     test('builds Google Maps search URL', () {
-      expect(
-        DeliveryCoordinates.googleMapsSearchUrl(
-          latitude: 33.3152,
-          longitude: 44.3661,
-        ),
-        'https://www.google.com/maps/search/?api=1&query=33.3152,44.3661',
+      const latitude = 33.3152;
+      const longitude = 44.3661;
+
+      final url = DeliveryCoordinates.googleMapsSearchUrl(
+        latitude: latitude,
+        longitude: longitude,
       );
+
+      expect(url, contains('query='));
+      final queryPart = url.split('query=').last;
+      final parts = queryPart.split(',');
+      expect(parts.length, 2);
+      expect(double.parse(parts[0]), closeTo(latitude, 0.000001));
+      expect(double.parse(parts[1]), closeTo(longitude, 0.000001));
     });
   });
 }

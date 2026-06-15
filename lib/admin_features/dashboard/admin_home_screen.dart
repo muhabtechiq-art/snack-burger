@@ -298,7 +298,7 @@ class _DashboardStatsGrid extends StatelessWidget {
               child: _DashboardStatTile(
                 icon: Icons.payments_rounded,
                 label: 'مبيعات اليوم',
-                value: '${PriceUtils.formatPriceWithCurrency(todaySales)}',
+                value: PriceUtils.formatPriceWithCurrency(todaySales),
               ),
             ),
             const SizedBox(width: 8),
@@ -547,7 +547,7 @@ class _RecentOrderTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                    PriceUtils.formatPriceWithCurrency(order.totalPrice),
                     style: const TextStyle(
                       color: AdminPanelColors.charcoal,
                       fontWeight: FontWeight.w900,

@@ -280,7 +280,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      '${PriceUtils.formatPriceWithCurrency(product.price)}',
+                                      PriceUtils.formatPriceWithCurrency(product.price),
                                       style: const TextStyle(
                                         color: AdminPanelColors.charcoal,
                                         fontWeight: FontWeight.w900,

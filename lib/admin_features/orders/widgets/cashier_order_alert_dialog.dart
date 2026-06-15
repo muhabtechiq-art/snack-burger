@@ -130,7 +130,7 @@ class CashierOrderAlertDialog extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                              PriceUtils.formatPriceWithCurrency(order.totalPrice),
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 18,

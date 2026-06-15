@@ -374,7 +374,7 @@ class _OrderListTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                      PriceUtils.formatPriceWithCurrency(order.totalPrice),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 17,
@@ -594,7 +594,7 @@ class _OrderTotalCard extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+            PriceUtils.formatPriceWithCurrency(order.totalPrice),
             style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 22,

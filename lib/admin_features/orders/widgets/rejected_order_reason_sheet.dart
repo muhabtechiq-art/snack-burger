@@ -157,7 +157,7 @@ class _RejectedOrderReasonSheetState extends State<RejectedOrderReasonSheet> {
                     _InfoLine(label: 'العنوان', value: order.address),
                     _InfoLine(
                       label: 'الإجمالي',
-                      value: '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
+                      value: PriceUtils.formatPriceWithCurrency(order.totalPrice),
                     ),
                     const SizedBox(height: 12),
                     Text(
