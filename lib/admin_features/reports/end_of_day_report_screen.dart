@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/tenant_palette.dart';
@@ -225,7 +226,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
       context.read<ActiveRestaurantNotifier>().restaurant,
     );
     final averageOrder = report.orderCount > 0
-        ? (report.totalSales / report.orderCount).toStringAsFixed(0)
+        ? PriceUtils.formatPrice(report.totalSales / report.orderCount)
         : '—';
 
     return Column(
@@ -240,7 +241,7 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
               const SizedBox(height: 12),
               _ClosingSummaryGrid(
                 orderCount: '${report.orderCount}',
-                totalSales: '${report.totalSales.toStringAsFixed(0)} د.ع',
+                totalSales: '${PriceUtils.formatPriceWithCurrency(report.totalSales)}',
                 averageOrder:
                     averageOrder == '—' ? '—' : '$averageOrder د.ع',
               ),
@@ -637,7 +638,7 @@ class _ClosingOrderRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                 style: const TextStyle(
                   color: AdminPanelColors.charcoal,
                   fontWeight: FontWeight.w900,
@@ -715,7 +716,7 @@ class _ProductSummaryRow extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${line.lineTotal.toStringAsFixed(0)} د.ع',
+            '${PriceUtils.formatPriceWithCurrency(line.lineTotal)}',
             style: const TextStyle(
               color: AdminPanelColors.charcoal,
               fontWeight: FontWeight.w900,

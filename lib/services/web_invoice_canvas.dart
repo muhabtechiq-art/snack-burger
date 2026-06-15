@@ -2,6 +2,7 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+import '../core/utils/price_utils.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 
@@ -100,7 +101,7 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
     ctx.fillText('${item.quantity}', _receiptWidth * 0.55, y);
     ctx.textAlign = 'left';
     ctx.fillText(
-      item.baseLineTotal.toStringAsFixed(0),
+      PriceUtils.formatPrice(item.baseLineTotal),
       _pad + 70,
       y,
     );
@@ -117,7 +118,7 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
       ctx.fillText('${addon.quantity}', _receiptWidth * 0.55, y);
       ctx.textAlign = 'left';
       ctx.fillText(
-        item.receiptAddonLineTotal(addon).toStringAsFixed(0),
+        PriceUtils.formatPrice(item.receiptAddonLineTotal(addon)),
         _pad + 70,
         y,
       );
@@ -132,7 +133,7 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
   ctx.font = 'bold 28px Arial';
   ctx.textAlign = 'center';
   ctx.fillText(
-    'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
+    'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
     _receiptWidth / 2,
     y,
   );

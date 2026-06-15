@@ -1,3 +1,4 @@
+import '../core/utils/price_utils.dart';
 import '../models/order_model.dart';
 
 /// تنسيق فاتورة الكاشير — 3 أعمدة ثابتة (مادة | كمية | سعر) لورق 80mm.
@@ -23,7 +24,7 @@ abstract final class ReceiptCashierLayout {
   static String itemRow(CartItem item) => _row(
         item.displayName,
         '${item.quantity}',
-        item.baseLineTotal.toStringAsFixed(0),
+        PriceUtils.formatPrice(item.baseLineTotal),
       );
 
   static String addonRow({
@@ -34,7 +35,7 @@ abstract final class ReceiptCashierLayout {
       _row(
         '+ $name',
         '$quantity',
-        lineTotal.toStringAsFixed(0),
+        PriceUtils.formatPrice(lineTotal),
       );
 
   static String _row(String name, String qty, String price) {

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../core/utils/price_utils.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -81,7 +82,7 @@ abstract final class ReceiptRasterBuilder {
         bold: true,
       ),
       _RasterLine(
-        'إجمالي المبيعات: ${report.totalSales.toStringAsFixed(0)} د.ع',
+        'إجمالي المبيعات: ${PriceUtils.formatPriceWithCurrency(report.totalSales)}',
         fontSize: 22,
         bold: true,
       ),
@@ -157,7 +158,7 @@ abstract final class ReceiptRasterBuilder {
         _RasterLine.table(
           name: item.displayName,
           qty: '${item.quantity}',
-          price: item.baseLineTotal.toStringAsFixed(0),
+          price: PriceUtils.formatPrice(item.baseLineTotal),
         ),
       );
       for (final addon in item.selectedAddons) {
@@ -165,7 +166,7 @@ abstract final class ReceiptRasterBuilder {
           _RasterLine.table(
             name: '+ ${addon.name}',
             qty: '${addon.quantity}',
-            price: item.receiptAddonLineTotal(addon).toStringAsFixed(0),
+            price: PriceUtils.formatPrice(item.receiptAddonLineTotal(addon)),
           ),
         );
       }
@@ -175,7 +176,7 @@ abstract final class ReceiptRasterBuilder {
       ..add(_RasterLine('————————————————', align: TextAlign.center))
       ..add(
         _RasterLine(
-          'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
+          'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
           fontSize: 26,
           bold: true,
           align: TextAlign.center,

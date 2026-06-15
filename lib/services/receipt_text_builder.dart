@@ -1,3 +1,4 @@
+import '../core/utils/price_utils.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
@@ -48,7 +49,9 @@ abstract final class ReceiptTextBuilder {
 
     buffer
       ..writeln(_separator())
-      ..writeln('TOTAL: ${order.totalPrice.toStringAsFixed(0)} IQD')
+      ..writeln(
+        'TOTAL: ${PriceUtils.formatPriceWithCurrency(order.totalPrice, currency: 'IQD')}',
+      )
       ..writeln()
       ..writeln(_center('Thank you'));
 

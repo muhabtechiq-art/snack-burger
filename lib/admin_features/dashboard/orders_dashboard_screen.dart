@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
@@ -580,7 +581,7 @@ class _OrderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                      '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         color: AdminPanelColors.charcoal,

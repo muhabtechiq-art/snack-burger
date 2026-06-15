@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/catalog/product_variant_duplicate_cleanup.dart';
+import '../core/catalog/product_variants_resolver.dart';
 import '../core/network/network_timeout.dart';
 import '../core/utils/model_parse_validation.dart';
+import '../core/utils/price_utils.dart';
 import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
+import '../models/product_variants_cleanup_report.dart';
 import 'supabase_error_reporter.dart';
 
 /// منتجات المنيو — جدول `products` + `product_addons` في Supabase.
@@ -144,13 +148,18 @@ abstract final class SupabaseProductService {
     }).toList(growable: false);
   }
 
-  static List<ProductVariant> _resolveVariantsForProduct({
-    required ProductModel product,
-    List<ProductVariant>? fromTable,
+  static ({List<ProductVariant> variants, String source})
+      _resolveVariantsWithSource({
+    required String productId,
+    required List<ProductVariant> jsonbVariants,
+    required List<ProductVariant> tableVariants,
   }) {
-    if (fromTable != null && fromTable.isNotEmpty) return fromTable;
-    if (product.variants.isNotEmpty) return product.variants;
-    return const [];
+    return ProductVariantsResolver.resolve(
+      productId: productId,
+      jsonbVariants: jsonbVariants,
+      tableVariants: tableVariants,
+      logCustomerSource: true,
+    );
   }
 
   static List<String> _nonEmptyProductIds(List<ProductModel> products) {
@@ -171,6 +180,7 @@ abstract final class SupabaseProductService {
     ProductModel product, {
     List<ProductAddon>? addons,
     List<ProductVariant>? variants,
+    String? variantsSource,
   }) {
     return ProductModel(
       id: product.id,
@@ -182,6 +192,7 @@ abstract final class SupabaseProductService {
       category: product.category,
       addons: addons ?? product.addons,
       variants: variants ?? product.variants,
+      variantsSource: variantsSource ?? product.variantsSource,
       isAvailable: product.isAvailable,
       createdAt: product.createdAt,
     );
@@ -477,7 +488,7 @@ abstract final class SupabaseProductService {
     return <String, dynamic>{
       'id': ProductIdGenerator.serializeForSupabase(id),
       'name': product.name.trim(),
-      'price': product.price,
+      'price': PriceUtils.normalizePrice(product.price),
       'description': product.description,
       'category': product.category.trim().isNotEmpty
           ? product.category.trim()
@@ -495,7 +506,7 @@ abstract final class SupabaseProductService {
         .map(
           (addon) => <String, dynamic>{
             'name': addon.name.trim(),
-            'price': addon.price,
+            'price': PriceUtils.normalizePrice(addon.price),
           },
         )
         .toList(growable: false);
@@ -759,7 +770,7 @@ abstract final class SupabaseProductService {
           (addon) => <String, dynamic>{
             'product_id': serializedProductId,
             'name': addon.name.trim(),
-            'price': addon.price,
+            'price': PriceUtils.normalizePrice(addon.price),
           },
         )
         .toList(growable: false);
@@ -802,13 +813,14 @@ abstract final class SupabaseProductService {
     required String productId,
     required List<ProductVariant> variants,
   }) async {
+    final deduped = ProductVariant.deduplicate(variants);
     try {
       await _client.from(tableName).update({
-        'variants': variants.map((variant) => variant.toMap()).toList(growable: false),
+        'variants': deduped.map((variant) => variant.toMap()).toList(growable: false),
       }).eq('id', _serializeProductId(productId));
       debugPrint(
         '[SupabaseProductService] variants jsonb → product $productId '
-        'count=${variants.length}',
+        'count=${deduped.length}',
       );
     } on PostgrestException catch (e) {
       if (e.code == 'PGRST204' || e.message.contains('variants')) {
@@ -822,6 +834,34 @@ abstract final class SupabaseProductService {
     } catch (e, stack) {
       debugPrint(
         '[SupabaseProductService] _syncVariantsJsonbOnProduct فشل: $e\n$stack',
+      );
+    }
+  }
+
+  /// يتأكد أن صفوف الأحجام القديمة حُذفت قبل INSERT — يمنع التكرار عند إعادة الحفظ.
+  static Future<void> _ensureVariantRowsDeleted({
+    required String productId,
+    required dynamic serializedProductId,
+  }) async {
+    try {
+      final remaining = await _client
+          .from(variantsTableName)
+          .select('id')
+          .eq('product_id', serializedProductId);
+      final count = (remaining as List).length;
+      if (count == 0) return;
+
+      debugPrint(
+        '[SupabaseProductService] product_variants: $count صف قديم '
+        'للمنتج $productId — إعادة الحذف',
+      );
+      await _client
+          .from(variantsTableName)
+          .delete()
+          .eq('product_id', serializedProductId);
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseProductService] _ensureVariantRowsDeleted فشل: $e\n$stack',
       );
     }
   }
@@ -849,9 +889,16 @@ abstract final class SupabaseProductService {
       return false;
     }
 
-    final validVariants = variants
-        .where((variant) => variant.name.trim().isNotEmpty)
-        .toList(growable: false);
+    await _ensureVariantRowsDeleted(
+      productId: productId,
+      serializedProductId: serializedProductId,
+    );
+
+    final validVariants = ProductVariant.deduplicate(
+      variants
+          .where((variant) => variant.name.trim().isNotEmpty)
+          .toList(growable: false),
+    );
 
     if (validVariants.isEmpty) {
       debugPrint(
@@ -867,7 +914,7 @@ abstract final class SupabaseProductService {
           (entry) => <String, dynamic>{
             'product_id': serializedProductId,
             'name': entry.value.name.trim(),
-            'price': entry.value.price,
+            'price': PriceUtils.normalizePrice(entry.value.price),
             'sort_order': entry.key + 1,
           },
         )
@@ -977,17 +1024,22 @@ abstract final class SupabaseProductService {
                 variantsByProduct,
                 product.id,
               );
-              final variants = _resolveVariantsForProduct(
-                product: product,
-                fromTable: fromTable,
+              final resolved = _resolveVariantsWithSource(
+                productId: product.id,
+                jsonbVariants: product.variants,
+                tableVariants: fromTable ?? const [],
               );
-              if (variants.isEmpty && product.variants.isEmpty) {
+              if (resolved.variants.isEmpty) {
                 debugPrint(
                   '[SupabaseProductService] لا أحجام للمنتج id=${product.id} '
                   'name=${product.name}',
                 );
               }
-              return _copyProductRelations(product, variants: variants);
+              return _copyProductRelations(
+                product,
+                variants: resolved.variants,
+                variantsSource: resolved.source,
+              );
             },
           )
           .toList(growable: false);
@@ -1041,6 +1093,13 @@ abstract final class SupabaseProductService {
       }
 
       grouped.putIfAbsent(productId, () => <ProductVariant>[]).add(variant);
+    }
+
+    for (final entry in grouped.entries) {
+      grouped[entry.key] = ProductVariant.deduplicateForProduct(
+        productId: entry.key,
+        raw: entry.value,
+      );
     }
 
     return grouped;
@@ -1127,11 +1186,17 @@ abstract final class SupabaseProductService {
       normalized['restaurant_id'] ?? normalized['restaurantId'],
     );
 
-    final variants = _parseVariantsFromRow(normalized);
-    if (variants.isNotEmpty) {
+    final resolved = _resolveVariantsWithSource(
+      productId: id,
+      jsonbVariants:
+          ProductVariant.listFromDynamic(normalized['variants']),
+      tableVariants:
+          ProductVariant.listFromDynamic(normalized['product_variants']),
+    );
+    if (resolved.variants.isNotEmpty) {
       debugPrint(
-        '[SupabaseProductService] nested/jsonb variants للمنتج $id: '
-        '${variants.length}',
+        '[SupabaseProductService] variants للمنتج $id: '
+        '${resolved.variants.length} (${resolved.source})',
       );
     }
 
@@ -1149,7 +1214,8 @@ abstract final class SupabaseProductService {
           ? _asString(normalized['category'])
           : 'general',
       addons: _parseAddonsFromRow(normalized),
-      variants: variants,
+      variants: resolved.variants,
+      variantsSource: resolved.source,
       isAvailable: normalized['is_available'] as bool? ??
           normalized['isAvailable'] as bool? ??
           true,
@@ -1165,14 +1231,6 @@ abstract final class SupabaseProductService {
       return ProductAddon.listFromDynamic(nested);
     }
     return ProductAddon.listFromDynamic(row['addons']);
-  }
-
-  static List<ProductVariant> _parseVariantsFromRow(Map<String, dynamic> row) {
-    final nested = row['product_variants'];
-    if (nested is List && nested.isNotEmpty) {
-      return ProductVariant.listFromDynamic(nested);
-    }
-    return ProductVariant.listFromDynamic(row['variants']);
   }
 
   static bool _isExplicitlyUnavailable(Map<String, dynamic> data) {
@@ -1197,4 +1255,189 @@ abstract final class SupabaseProductService {
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString().replaceAll(',', '')) ?? 0;
   }
+
+  /// يحذف صفوف product_variants المكررة فقط (DELETE) — بدون insert/update/jsonb.
+  static Future<ProductVariantsCleanupReport> cleanupDuplicateVariantRows() async {
+    try {
+      final rows = await _client.from(variantsTableName).select();
+      final parsed = _parseVariantRowsForCleanup(rows);
+      if (parsed.isEmpty) {
+        return const ProductVariantsCleanupReport(
+          products: <ProductVariantsCleanupProductLog>[],
+          totalDeleted: 0,
+          jsonbSyncedProductIds: <String>[],
+        );
+      }
+
+      final byProduct = <String, List<_VariantCleanupRow>>{};
+      for (final row in parsed) {
+        byProduct.putIfAbsent(row.productId, () => <_VariantCleanupRow>[]).add(row);
+      }
+
+      final duplicateIdsByProduct = <String, List<String>>{};
+      final logs = <ProductVariantsCleanupProductLog>[];
+      final idsToDelete = <String>[];
+
+      for (final entry in byProduct.entries) {
+        final productId = entry.key;
+        final beforeCount = entry.value.length;
+
+        debugPrint(
+          '[QA][VariantCleanup] before=$beforeCount productId=$productId',
+        );
+
+        final duplicateRows = entry.value
+            .map(
+              (row) => ProductVariantDuplicateRow(
+                id: row.id,
+                productId: row.productId,
+                name: row.name,
+                price: row.price,
+              ),
+            )
+            .toList(growable: false);
+        final duplicateIds =
+            ProductVariantDuplicateCleanup.duplicateIdsToDelete(duplicateRows);
+
+        debugPrint(
+          '[QA][VariantCleanup] duplicateIds=$duplicateIds productId=$productId',
+        );
+
+        if (duplicateIds.isEmpty) continue;
+
+        duplicateIdsByProduct[productId] = duplicateIds;
+        idsToDelete.addAll(duplicateIds);
+      }
+
+      if (idsToDelete.isEmpty) {
+        debugPrint('[QA][VariantCleanup] duplicateIds=[] — no operation');
+        return const ProductVariantsCleanupReport(
+          products: <ProductVariantsCleanupProductLog>[],
+          totalDeleted: 0,
+          jsonbSyncedProductIds: <String>[],
+        );
+      }
+
+      var actualDeleted = 0;
+      for (final entry in duplicateIdsByProduct.entries) {
+        final productId = entry.key;
+        var deletedForProduct = 0;
+
+        for (final id in entry.value) {
+          final removed = await _deleteVariantRowById(id);
+          if (removed) {
+            deletedForProduct += 1;
+            actualDeleted += 1;
+          }
+        }
+
+        if (deletedForProduct == 0) continue;
+
+        final afterRows = await _client
+            .from(variantsTableName)
+            .select('id')
+            .eq('product_id', _serializeProductId(productId));
+        final afterCount = (afterRows as List).length;
+
+        debugPrint(
+          '[QA][VariantCleanup] deleted=$deletedForProduct productId=$productId',
+        );
+        debugPrint(
+          '[QA][VariantCleanup] after=$afterCount productId=$productId',
+        );
+
+        final beforeCount = byProduct[productId]?.length ?? 0;
+        logs.add(
+          ProductVariantsCleanupProductLog(
+            productId: productId,
+            beforeCount: beforeCount,
+            afterCount: afterCount,
+            deletedCount: deletedForProduct,
+          ),
+        );
+
+        // جلب fresh للتشخيص فقط — بدون حفظ تلقائي.
+        await fetchProductById(productId);
+      }
+
+      if (actualDeleted == 0) {
+        throw PostgrestException(
+          message:
+              'variant_cleanup_delete_blocked — سجّل دخول الإدارة ثم أعد المحاولة',
+        );
+      }
+
+      debugPrint(
+        '[QA][VariantCleanup] done productsAffected=${logs.length} '
+        'totalDeleted=$actualDeleted',
+      );
+
+      return ProductVariantsCleanupReport(
+        products: logs,
+        totalDeleted: actualDeleted,
+        jsonbSyncedProductIds: const <String>[],
+      );
+    } catch (e, stack) {
+      debugPrint('[QA][VariantCleanup] failed: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'cleanupDuplicateVariantRows');
+      rethrow;
+    }
+  }
+
+  static Future<bool> _deleteVariantRowById(String id) async {
+    try {
+      final removed = await _client
+          .from(variantsTableName)
+          .delete()
+          .eq('id', id)
+          .select('id');
+      return (removed as List).isNotEmpty;
+    } on PostgrestException catch (e, stack) {
+      debugPrint(
+        '[QA][VariantCleanup] delete id=$id failed: ${e.message}\n$stack',
+      );
+      return false;
+    }
+  }
+
+  static List<_VariantCleanupRow> _parseVariantRowsForCleanup(dynamic rows) {
+    if (rows is! List) return const [];
+
+    final parsed = <_VariantCleanupRow>[];
+    for (final entry in rows) {
+      if (entry is! Map) continue;
+      final map = Map<String, dynamic>.from(entry);
+      final id = _asString(map['id']);
+      final productId = _readVariantProductId(map);
+      final name = ProductVariant.fromMap(map).name;
+      if (id.isEmpty || productId.isEmpty || name.isEmpty) continue;
+
+      parsed.add(
+        _VariantCleanupRow(
+          id: id,
+          productId: productId,
+          name: name,
+          price: _readDouble(map['price']),
+          sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
+        ),
+      );
+    }
+    return parsed;
+  }
+}
+
+class _VariantCleanupRow {
+  const _VariantCleanupRow({
+    required this.id,
+    required this.productId,
+    required this.name,
+    required this.price,
+    required this.sortOrder,
+  });
+
+  final String id;
+  final String productId;
+  final String name;
+  final double price;
+  final int sortOrder;
 }

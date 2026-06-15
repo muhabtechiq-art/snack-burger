@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 
 import '../../core/theme/tenant_palette.dart';
 import '../../models/order_model.dart';
@@ -155,7 +156,7 @@ class _ProductDetailDialogState extends State<ProductDetailDialog> {
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              '+${addon.price.toStringAsFixed(0)} د.ع',
+                              '+${PriceUtils.formatPriceWithCurrency(addon.price)}',
                               textAlign: TextAlign.right,
                               style: TextStyle(
                                 fontSize: 12,
@@ -174,7 +175,7 @@ class _ProductDetailDialogState extends State<ProductDetailDialog> {
             Divider(color: scheme.outlineVariant.withValues(alpha: 0.4)),
             const SizedBox(height: 6),
             Text(
-              'الإجمالي: ${finalPrice.toStringAsFixed(0)} د.ع',
+              'الإجمالي: ${PriceUtils.formatPriceWithCurrency(finalPrice)}',
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontWeight: FontWeight.w900,
@@ -215,7 +216,7 @@ class _FixedPriceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'السعر: ${price.toStringAsFixed(0)} د.ع',
+      'السعر: ${PriceUtils.formatPriceWithCurrency(price)}',
       textAlign: TextAlign.right,
       style: const TextStyle(fontWeight: FontWeight.w700),
     );
@@ -257,7 +258,9 @@ class _SizeSelectorSection extends StatelessWidget {
             final selected = index == selectedIndex;
             return ChoiceChip(
               label: Text(
-                '${variant.name} — ${variant.price.toStringAsFixed(0)} د.ع',
+                '${variant.name} — ${PriceUtils.formatPriceWithCurrency(variant.price)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   fontSize: 13,

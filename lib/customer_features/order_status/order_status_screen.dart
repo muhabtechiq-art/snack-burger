@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../admin_features/orders/widgets/order_item_receipt_lines.dart';
@@ -246,7 +247,7 @@ class _OrderSummaryCard extends StatelessWidget {
             Text('العنوان: ${order.address}'),
             const SizedBox(height: 8),
             Text(
-              'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
+              'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
           ],

@@ -13,8 +13,36 @@ abstract final class MenuCatalogCache {
   static String _productsKey(String slug) =>
       'menu_catalog_products_${slug.trim().toLowerCase()}';
 
+  static String _productsRevisionKey(String slug) =>
+      'menu_catalog_products_revision_${slug.trim().toLowerCase()}';
+
   static String _bannersKey(String slug) =>
       'menu_catalog_banners_${slug.trim().toLowerCase()}';
+
+  /// بصمة الكاش — تتغير عند تغيّر المنتج أو أحجامه.
+  static String computeProductsRevision(List<ProductModel> products) {
+    return products
+        .map(
+          (product) =>
+              '${product.id}:${product.createdAt.toUtc().millisecondsSinceEpoch}:'
+              '${product.variants.length}:'
+              '${product.variantsSource ?? ''}',
+        )
+        .join(';');
+  }
+
+  static Future<void> clearProducts(String slug) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_productsKey(slug));
+      await prefs.remove(_productsRevisionKey(slug));
+      if (kDebugMode) {
+        debugPrint('[MenuCatalogCache] cleared products cache slug=$slug');
+      }
+    } catch (error, stack) {
+      debugPrint('[MenuCatalogCache] clearProducts failed: $error\n$stack');
+    }
+  }
 
   static Future<List<ProductModel>?> loadProducts(String slug) async {
     try {
@@ -29,9 +57,8 @@ abstract final class MenuCatalogCache {
       for (final entry in decoded) {
         if (entry is! Map) continue;
         try {
-          products.add(
-            ProductModel.fromMap(Map<String, dynamic>.from(entry)),
-          );
+          final product = ProductModel.fromMap(Map<String, dynamic>.from(entry));
+          products.add(_normalizeCachedProduct(product));
         } catch (error) {
           debugPrint('[MenuCatalogCache] skip product row: $error');
         }
@@ -49,11 +76,47 @@ abstract final class MenuCatalogCache {
   ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final payload = jsonEncode(products.map((p) => p.toMap()).toList());
+      final normalized = products.map(_normalizeCachedProduct).toList();
+      final revision = computeProductsRevision(normalized);
+      final previousRevision = prefs.getString(_productsRevisionKey(slug));
+
+      if (previousRevision != null && previousRevision != revision) {
+        if (kDebugMode) {
+          debugPrint(
+            '[MenuCatalogCache] revision changed — replacing cache slug=$slug',
+          );
+        }
+      }
+
+      final payload = jsonEncode(normalized.map((p) => p.toMap()).toList());
       await prefs.setString(_productsKey(slug), payload);
+      await prefs.setString(_productsRevisionKey(slug), revision);
     } catch (error, stack) {
       debugPrint('[MenuCatalogCache] saveProducts failed: $error\n$stack');
     }
+  }
+
+  /// يُبطل الكاش إذا اختلفت بصمة المنتجات عن النسخة المحفوظة.
+  static Future<bool> isRevisionStale(
+    String slug,
+    List<ProductModel> fresh,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final previous = prefs.getString(_productsRevisionKey(slug));
+      if (previous == null) return false;
+      return previous != computeProductsRevision(fresh);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static ProductModel _normalizeCachedProduct(ProductModel product) {
+    final deduped = ProductVariant.deduplicate(product.variants);
+    if (deduped.length == product.variants.length) {
+      return product;
+    }
+    return product.copyWith(variants: deduped);
   }
 
   static Future<List<PromoBannerModel>?> loadBanners(String slug) async {

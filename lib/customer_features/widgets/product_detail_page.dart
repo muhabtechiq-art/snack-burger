@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 
+import '../../core/catalog/product_variants_resolver.dart';
 import '../../core/theme/tenant_palette.dart';
 import '../../models/order_model.dart';
 import '../../models/product_model.dart';
@@ -51,6 +53,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   ProductModel get product => widget.product;
 
   bool get _hasVariants => product.hasVariants;
+
+  @override
+  void initState() {
+    super.initState();
+    ProductVariantsResolver.logCustomerProductDetail(product);
+  }
 
   List<CartItemAddon> _buildSelectedAddons() {
     return _addonQuantities.keys
@@ -317,6 +325,8 @@ class _ProductDetailSheet extends StatelessWidget {
             Text(
               product.name,
               textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
@@ -328,6 +338,8 @@ class _ProductDetailSheet extends StatelessWidget {
               Text(
                 product.description!.trim(),
                 textAlign: TextAlign.right,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 14,
                   height: 1.5,
@@ -340,7 +352,7 @@ class _ProductDetailSheet extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${unitTotal.toStringAsFixed(0)} د.ع',
+                  '${PriceUtils.formatPriceWithCurrency(unitTotal)}',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -374,7 +386,9 @@ class _ProductDetailSheet extends StatelessWidget {
                   final selected = selectedVariantIndices.contains(index);
                   return FilterChip(
                     label: Text(
-                      '${variant.name} — ${variant.price.toStringAsFixed(0)} د.ع',
+                      '${variant.name} — ${PriceUtils.formatPriceWithCurrency(variant.price)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight:
                             selected ? FontWeight.w800 : FontWeight.w600,
@@ -435,7 +449,7 @@ class _ProductDetailSheet extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '+${addon.price.toStringAsFixed(0)} د.ع',
+                              '+${PriceUtils.formatPriceWithCurrency(addon.price)}',
                               textAlign: TextAlign.right,
                               style: TextStyle(
                                 fontSize: 12,
@@ -567,7 +581,7 @@ class _AddToCartBar extends StatelessWidget {
           child: Row(
             children: [
               Text(
-                '${total.toStringAsFixed(0)} د.ع',
+                '${PriceUtils.formatPriceWithCurrency(total)}',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,

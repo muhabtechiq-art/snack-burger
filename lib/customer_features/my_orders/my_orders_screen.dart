@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -373,7 +374,7 @@ class _OrderListTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                      '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 17,
@@ -593,7 +594,7 @@ class _OrderTotalCard extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${order.totalPrice.toStringAsFixed(0)} د.ع',
+            '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
             style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 22,

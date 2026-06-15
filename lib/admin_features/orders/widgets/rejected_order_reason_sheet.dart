@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/utils/price_utils.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
@@ -156,7 +157,7 @@ class _RejectedOrderReasonSheetState extends State<RejectedOrderReasonSheet> {
                     _InfoLine(label: 'العنوان', value: order.address),
                     _InfoLine(
                       label: 'الإجمالي',
-                      value: '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                      value: '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                     ),
                     const SizedBox(height: 12),
                     Text(

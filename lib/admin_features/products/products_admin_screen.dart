@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -26,6 +27,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
     with WidgetsBindingObserver {
   final AdminProductRepository _productRepository = AdminProductRepository();
   late final ProductsAdminController _productsController;
+  late final TextEditingController _searchController;
 
   String? _deletingProductId;
   String? _boundRestaurantKey;
@@ -38,6 +40,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
       repository: _productRepository,
       onRealtimeDegraded: _showRealtimeDegradedToast,
     );
+    _searchController = TextEditingController();
     _productsController.addListener(_onProductsControllerChanged);
   }
 
@@ -79,6 +82,7 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _productsController.removeListener(_onProductsControllerChanged);
+    _searchController.dispose();
     _productsController.dispose();
     super.dispose();
   }
@@ -185,8 +189,10 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
             );
           }
 
-          final products = _productsController.products;
-          if (products.isEmpty) {
+          final products = _productsController.filteredProducts;
+          final hasCatalog = _productsController.hasProducts;
+
+          if (!hasCatalog) {
             return Center(
               child: Text(
                 'لا توجد منتجات — أضف وجبة جديدة',
@@ -198,118 +204,230 @@ class _ProductsAdminScreenState extends State<ProductsAdminScreen>
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-            itemCount: products.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final product = products[index];
-              final isDeleting = _deletingProductId == product.id;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _AdminProductSearchField(
+                controller: _searchController,
+                onChanged: _productsController.setSearchQuery,
+                onClear: () {
+                  _searchController.clear();
+                  _productsController.clearSearch();
+                },
+              ),
+              Expanded(
+                child: products.isEmpty && _productsController.isSearching
+                    ? Center(
+                        child: Text(
+                          'لا توجد وجبات مطابقة',
+                          style: TextStyle(
+                            color: AdminPanelColors.textMuted
+                                .withValues(alpha: 0.9),
+                            fontSize: 16,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                        itemCount: products.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final product = products[index];
+                          final isDeleting = _deletingProductId == product.id;
 
-              return AdminSurfaceCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _ProductImagePreview(imageUrl: product.imageUrl),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            product.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: const TextStyle(
-                              color: AdminPanelColors.charcoal,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
+                          return AdminSurfaceCard(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            product.category.isNotEmpty
-                                ? product.category
-                                : 'بدون تصنيف',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              color: AdminPanelColors.charcoal
-                                  .withValues(alpha: 0.6),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '${product.price.toStringAsFixed(0)} د.ع',
-                          style: const TextStyle(
-                            color: AdminPanelColors.charcoal,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 40,
-                              ),
-                              icon: const Icon(
-                                Icons.edit_rounded,
-                                color: AdminPanelColors.gold,
-                              ),
-                              tooltip: 'تعديل',
-                              onPressed: isDeleting
-                                  ? null
-                                  : () =>
-                                      _openEditProduct(context, product.id),
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 40,
-                              ),
-                              icon: isDeleting
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.redAccent,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                _ProductImagePreview(imageUrl: product.imageUrl),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        product.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(
+                                          color: AdminPanelColors.charcoal,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 16,
+                                        ),
                                       ),
-                                    )
-                                  : Icon(
-                                      Icons.delete_outline_rounded,
-                                      color: Colors.red.shade400,
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        product.category.isNotEmpty
+                                            ? product.category
+                                            : 'بدون تصنيف',
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          color: AdminPanelColors.charcoal
+                                              .withValues(alpha: 0.6),
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${PriceUtils.formatPriceWithCurrency(product.price)}',
+                                      style: const TextStyle(
+                                        color: AdminPanelColors.charcoal,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 15,
+                                      ),
                                     ),
-                              tooltip: 'حذف',
-                              onPressed: isDeleting
-                                  ? null
-                                  : () => _confirmDeleteProduct(product),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 40,
+                                            minHeight: 40,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.edit_rounded,
+                                            color: AdminPanelColors.gold,
+                                          ),
+                                          tooltip: 'تعديل',
+                                          onPressed: isDeleting
+                                              ? null
+                                              : () => _openEditProduct(
+                                                    context,
+                                                    product.id,
+                                                  ),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 40,
+                                            minHeight: 40,
+                                          ),
+                                          icon: isDeleting
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Colors.redAccent,
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  Icons.delete_outline_rounded,
+                                                  color: Colors.red.shade400,
+                                                ),
+                                          tooltip: 'حذف',
+                                          onPressed: isDeleting
+                                              ? null
+                                              : () =>
+                                                  _confirmDeleteProduct(product),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _AdminProductSearchField extends StatelessWidget {
+  const _AdminProductSearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: TextField(
+        controller: controller,
+        textAlign: TextAlign.right,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(
+          color: AdminPanelColors.charcoal,
+          fontWeight: FontWeight.w600,
+        ),
+        decoration: InputDecoration(
+          hintText: 'ابحث عن وجبة...',
+          hintStyle: TextStyle(
+            color: AdminPanelColors.charcoal.withValues(alpha: 0.45),
+            fontWeight: FontWeight.w500,
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: AdminPanelColors.charcoal.withValues(alpha: 0.55),
+          ),
+          suffixIcon: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) {
+              if (controller.text.isEmpty) return const SizedBox.shrink();
+              return IconButton(
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: AdminPanelColors.charcoal.withValues(alpha: 0.55),
+                ),
+                tooltip: 'مسح البحث',
+                onPressed: onClear,
+              );
+            },
+          ),
+          filled: true,
+          fillColor: AdminPanelColors.cardCream,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AdminPanelColors.gold.withValues(alpha: 0.25),
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AdminPanelColors.gold.withValues(alpha: 0.25),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AdminPanelColors.gold.withValues(alpha: 0.65),
+              width: 1.5,
+            ),
+          ),
+        ),
+        onChanged: onChanged,
       ),
     );
   }

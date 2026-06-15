@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/price_utils.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../shell/admin_page_scaffold.dart';
 import 'product_form_controller.dart';
@@ -72,6 +73,12 @@ class _ProductFormBody extends StatefulWidget {
   State<_ProductFormBody> createState() => _ProductFormBodyState();
 }
 
+enum _SuspiciousPriceDecision {
+  cancel,
+  keepOriginal,
+  applySuggestions,
+}
+
 class _ProductFormBodyState extends State<_ProductFormBody> {
   final _formKey = GlobalKey<FormState>();
   bool _loadedForEdit = false;
@@ -121,6 +128,24 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
       return;
     }
 
+    final suspiciousWarnings = controller.collectSuspiciousPriceWarnings();
+    if (suspiciousWarnings.isNotEmpty) {
+      final decision = await _confirmSuspiciousPrices(suspiciousWarnings);
+      if (!mounted) return;
+      if (decision == _SuspiciousPriceDecision.cancel) return;
+      if (decision == _SuspiciousPriceDecision.applySuggestions) {
+        for (final warning in suspiciousWarnings) {
+          warning.onApplySuggestion();
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم تصحيح الأسعار — راجع القيم ثم احفظ مرة أخرى'),
+          ),
+        );
+        return;
+      }
+    }
+
     final restaurant = tenant.restaurant;
     if (restaurant == null) return;
 
@@ -161,6 +186,45 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
         _saveLocked = false;
       }
     }
+  }
+
+  Future<_SuspiciousPriceDecision> _confirmSuspiciousPrices(
+    List<SuspiciousPriceWarning> warnings,
+  ) async {
+    final message = warnings
+        .map(
+          (warning) =>
+              '${warning.label}: السعر يبدو كبيراً (${warning.enteredFormatted} د.ع)، '
+              'هل تقصد ${warning.suggestedFormatted} د.ع؟',
+        )
+        .join('\n\n');
+
+    final result = await showDialog<_SuspiciousPriceDecision>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد السعر'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_SuspiciousPriceDecision.cancel),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context)
+                .pop(_SuspiciousPriceDecision.keepOriginal),
+            child: const Text('احفظ كما هو'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context)
+                .pop(_SuspiciousPriceDecision.applySuggestions),
+            child: const Text('صحّح السعر'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? _SuspiciousPriceDecision.cancel;
   }
 
   @override
@@ -327,7 +391,7 @@ class _PricingSection extends StatelessWidget {
                   decimal: true,
                 ),
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                  FilteringTextInputFormatter.digitsOnly,
                 ],
                 textInputAction: TextInputAction.next,
                 style: const TextStyle(color: ProductFormFieldStyles.textColor),
@@ -416,7 +480,7 @@ class _VariantsSection extends StatelessWidget {
                         decimal: true,
                       ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                        FilteringTextInputFormatter.digitsOnly,
                       ],
                       style: const TextStyle(
                         color: ProductFormFieldStyles.textColor,
@@ -507,7 +571,7 @@ class _AddonsSection extends StatelessWidget {
                             decimal: true,
                           ),
                           inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                            FilteringTextInputFormatter.digitsOnly,
                           ],
                           style: const TextStyle(
                             color: ProductFormFieldStyles.textColor,

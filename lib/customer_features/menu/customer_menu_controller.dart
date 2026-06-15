@@ -235,8 +235,8 @@ class CustomerMenuController extends ChangeNotifier {
     final cached = await MenuCatalogCache.loadProducts(slug);
     if (_disposed || generation != _bindGeneration) return;
 
-    if (cached != null && cached.isNotEmpty) {
-      _applyProducts(cached);
+    if (!kDebugMode && cached != null && cached.isNotEmpty) {
+      _applyProducts(cached, fromCache: true);
       _productsLoading = false;
       _initialLoadComplete = true;
       notifyListeners();
@@ -252,6 +252,9 @@ class CustomerMenuController extends ChangeNotifier {
         slug: slug,
       );
       if (_disposed || generation != _bindGeneration) return;
+      if (await MenuCatalogCache.isRevisionStale(slug, fetched)) {
+        await MenuCatalogCache.clearProducts(slug);
+      }
       _applyProducts(fetched);
       unawaited(MenuCatalogCache.saveProducts(slug, fetched));
       _productsLoading = false;
@@ -323,12 +326,29 @@ class CustomerMenuController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  void _applyProducts(List<ProductModel> items) {
-    _products = List<ProductModel>.unmodifiable(items);
+  void _applyProducts(List<ProductModel> items, {bool fromCache = false}) {
+    _products = List<ProductModel>.unmodifiable(
+      items.map((product) => _normalizeCustomerProduct(product, fromCache: fromCache)),
+    );
     _resetVisibleProductLimit();
     _cachedCatalogCategorySections = null;
     _invalidateProductCaches();
     _syncCategoriesFromProducts();
+  }
+
+  ProductModel _normalizeCustomerProduct(
+    ProductModel product, {
+    required bool fromCache,
+  }) {
+    final deduped = ProductVariant.deduplicate(product.variants);
+    if (deduped.length == product.variants.length &&
+        product.variantsSource != null) {
+      return product;
+    }
+    return product.copyWith(
+      variants: deduped,
+      variantsSource: fromCache ? 'cache' : product.variantsSource,
+    );
   }
 
   void _invalidateProductCaches() {

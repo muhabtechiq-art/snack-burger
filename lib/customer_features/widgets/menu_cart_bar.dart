@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:latlong2/latlong.dart';
 
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -65,7 +66,7 @@ class MenuCartBar extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${cart.totalPrice.toStringAsFixed(0)} د.ع',
+                          '${PriceUtils.formatPriceWithCurrency(cart.totalPrice)}',
                           style: TextStyle(
                             color: palette.primary.withValues(alpha: 0.75),
                             fontWeight: FontWeight.w600,
@@ -668,7 +669,7 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '${cart.totalPrice.toStringAsFixed(0)} د.ع',
+                                  '${PriceUtils.formatPriceWithCurrency(cart.totalPrice)}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                     color: widget.palette.primary,
@@ -809,7 +810,7 @@ class _CartLineItem extends StatelessWidget {
           textDirection: TextDirection.ltr,
           children: [
             Text(
-              '${item.lineTotal.toStringAsFixed(0)} د.ع',
+              '${PriceUtils.formatPriceWithCurrency(item.lineTotal)}',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: palette.primary,
@@ -897,7 +898,7 @@ class _CartLineItem extends StatelessWidget {
                       ),
                       Expanded(
                         child: Text(
-                          '${entry.value.name} (+${entry.value.price.toStringAsFixed(0)} د.ع)',
+                          '${entry.value.name} (+${PriceUtils.formatPriceWithCurrency(entry.value.price)})',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 12,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/utils/price_utils.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
@@ -129,7 +130,7 @@ class CashierOrderAlertDialog extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                              '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 18,

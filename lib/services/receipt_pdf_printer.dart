@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../core/utils/price_utils.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
@@ -264,7 +265,7 @@ abstract final class ReceiptPdfPrinter {
       ..add(pw.Divider())
       ..add(
         pw.Text(
-          'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
+          'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
           style: _style(fonts, fontSize: 16, fontWeight: pw.FontWeight.bold),
           textAlign: pw.TextAlign.center,
         ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/utils/price_utils.dart';
 import '../../core/utils/product_id_generator.dart';
 import '../../models/product_model.dart';
 import '../../services/image_pick_upload_service.dart';
@@ -220,7 +221,7 @@ class ProductFormController extends ChangeNotifier {
 
       nameController.text = product.name;
       descriptionController.text = product.description ?? '';
-      priceController.text = product.price.toStringAsFixed(0);
+      priceController.text = PriceUtils.normalizePrice(product.price).toString();
       categoryController.text = product.category;
       _categoryOptions = _mergeCategoryOptions(_categoryOptions, product.category);
       _existingImageUrl = product.imageUrl;
@@ -297,6 +298,49 @@ class ProductFormController extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<SuspiciousPriceWarning> collectSuspiciousPriceWarnings() {
+    final warnings = <SuspiciousPriceWarning>[];
+
+    void check(String label, TextEditingController controller) {
+      final parsed = PriceUtils.tryParsePriceInput(controller.text);
+      if (parsed == null) return;
+      final suggestion = PriceUtils.suspiciousPriceSuggestion(parsed);
+      if (suggestion == null) return;
+
+      warnings.add(
+        SuspiciousPriceWarning(
+          label: label,
+          enteredFormatted: PriceUtils.formatPrice(parsed),
+          suggestedFormatted: suggestion,
+          onApplySuggestion: () {
+            controller.text = PriceUtils.digitsOnly(suggestion);
+          },
+        ),
+      );
+    }
+
+    if (_useMultipleSizes) {
+      for (var i = 0; i < _variantDrafts.length; i++) {
+        final draft = _variantDrafts[i];
+        final name = draft.nameController.text.trim();
+        final label = name.isEmpty ? 'سعر الحجم ${i + 1}' : 'سعر $name';
+        check(label, draft.priceController);
+      }
+    } else {
+      check('سعر المنتج', priceController);
+    }
+
+    for (var i = 0; i < _addonDrafts.length; i++) {
+      final draft = _addonDrafts[i];
+      final name = draft.nameController.text.trim();
+      if (name.isEmpty && draft.priceController.text.trim().isEmpty) continue;
+      final label = name.isEmpty ? 'سعر الإضافة ${i + 1}' : 'سعر $name';
+      check(label, draft.priceController);
+    }
+
+    return warnings;
+  }
+
   /// يبني نموذج المنتج من قيم الحقول الحالية.
   ProductModel buildProductModel({required String restaurantId}) {
     final description = descriptionController.text.trim();
@@ -317,7 +361,7 @@ class ProductFormController extends ChangeNotifier {
       if (parsed == null) {
         throw const FormatException('Invalid price');
       }
-      price = parsed;
+      price = PriceUtils.normalizePriceAsDouble(parsed);
     }
 
     final addons = _buildAddons();
@@ -363,7 +407,12 @@ class ProductFormController extends ChangeNotifier {
       if (price == null) {
         throw const FormatException('Addon price invalid');
       }
-      addons.add(ProductAddon(name: name, price: price));
+      addons.add(
+        ProductAddon(
+          name: name,
+          price: PriceUtils.normalizePriceAsDouble(price),
+        ),
+      );
     }
     return addons;
   }
@@ -383,18 +432,23 @@ class ProductFormController extends ChangeNotifier {
       if (price == null) {
         throw const FormatException('Variant price invalid');
       }
-      variants.add(ProductVariant(name: name, price: price));
+      variants.add(
+        ProductVariant(
+          name: name,
+          price: PriceUtils.normalizePriceAsDouble(price),
+        ),
+      );
     }
-    return variants;
+    return ProductVariant.deduplicate(variants);
   }
 
   void _replaceVariantsFromProduct(List<ProductVariant> variants) {
     _clearVariantDrafts();
     _variantDrafts.addAll(
-      variants.map(
+      ProductVariant.deduplicate(variants).map(
         (variant) => ProductVariantDraft(
           name: variant.name,
-          price: variant.price.toStringAsFixed(0),
+          price: PriceUtils.normalizePrice(variant.price).toString(),
         ),
       ),
     );
@@ -430,7 +484,7 @@ class ProductFormController extends ChangeNotifier {
         addons.map(
           (addon) => ProductAddonDraft(
             name: addon.name,
-            price: addon.price.toStringAsFixed(0),
+            price: PriceUtils.normalizePrice(addon.price).toString(),
           ),
         ),
       );

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/product_model.dart';
 import '../data/admin_repositories.dart';
+import 'admin_product_search.dart';
 
 /// إدارة منتجات لوحة الإدارة — fetch + realtime مع lifecycle آمن.
 class ProductsAdminController extends ChangeNotifier {
@@ -35,7 +36,30 @@ class ProductsAdminController extends ChangeNotifier {
   bool _loading = true;
   bool _realtimeActive = false;
 
+  String _searchQuery = '';
+  String _debouncedSearchQuery = '';
+  Timer? _searchDebounce;
+  List<ProductModel>? _cachedFilteredProducts;
+  String? _cachedFilterKey;
+
   List<ProductModel> get products => _products;
+  String get searchQuery => _searchQuery;
+  bool get isSearching => _debouncedSearchQuery.trim().isNotEmpty;
+
+  /// قائمة معروضة بعد فلترة البحث المحلي.
+  List<ProductModel> get filteredProducts {
+    final filterKey = '$_debouncedSearchQuery|${_products.length}';
+    if (_cachedFilteredProducts != null && _cachedFilterKey == filterKey) {
+      return _cachedFilteredProducts!;
+    }
+
+    final results = AdminProductSearch.filter(_products, _debouncedSearchQuery);
+    _cachedFilteredProducts = results;
+    _cachedFilterKey = filterKey;
+
+    return results;
+  }
+
   bool get loading => _loading;
   bool get realtimeActive => _realtimeActive;
   bool get hasProducts => _products.isNotEmpty;
@@ -94,6 +118,7 @@ class ProductsAdminController extends ChangeNotifier {
       );
       if (_disposed) return;
       _products = List<ProductModel>.unmodifiable(items);
+      _invalidateSearchCache();
       _loading = false;
       notifyListeners();
     } catch (error, stack) {
@@ -203,6 +228,7 @@ class ProductsAdminController extends ChangeNotifier {
       (List<ProductModel> items) {
         if (_disposed || generation != _bindGeneration) return;
         _products = List<ProductModel>.unmodifiable(items);
+        _invalidateSearchCache();
         _loading = false;
         completeOnce(true);
         notifyListeners();
@@ -229,10 +255,48 @@ class ProductsAdminController extends ChangeNotifier {
     return connected;
   }
 
+  void setSearchQuery(String query) {
+    if (_searchQuery == query) return;
+    _searchQuery = query;
+    _searchDebounce?.cancel();
+
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      _debouncedSearchQuery = '';
+      _invalidateSearchCache();
+      if (!_disposed) notifyListeners();
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (_disposed) return;
+      _debouncedSearchQuery = query;
+      _invalidateSearchCache();
+      if (kDebugMode) {
+        final results = AdminProductSearch.filter(_products, query);
+        debugPrint(
+          '[QA][AdminSearch] query=${query.trim()} '
+          'total=${_products.length} results=${results.length}',
+        );
+      }
+      notifyListeners();
+    });
+  }
+
+  void clearSearch() {
+    setSearchQuery('');
+  }
+
+  void _invalidateSearchCache() {
+    _cachedFilteredProducts = null;
+    _cachedFilterKey = null;
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _bindGeneration++;
+    _searchDebounce?.cancel();
     unawaited(_subscription?.cancel());
     _subscription = null;
     super.dispose();

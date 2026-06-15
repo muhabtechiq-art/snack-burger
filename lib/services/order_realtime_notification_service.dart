@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/utils/price_utils.dart';
 import '../core/config/restaurant_ids.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
@@ -148,7 +149,7 @@ final class OrderRealtimeNotificationService {
     final notificationId = order.id.hashCode & 0x7fffffff;
     final body =
         '${order.customerName.trim()} — '
-        '${order.totalPrice.toStringAsFixed(0)} د.ع';
+        '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}';
 
     const androidDetails = AndroidNotificationDetails(
       _channelId,

@@ -1,6 +1,8 @@
+import '../../core/utils/price_utils.dart';
+
 /// قواعد التحقق المشتركة لنموذج المنتج (UI + Controller).
 abstract final class ProductFormValidators {
-  static final RegExp _positiveNumberPattern = RegExp(r'^\d+(\.\d+)?$');
+  static final RegExp _digitsOnlyPattern = RegExp(r'^\d+$');
 
   static String? validateRequiredName(String? value) {
     if (value == null || value.trim().isEmpty) {
@@ -21,13 +23,13 @@ abstract final class ProductFormValidators {
       return 'السعر مطلوب';
     }
 
-    final normalized = value.trim().replaceAll(',', '');
-    if (!_positiveNumberPattern.hasMatch(normalized)) {
-      return 'أدخل رقماً صالحاً';
+    final digits = PriceUtils.digitsOnly(value);
+    if (!_digitsOnlyPattern.hasMatch(digits)) {
+      return 'أدخل أرقاماً فقط';
     }
 
-    final price = double.tryParse(normalized);
-    if (price == null || price <= 0) {
+    final price = PriceUtils.tryParsePriceInput(digits);
+    if (price == null) {
       return 'يجب أن يكون السعر أكبر من 0';
     }
 
@@ -35,12 +37,8 @@ abstract final class ProductFormValidators {
   }
 
   static double? parsePositivePrice(String raw) {
-    final normalized = raw.trim().replaceAll(',', '');
-    if (!_positiveNumberPattern.hasMatch(normalized)) return null;
-
-    final price = double.tryParse(normalized);
-    if (price == null || price <= 0) return null;
-
-    return price;
+    final price = PriceUtils.tryParsePriceInput(raw);
+    if (price == null) return null;
+    return price.toDouble();
   }
 }

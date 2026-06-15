@@ -102,4 +102,14 @@ abstract final class CustomerMenuTheme {
       ),
     );
   }
+
+  /// نسبة عرض/ارتفاع بطاقة المنتج في الشبكة — أطول قليلاً على الشاشات الضيقة.
+  static double menuProductGridAspectRatio(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final shortest = size.shortestSide;
+    if (shortest < 360) return 0.68;
+    if (shortest < 420) return 0.72;
+    if (size.width < 520) return 0.74;
+    return 0.76;
+  }
 }

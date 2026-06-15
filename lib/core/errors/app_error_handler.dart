@@ -17,15 +17,15 @@ abstract final class AppErrorHandler {
     String? operation,
     bool showSnackBar = true,
   }) {
-    if (error is RealtimeSubscribeException) {
-      showSnackBar = false;
-    }
+    final shouldShowSnackBar =
+        showSnackBar && error is! RealtimeSubscribeException;
+
     AppTelemetry.logError(
       'app_error',
       error: error,
       stackTrace: stackTrace,
       fields: <String, Object?>{
-        if (operation != null) 'operation': operation,
+        'operation': ?operation,
       },
     );
     debugPrint(
@@ -33,7 +33,7 @@ abstract final class AppErrorHandler {
       '$error\n$stackTrace',
     );
 
-    if (!showSnackBar) return;
+    if (!shouldShowSnackBar) return;
     showMessage(formatError(error, operation: operation));
   }
 

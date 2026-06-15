@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/price_utils.dart';
 import '../models/order_model.dart';
 import '../models/product_model.dart';
 
@@ -176,14 +177,14 @@ class CartNotifier extends ChangeNotifier {
     final parts = <String>[productId];
     if (selectedVariant != null) {
       parts.add(
-        'v:${selectedVariant.name.trim().toLowerCase()}:${selectedVariant.price.toStringAsFixed(2)}',
+        'v:${selectedVariant.name.trim().toLowerCase()}:${PriceUtils.normalizedPriceKey(selectedVariant.price)}',
       );
     }
     if (addons.isEmpty) return parts.join('|');
     final normalized = addons
         .map(
           (e) =>
-              '${e.name.trim().toLowerCase()}:${e.price.toStringAsFixed(2)}:q${e.quantity}',
+              '${e.name.trim().toLowerCase()}:${PriceUtils.normalizedPriceKey(e.price)}:q${e.quantity}',
         )
         .toList()
       ..sort();

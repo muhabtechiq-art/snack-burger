@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
+import '../models/product_variants_cleanup_report.dart';
 import 'image_pick_upload_service.dart';
 import 'supabase_product_service.dart';
 
@@ -131,5 +132,10 @@ class ProductRepository {
 
   Future<void> deleteProduct({required String productId}) {
     return SupabaseProductService.deleteProduct(productId);
+  }
+
+  /// تنظيف صفوف product_variants المكررة — للاستخدام الإداري/debug فقط.
+  Future<ProductVariantsCleanupReport> cleanupDuplicateProductVariants() {
+    return SupabaseProductService.cleanupDuplicateVariantRows();
   }
 }

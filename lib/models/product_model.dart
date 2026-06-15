@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+
+import '../core/utils/price_utils.dart';
 import '../core/theme/tenant_palette.dart';
 import '../core/utils/model_parse_validation.dart';
 
@@ -13,6 +16,7 @@ class ProductModel {
     required this.category,
     this.addons = const [],
     this.variants = const [],
+    this.variantsSource,
     this.isAvailable = true,
     required this.createdAt,
   });
@@ -26,6 +30,9 @@ class ProductModel {
   final String category;
   final List<ProductAddon> addons;
   final List<ProductVariant> variants;
+
+  /// مصدر الأحجام عند الجلب: `jsonb` أو `table` (للتشخيص في واجهة الزبون).
+  final String? variantsSource;
   final bool isAvailable;
   final DateTime createdAt;
 
@@ -52,7 +59,27 @@ class ProductModel {
     return price;
   }
 
-  /// خريطة جاهزة للحفظ في Supabase (يُفضَّل ISO8601 لـ `createdAt` في الطبقة الخدمية).
+  ProductModel copyWith({
+    List<ProductVariant>? variants,
+    String? variantsSource,
+  }) {
+    return ProductModel(
+      id: id,
+      restaurantId: restaurantId,
+      name: name,
+      description: description,
+      price: price,
+      imageUrl: imageUrl,
+      category: category,
+      addons: addons,
+      variants: variants ?? this.variants,
+      variantsSource: variantsSource ?? this.variantsSource,
+      isAvailable: isAvailable,
+      createdAt: createdAt,
+    );
+  }
+
+  /// خريطة جاهزة للحفظ في Supabase
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'id': id,
@@ -64,6 +91,7 @@ class ProductModel {
       'category': category,
       'addons': addons.map((e) => e.toMap()).toList(),
       'variants': variants.map((e) => e.toMap()).toList(),
+      if (variantsSource != null) 'variantsSource': variantsSource,
       'isAvailable': isAvailable,
       'createdAt': createdAt.toUtc().toIso8601String(),
     };
@@ -86,9 +114,10 @@ class ProductModel {
       ]),
       category: map['category'] as String? ?? 'general',
       addons: ProductAddon.listFromDynamic(map['addons']),
-      variants: ProductVariant.listFromDynamic(
-        map['variants'] ?? map['product_variants'],
+      variants: ProductVariant.deduplicate(
+        ProductVariant.listFromDynamic(map['variants']),
       ),
+      variantsSource: map['variantsSource'] as String?,
       isAvailable: map['isAvailable'] as bool? ?? true,
       createdAt: parseModelDate(map['createdAt'] ?? map['created_at']),
     );
@@ -113,25 +142,93 @@ class ProductModel {
 
 class ProductVariant {
   const ProductVariant({
+    this.id,
     required this.name,
     required this.price,
   });
 
+  final String? id;
   final String name;
   final double price;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
+        if (id != null) 'id': id,
         'name': name,
-        'price': price,
+        'price': PriceUtils.normalizePrice(price),
       };
 
   factory ProductVariant.fromMap(Map<String, dynamic> map) {
     return ProductVariant(
+      id: _readOptionalId(map),
       name: _readVariantName(map),
       price: _readDouble(
         map['price'] ?? map['unit_price'] ?? map['amount'] ?? map['cost'],
       ),
     );
+  }
+
+  static String? _readOptionalId(Map<String, dynamic> map) {
+    final raw = map['id'];
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  /// يزيل التكرار — أولاً حسب [id]، ثم حسب الاسم + السعر.
+  static List<ProductVariant> deduplicate(List<ProductVariant> raw) {
+    if (raw.length <= 1) return List<ProductVariant>.from(raw);
+
+    final seenIds = <String>{};
+    final seenKeys = <String>{};
+    final result = <ProductVariant>[];
+
+    for (final variant in raw) {
+      final id = variant.id?.trim();
+      if (id != null && id.isNotEmpty) {
+        if (!seenIds.add(id)) continue;
+        result.add(variant);
+        continue;
+      }
+
+      final key =
+          '${variant.name.trim().toLowerCase()}|'
+          '${PriceUtils.normalizedPriceKey(variant.price)}';
+      if (!seenKeys.add(key)) continue;
+      result.add(
+        ProductVariant(
+          id: variant.id,
+          name: variant.name,
+          price: PriceUtils.normalizePriceAsDouble(variant.price),
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  /// يزيل التكرار — يُسجّل في debug فقط عند وجود تكرار فعلي.
+  static List<ProductVariant> deduplicateForProduct({
+    required String productId,
+    required List<ProductVariant> raw,
+  }) {
+    if (raw.isEmpty) return const [];
+
+    final deduped = deduplicate(raw);
+    if (kDebugMode && raw.length != deduped.length) {
+      debugPrint(
+        '[ProductVariants] productId=$productId '
+        'fromSupabase=${raw.length} afterDedup=${deduped.length}',
+      );
+    }
+    return deduped;
+  }
+
+  /// مفتاح التكرار: product_id + name + price (يُستخدم في التنظيف).
+  static String duplicateGroupKey({
+    required String name,
+    required double price,
+  }) {
+    return '${name.trim().toLowerCase()}|${PriceUtils.normalizedPriceKey(price)}';
   }
 
   static String _readVariantName(Map<String, dynamic> map) {
@@ -181,7 +278,7 @@ class ProductAddon {
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'name': name,
-        'price': price,
+        'price': PriceUtils.normalizePrice(price),
         'quantity': quantity,
       };
 
@@ -209,11 +306,7 @@ class ProductAddon {
   }
 }
 
-double _readDouble(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse('$v') ?? 0;
-}
+double _readDouble(dynamic v) => PriceUtils.normalizePriceAsDouble(v);
 
 /// يدعم `String` (ISO)، `int` (ms)، و Timestamp من JSONB عند تمرير خريطة بعد التحويل في المستودع.
 DateTime parseModelDate(dynamic v) {

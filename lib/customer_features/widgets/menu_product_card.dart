@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/product_model.dart';
@@ -97,43 +98,52 @@ class _GridProductCard extends StatelessWidget {
               Expanded(
                 flex: 9,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
-                        child: Text(
-                          product.name,
-                          textAlign: TextAlign.right,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: CustomerMenuTheme.ink,
-                                height: 1.15,
-                                fontSize: 12,
-                              ),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxHeight < 44;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  product.name,
+                                  textAlign: TextAlign.right,
+                                  maxLines: compact ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: CustomerMenuTheme.ink,
+                                        height: 1.15,
+                                        fontSize: 12,
+                                      ),
+                                ),
+                                if (hasDescription && !compact) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    product.description!,
+                                    textAlign: TextAlign.right,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      height: 1.2,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ),
-                      if (hasDescription)
-                        Flexible(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              product.description!,
-                              textAlign: TextAlign.right,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                height: 1.2,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Row(
                         textDirection: TextDirection.rtl,
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -328,8 +338,8 @@ class _PriceBadge extends StatelessWidget {
       ),
       child: Text(
         product.hasVariants
-            ? 'من ${product.displayPrice.toStringAsFixed(0)} د.ع'
-            : '${product.displayPrice.toStringAsFixed(0)} د.ع',
+            ? 'من ${PriceUtils.formatPriceWithCurrency(product.displayPrice)}'
+            : '${PriceUtils.formatPriceWithCurrency(product.displayPrice)}',
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

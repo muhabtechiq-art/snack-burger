@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/utils/price_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/tenant_palette.dart';
@@ -122,7 +123,7 @@ class ClosingOrderDetailDialog extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                              '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 18,

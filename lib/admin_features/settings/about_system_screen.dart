@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../services/product_repository.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
+import '../widgets/admin_restaurant_logo_image.dart';
 
 /// صفحة «حول النظام» — بصمة أنظمة المهاب داخل لوحة الإدارة.
 class AboutSystemScreen extends StatefulWidget {
@@ -51,6 +53,10 @@ class _AboutSystemScreenState extends State<AboutSystemScreen> {
                         _AboutMainCard(metadata: metadata),
                         const SizedBox(height: 16),
                         _SystemInfoCard(metadata: metadata),
+                        if (kDebugMode) ...[
+                          const SizedBox(height: 16),
+                          _DebugMaintenanceCard(slug: widget.slug),
+                        ],
                       ],
                     ),
                   ),
@@ -127,6 +133,9 @@ class _AboutMainCard extends StatelessWidget {
 
   final AboutSystemMetadata metadata;
 
+  static const double _logoCircleSize = 88;
+  static const double _logoImageSize = 80;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -148,8 +157,8 @@ class _AboutMainCard extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            width: 88,
-            height: 88,
+            width: _logoCircleSize,
+            height: _logoCircleSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
@@ -166,15 +175,12 @@ class _AboutMainCard extends StatelessWidget {
               ],
             ),
             padding: const EdgeInsets.all(4),
+            alignment: Alignment.center,
             child: ClipOval(
-              child: Image.asset(
-                'assets/images/menu_logo.png',
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Icon(
-                  Icons.restaurant_rounded,
-                  size: 40,
-                  color: AdminPanelColors.charcoal.withValues(alpha: 0.65),
-                ),
+              child: AdminRestaurantLogoImage(
+                size: _logoImageSize,
+                iconSize: 40,
+                debugTag: 'AboutSystemScreen',
               ),
             ),
           ),
@@ -338,6 +344,130 @@ class _SystemInfoRow extends StatelessWidget {
               fontSize: 13,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// أدوات صيانة — debug فقط، لا تظهر في build الإنتاج.
+class _DebugMaintenanceCard extends StatefulWidget {
+  const _DebugMaintenanceCard({required this.slug});
+
+  final String slug;
+
+  @override
+  State<_DebugMaintenanceCard> createState() => _DebugMaintenanceCardState();
+}
+
+class _DebugMaintenanceCardState extends State<_DebugMaintenanceCard> {
+  static const bool _variantCleanupEnabled = false;
+
+  final ProductRepository _productRepository = ProductRepository();
+  bool _running = false;
+
+  Future<void> _cleanupDuplicateVariants() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تنظيف أحجام المنتجات'),
+        content: const Text(
+          'سيتم حذف الصفوف المكررة في product_variants '
+          '(نفس product_id + name + price) والإبقاء على صف واحد فقط.\n\n'
+          'لا تُحذف أحجام مختلفة بالاسم أو السعر.\n\n'
+          'لا يتم تحديث jsonb أو إدراج أحجام جديدة.\n\n'
+          'يجب أن تكون مسجّل دخول الإدارة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('تنظيف الآن'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _running = true);
+    try {
+      final report = await _productRepository.cleanupDuplicateProductVariants();
+      if (!mounted) return;
+
+      final message = report.hasChanges
+          ? 'تم حذف ${report.totalDeleted} صف مكرر '
+              'من ${report.productsAffected} منتج.'
+          : 'لا توجد صفوف مكررة — الجدول نظيف.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (error, stack) {
+      debugPrint('[DebugMaintenance] cleanup failed: $error\n$stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().contains('delete_blocked')
+                ? 'تعذّر الحذف — سجّل دخول الإدارة ثم أعد المحاولة'
+                : 'تعذّر تنظيف product_variants — راجع السجل',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'صيانة (Debug)',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _variantCleanupEnabled
+                ? 'تنظيف المكررات في جدول product_variants'
+                : 'تنظيف المكررات معطّل مؤقتاً — يُعاد تفعيله بعد التحقق من الحذف فقط.',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: AdminPanelColors.textLight.withValues(alpha: 0.85),
+              fontSize: 13,
+            ),
+          ),
+          if (_variantCleanupEnabled) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _running ? null : _cleanupDuplicateVariants,
+              icon: _running
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cleaning_services_outlined, size: 20),
+              label: Text(_running ? 'جاري التنظيف...' : 'تنظيف أحجام مكررة'),
+            ),
+          ],
         ],
       ),
     );

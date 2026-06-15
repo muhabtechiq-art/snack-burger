@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/utils/price_utils.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -297,7 +298,7 @@ class _DashboardStatsGrid extends StatelessWidget {
               child: _DashboardStatTile(
                 icon: Icons.payments_rounded,
                 label: 'مبيعات اليوم',
-                value: '${todaySales.toStringAsFixed(0)} د.ع',
+                value: '${PriceUtils.formatPriceWithCurrency(todaySales)}',
               ),
             ),
             const SizedBox(width: 8),
@@ -546,7 +547,7 @@ class _RecentOrderTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${order.totalPrice.toStringAsFixed(0)} د.ع',
+                    '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
                     style: const TextStyle(
                       color: AdminPanelColors.charcoal,
                       fontWeight: FontWeight.w900,

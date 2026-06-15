@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/utils/price_utils.dart';
 
 import '../../../models/order_model.dart';
 
@@ -37,7 +38,7 @@ class OrderItemReceiptLines extends StatelessWidget {
             Text('x${item.quantity}'),
             const SizedBox(width: 12),
             Text(
-              '${item.baseLineTotal.toStringAsFixed(0)} د.ع',
+              '${PriceUtils.formatPriceWithCurrency(item.baseLineTotal)}',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: color,
@@ -74,7 +75,7 @@ class OrderItemReceiptLines extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${item.receiptAddonLineTotal(addon).toStringAsFixed(0)} د.ع',
+                      '${PriceUtils.formatPriceWithCurrency(item.receiptAddonLineTotal(addon))}',
                       style: TextStyle(
                         fontSize: compact ? 12 : 13,
                         fontWeight: FontWeight.w700,

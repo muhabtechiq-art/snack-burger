@@ -289,11 +289,12 @@ class _CategoryHomeBody extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   sliver: SliverGrid(
                     gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
+                        SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 14,
                       crossAxisSpacing: 14,
-                      childAspectRatio: 0.76,
+                      childAspectRatio:
+                          CustomerMenuTheme.menuProductGridAspectRatio(context),
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -515,11 +516,14 @@ class _CategoryProductsBody extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                       sliver: SliverGrid(
                         gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
+                            SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           mainAxisSpacing: 14,
                           crossAxisSpacing: 14,
-                          childAspectRatio: 0.76,
+                          childAspectRatio:
+                              CustomerMenuTheme.menuProductGridAspectRatio(
+                            context,
+                          ),
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {

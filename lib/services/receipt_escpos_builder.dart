@@ -1,6 +1,7 @@
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/price_utils.dart';
 import '../core/config/pos_code_table.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
@@ -276,7 +277,7 @@ abstract final class ReceiptEscPosBuilder {
       ..addAll(
         await _lineRaw(
           generator,
-          'الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع',
+          'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
         ),
       )
       ..addAll(await _lineRaw(generator, ReceiptCashierLayout.thanksMessage));

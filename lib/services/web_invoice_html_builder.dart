@@ -1,3 +1,4 @@
+import '../core/utils/price_utils.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 
@@ -17,14 +18,14 @@ String buildWebInvoiceHtml(DeliveryOrder order) {
       <tr>
         <td class="item-name">${_escapeHtml(item.displayName)}</td>
         <td class="item-qty">${item.quantity}</td>
-        <td class="item-price">${item.baseLineTotal.toStringAsFixed(0)}</td>
+        <td class="item-price">${PriceUtils.formatPrice(item.baseLineTotal)}</td>
       </tr>''');
     for (final addon in item.selectedAddons) {
       rows.writeln('''
       <tr class="addon-row">
         <td class="item-name addon-name">+ ${_escapeHtml(addon.name)}</td>
         <td class="item-qty">${addon.quantity}</td>
-        <td class="item-price">${item.receiptAddonLineTotal(addon).toStringAsFixed(0)}</td>
+        <td class="item-price">${PriceUtils.formatPrice(item.receiptAddonLineTotal(addon))}</td>
       </tr>''');
     }
   }
@@ -208,7 +209,7 @@ String buildWebInvoiceHtml(DeliveryOrder order) {
     </table>
 
     <hr class="divider">
-    <div class="total">الإجمالي: ${order.totalPrice.toStringAsFixed(0)} د.ع</div>
+    <div class="total">الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}</div>
     <div class="footer">شكراً لزيارتكم .. ألف عافية</div>
   </div>
   <img id="print-image" alt="receipt">
