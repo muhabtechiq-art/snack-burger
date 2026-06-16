@@ -18,11 +18,13 @@ import '../../core/auth/auth_notifier.dart';
 import '../../customer_features/menu/customer_menu_screen.dart';
 import '../../customer_features/my_orders/my_orders_screen.dart';
 import '../../customer_features/order_status/order_status_screen.dart';
+import 'admin_route_observer.dart';
 
 /// مسارات التطبيق — فصل كامل بين الزبون والإدارة.
 GoRouter createAppRouter(AuthNotifier authNotifier) {
   return GoRouter(
     initialLocation: '/',
+    observers: [adminRouteObserver],
     refreshListenable: authNotifier,
     redirect: (context, state) => AuthMiddleware.redirectAsync(context, state),
     routes: <RouteBase>[

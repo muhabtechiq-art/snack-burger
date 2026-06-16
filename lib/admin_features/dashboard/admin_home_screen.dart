@@ -5,6 +5,7 @@ import '../../core/utils/price_utils.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/router/admin_route_observer.dart';
 import '../../models/delivery_order_model.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
@@ -21,48 +22,145 @@ class AdminHomeScreen extends StatefulWidget {
   State<AdminHomeScreen> createState() => _AdminHomeScreenState();
 }
 
-class _AdminHomeScreenState extends State<AdminHomeScreen> {
+class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
   final AdminProductRepository _productRepository = AdminProductRepository();
 
   int _todayOrderCount = 0;
   double _todaySales = 0;
   int _productCount = 0;
-  String? _loadedStatsKey;
   bool _loadingStats = false;
 
-  void _openOrders() {
-    context.push('/${widget.slug}/admin/orders');
+  StreamSubscription<List<DeliveryOrder>>? _orderChangesSubscription;
+  Timer? _realtimeRefreshDebounce;
+  int _refreshGeneration = 0;
+  String? _subscribedOrdersKey;
+  ModalRoute<void>? _route;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapDashboard());
   }
 
-  Future<void> _ensureDashboardStats({
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null && route != _route) {
+      if (_route != null) {
+        adminRouteObserver.unsubscribe(this);
+      }
+      _route = route;
+      adminRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void dispose() {
+    adminRouteObserver.unsubscribe(this);
+    _orderChangesSubscription?.cancel();
+    _realtimeRefreshDebounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    unawaited(_refreshDashboardStats(includeProducts: true));
+  }
+
+  Future<void> _bootstrapDashboard() async {
+    final tenant = context.read<ActiveRestaurantNotifier>();
+    if (tenant.restaurant == null) {
+      await tenant.resolveSlug(widget.slug);
+    }
+    if (!mounted) return;
+
+    final restaurant = context.read<ActiveRestaurantNotifier>().restaurant;
+    if (restaurant == null) return;
+
+    _ensureOrderChangeSubscription(
+      restaurantId: restaurant.id,
+      slug: widget.slug,
+    );
+    await _refreshDashboardStats(includeProducts: true);
+  }
+
+  void _ensureOrderChangeSubscription({
     required String restaurantId,
     required String slug,
-  }) async {
+  }) {
     final key = '$restaurantId|$slug';
-    if (_loadedStatsKey == key || _loadingStats) return;
+    if (_subscribedOrdersKey == key) return;
 
-    _loadingStats = true;
+    _orderChangesSubscription?.cancel();
+    _subscribedOrdersKey = key;
+    _orderChangesSubscription = _orderRepository
+        .watchPendingOrders(
+          restaurantId: restaurantId,
+          slug: slug,
+        )
+        .listen((_) => _scheduleRealtimeReportRefresh());
+  }
+
+  void _scheduleRealtimeReportRefresh() {
+    _realtimeRefreshDebounce?.cancel();
+    _realtimeRefreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      unawaited(_refreshDashboardStats(includeProducts: false));
+    });
+  }
+
+  Future<void> _refreshDashboardStats({required bool includeProducts}) async {
+    final tenant = context.read<ActiveRestaurantNotifier>();
+    var restaurant = tenant.restaurant;
+    if (restaurant == null) {
+      await tenant.resolveSlug(widget.slug);
+      if (!mounted) return;
+      restaurant = context.read<ActiveRestaurantNotifier>().restaurant;
+    }
+    if (restaurant == null) return;
+
+    _ensureOrderChangeSubscription(
+      restaurantId: restaurant.id,
+      slug: widget.slug,
+    );
+
+    final generation = ++_refreshGeneration;
+    if (mounted) {
+      setState(() => _loadingStats = true);
+    }
+
     try {
       final report = await _orderRepository.fetchTodayClosingReport(
-        restaurantId: restaurantId,
-        slug: slug,
+        restaurantId: restaurant.id,
+        slug: widget.slug,
       );
-      final products = await _productRepository.fetchProducts(
-        restaurantId: restaurantId,
-        slug: slug,
+      final products = includeProducts
+          ? await _productRepository.fetchProducts(
+              restaurantId: restaurant.id,
+              slug: widget.slug,
+            )
+          : null;
+
+      if (!mounted || generation != _refreshGeneration) return;
+
+      debugPrint(
+        '[QA][DashboardReport] orderCount=${report.orderCount} '
+        'totalSales=${report.totalSales} at=${DateTime.now().toIso8601String()}',
       );
-      if (!mounted) return;
+
       setState(() {
         _todayOrderCount = report.orderCount;
         _todaySales = report.totalSales;
-        _productCount = products.length;
-        _loadedStatsKey = key;
+        if (products != null) {
+          _productCount = products.length;
+        }
         _loadingStats = false;
       });
     } catch (_) {
-      if (!mounted) return;
-      final hadStats = _loadedStatsKey != null;
+      if (!mounted || generation != _refreshGeneration) return;
+      final hadStats = _todayOrderCount > 0 || _todaySales > 0 || _productCount > 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
@@ -71,13 +169,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           action: SnackBarAction(
             label: 'إعادة المحاولة',
             onPressed: () {
-              _loadedStatsKey = null;
-              unawaited(
-                _ensureDashboardStats(
-                  restaurantId: restaurantId,
-                  slug: slug,
-                ),
-              );
+              unawaited(_refreshDashboardStats(includeProducts: true));
             },
           ),
         ),
@@ -93,11 +185,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     }
   }
 
+  void _openOrders() {
+    context.push('/${widget.slug}/admin/orders');
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdminPageScaffold(
       slug: widget.slug,
       title: 'لوحة التحكم',
+      actions: [
+        IconButton(
+          tooltip: 'تحديث',
+          onPressed: _loadingStats
+              ? null
+              : () => unawaited(_refreshDashboardStats(includeProducts: true)),
+          icon: _loadingStats
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AdminPanelColors.gold,
+                  ),
+                )
+              : const Icon(Icons.refresh_rounded),
+        ),
+      ],
       body: Consumer<ActiveRestaurantNotifier>(
         builder: (context, tenant, _) {
           final restaurant = tenant.restaurant;
@@ -114,16 +228,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             restaurantId: restaurant.id,
             slug: widget.slug,
           );
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            unawaited(
-              _ensureDashboardStats(
-                restaurantId: restaurant.id,
-                slug: widget.slug,
-              ),
-            );
-          });
 
           return StreamBuilder<List<DeliveryOrder>>(
             stream: pendingStream,
