@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_settings_model.dart';
-import '../../services/supabase_app_settings_service.dart';
 import '../../state/app_settings_notifier.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
@@ -53,9 +52,8 @@ class _MaintenanceSettingsScreenState extends State<MaintenanceSettingsScreen> {
     _phone2Controller.text = settings.phone2;
   }
 
-  AppSettingsModel _buildFromForm() {
-    return AppSettingsModel(
-      id: SupabaseAppSettingsService.globalId,
+  AppSettingsModel _buildFromForm(AppSettingsModel current) {
+    return current.copyWith(
       maintenanceMode: _maintenanceMode,
       maintenanceTitle: _titleController.text.trim(),
       maintenanceMessage: _messageController.text.trim(),
@@ -73,7 +71,9 @@ class _MaintenanceSettingsScreenState extends State<MaintenanceSettingsScreen> {
     setState(() => _saving = true);
     try {
       final notifier = context.read<AppSettingsNotifier>();
-      final saved = await notifier.saveSettings(_buildFromForm());
+      final saved = await notifier.saveSettings(
+        _buildFromForm(notifier.settings),
+      );
       if (!mounted) return;
       _applyToForm(saved);
       ScaffoldMessenger.of(context).showSnackBar(

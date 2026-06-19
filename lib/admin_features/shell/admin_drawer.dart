@@ -182,6 +182,17 @@ class _AdminDrawerState extends State<AdminDrawer> {
                         },
                       ),
                       _AdminTile(
+                        icon: Icons.volume_up_rounded,
+                        title: 'صوت اليوم',
+                        subtitle: 'ترحيب أو إعلان صوتي اختياري للزبائن',
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.push(
+                            '/${widget.slug}/admin/settings/daily-sound',
+                          );
+                        },
+                      ),
+                      _AdminTile(
                         icon: Icons.construction_rounded,
                         title: 'وضع الصيانة',
                         subtitle: 'إيقاف استقبال طلبات الزبائن مؤقتاً',

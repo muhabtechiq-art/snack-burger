@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/tenant_palette.dart';
 import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
+import '../../state/app_settings_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../menu/customer_menu_controller.dart';
 import '../menu/customer_menu_drawer.dart';
@@ -17,6 +18,7 @@ import 'customer_bottom_nav.dart';
 import 'customer_home_promo_banner.dart';
 import 'customer_menu_header.dart';
 import 'customer_welcome_screen.dart';
+import 'daily_sound_player.dart';
 import 'menu_cart_bar.dart';
 import 'menu_product_card.dart';
 
@@ -127,8 +129,20 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
       (cart) => cart.itemCount,
     );
     final headerTitle = _activeCategory ?? widget.restaurant.name;
+    final dailySound = context.select<AppSettingsNotifier, _DailySoundConfig?>(
+      (notifier) {
+        final settings = notifier.settings;
+        if (!settings.hasDailySound) return null;
+        return _DailySoundConfig(
+          url: settings.dailySoundUrl,
+          volume: settings.dailySoundVolume,
+          loop: settings.dailySoundLoop,
+          title: settings.dailySoundTitle,
+        );
+      },
+    );
 
-    return Theme(
+    final menuScaffold = Theme(
       data: CustomerMenuTheme.buildTheme(_palette),
       child: Directionality(
         textDirection: TextDirection.rtl,
@@ -186,7 +200,40 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
         ),
       ),
     );
+
+    if (dailySound == null) return menuScaffold;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        menuScaffold,
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 8,
+          left: 12,
+          child: DailySoundPlayer(
+            soundUrl: dailySound.url,
+            defaultVolume: dailySound.volume,
+            loop: dailySound.loop,
+            title: dailySound.title,
+          ),
+        ),
+      ],
+    );
   }
+}
+
+class _DailySoundConfig {
+  const _DailySoundConfig({
+    required this.url,
+    required this.volume,
+    required this.loop,
+    required this.title,
+  });
+
+  final String url;
+  final double volume;
+  final bool loop;
+  final String title;
 }
 
 class _CategoryHomeBody extends StatelessWidget {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme/tenant_palette.dart';
 import '../../core/utils/price_utils.dart';
 import '../../models/business_day_order_stats.dart';
 import '../../models/business_day_model.dart';
@@ -10,8 +11,21 @@ import '../../state/business_day_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
-import '../shell/admin_panel_widgets.dart';
 import '../../state/active_restaurant_notifier.dart';
+
+/// ألوان قراءة أوضح على الكروت الكريمية — من لوحة الهوية الحالية فقط.
+abstract final class _BusinessDayCardColors {
+  _BusinessDayCardColors._();
+
+  static const Color title = AdminPanelColors.charcoal;
+  static const Color body = SnackBurgerBrandColors.ink;
+  static final Color label =
+      Color.lerp(SnackBurgerBrandColors.mustard, SnackBurgerBrandColors.ink, 0.72)!;
+  static const Color value = AdminPanelColors.charcoal;
+  static const Color divider = AdminPanelColors.goldMuted;
+  static const Color statsBackground = AdminPanelColors.cardLight;
+  static const Color cardBorder = AdminPanelColors.goldMuted;
+}
 
 /// إدارة يوم العمل اليدوي — فتح/إغلاق يوم العمل.
 class BusinessDaySettingsScreen extends StatefulWidget {
@@ -213,7 +227,7 @@ class _OpenBusinessDayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminSurfaceCard(
+    return _BusinessDayCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -223,28 +237,28 @@ class _OpenBusinessDayCard extends StatelessWidget {
             accentColor: Colors.greenAccent.shade400,
           ),
           const SizedBox(height: 20),
-          Container(
-            height: 1,
-            color: AdminPanelColors.gold.withValues(alpha: 0.22),
-          ),
+          const _BusinessDayDivider(),
           const SizedBox(height: 20),
           _InfoRow(
             label: 'بدأ الساعة',
             value: openedTimeLabel,
+            emphasizeValue: true,
           ),
           const SizedBox(height: 14),
           _InfoRow(
             label: 'التاريخ',
             value: openedDateLabel,
+            emphasizeValue: true,
           ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AdminPanelColors.charcoal.withValues(alpha: 0.35),
+              color: _BusinessDayCardColors.statsBackground,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: AdminPanelColors.gold.withValues(alpha: 0.18),
+                color: _BusinessDayCardColors.cardBorder,
+                width: 1.5,
               ),
             ),
             child: liveStats,
@@ -260,7 +274,7 @@ class _ClosedBusinessDayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminSurfaceCard(
+    return _BusinessDayCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -270,18 +284,15 @@ class _ClosedBusinessDayCard extends StatelessWidget {
             accentColor: Colors.redAccent.shade200,
           ),
           const SizedBox(height: 20),
-          Container(
-            height: 1,
-            color: AdminPanelColors.gold.withValues(alpha: 0.22),
-          ),
+          const _BusinessDayDivider(),
           const SizedBox(height: 20),
           Text(
             'لن يتم استقبال الطلبات حتى يتم بدء يوم العمل.',
             textAlign: TextAlign.right,
-            style: TextStyle(
-              color: AdminPanelColors.textMuted.withValues(alpha: 0.98),
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
+            style: const TextStyle(
+              color: _BusinessDayCardColors.body,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
               height: 1.55,
             ),
           ),
@@ -310,9 +321,9 @@ class _BusinessDayStatusHeader extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.18),
+            color: AdminPanelColors.cardLight,
             shape: BoxShape.circle,
-            border: Border.all(color: accentColor.withValues(alpha: 0.55)),
+            border: Border.all(color: accentColor, width: 2),
           ),
           alignment: Alignment.center,
           child: Text(emoji, style: const TextStyle(fontSize: 20)),
@@ -323,9 +334,9 @@ class _BusinessDayStatusHeader extends StatelessWidget {
             title,
             textAlign: TextAlign.right,
             style: const TextStyle(
-              color: AdminPanelColors.textLight,
+              color: _BusinessDayCardColors.title,
               fontWeight: FontWeight.w900,
-              fontSize: 22,
+              fontSize: 23,
               height: 1.25,
             ),
           ),
@@ -365,8 +376,8 @@ class _BusinessDayActionButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         backgroundColor: backgroundColor,
         foregroundColor: AdminPanelColors.charcoal,
-        disabledBackgroundColor: backgroundColor.withValues(alpha: 0.45),
-        disabledForegroundColor: AdminPanelColors.charcoal.withValues(alpha: 0.6),
+        disabledBackgroundColor: AdminPanelColors.goldMuted,
+        disabledForegroundColor: SnackBurgerBrandColors.ink,
         padding: const EdgeInsets.symmetric(vertical: 18),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
@@ -447,11 +458,13 @@ class _LiveStatsSectionState extends State<_LiveStatsSection> {
         _InfoRow(
           label: 'إجمالي الطلبات',
           value: '${stats?.allOrdersCount ?? 0}',
+          isStat: true,
         ),
         const SizedBox(height: 14),
         _InfoRow(
           label: 'الطلبات المحتسبة',
           value: '${stats?.closingCountableOrders ?? 0}',
+          isStat: true,
         ),
         const SizedBox(height: 14),
         _InfoRow(
@@ -459,42 +472,114 @@ class _LiveStatsSectionState extends State<_LiveStatsSection> {
           value: PriceUtils.formatPriceWithCurrency(
             stats?.closingCountableSales ?? 0,
           ),
+          isStat: true,
         ),
       ],
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+class _BusinessDayCard extends StatelessWidget {
+  const _BusinessDayCard({required this.child});
 
-  final String label;
-  final String value;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AdminPanelColors.cardCream,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _BusinessDayCardColors.cardBorder,
+          width: 1.5,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _BusinessDayDivider extends StatelessWidget {
+  const _BusinessDayDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1.5,
+      color: _BusinessDayCardColors.divider,
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.onDarkSurface = false,
+    this.emphasizeValue = false,
+    this.isStat = false,
+  });
+
+  final String label;
+  final String value;
+  final bool onDarkSurface;
+  final bool emphasizeValue;
+  final bool isStat;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = onDarkSurface
+        ? const TextStyle(
+            color: AdminPanelColors.textMuted,
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+          )
+        : TextStyle(
+            color: _BusinessDayCardColors.label,
+            fontWeight: FontWeight.w800,
+            fontSize: isStat ? 15 : 15,
+          );
+
+    final valueStyle = onDarkSurface
+        ? const TextStyle(
+            color: AdminPanelColors.gold,
+            fontWeight: FontWeight.w900,
+            fontSize: 20,
+            height: 1.2,
+          )
+        : TextStyle(
+            color: _BusinessDayCardColors.value,
+            fontWeight: FontWeight.w900,
+            fontSize: emphasizeValue
+                ? 24
+                : isStat
+                    ? 22
+                    : 20,
+            height: 1.15,
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           label,
           textAlign: TextAlign.right,
-          style: TextStyle(
-            color: AdminPanelColors.textMuted.withValues(alpha: 0.95),
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
+          style: labelStyle,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Text(
           value,
           textAlign: TextAlign.right,
-          style: const TextStyle(
-            color: AdminPanelColors.gold,
-            fontWeight: FontWeight.w900,
-            fontSize: 20,
-            height: 1.2,
-          ),
+          style: valueStyle,
         ),
       ],
     );
@@ -536,11 +621,15 @@ class _CloseBusinessDayDialog extends StatelessWidget {
             _InfoRow(
               label: 'الطلبات المحتسبة',
               value: '${report.orderCount}',
+              onDarkSurface: true,
+              isStat: true,
             ),
             const SizedBox(height: 12),
             _InfoRow(
               label: 'مبيعات اليوم',
               value: PriceUtils.formatPriceWithCurrency(report.totalSales),
+              onDarkSurface: true,
+              isStat: true,
             ),
           ],
         ),

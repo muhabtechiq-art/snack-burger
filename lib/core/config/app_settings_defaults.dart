@@ -16,4 +16,15 @@ abstract final class AppSettingsDefaults {
   static const String phone1 = '07777790170';
 
   static const String phone2 = '07891099899';
+
+  static const bool dailySoundEnabled = false;
+
+  static const String dailySoundUrl = '';
+
+  static const String dailySoundTitle = '';
+
+  /// مستوى الصوت الافتراضي (0.0–1.0) — 30%
+  static const double dailySoundVolume = 0.3;
+
+  static const bool dailySoundLoop = false;
 }

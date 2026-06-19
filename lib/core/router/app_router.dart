@@ -10,6 +10,7 @@ import '../../admin_features/products/product_form_page.dart';
 import '../../admin_features/products/products_admin_screen.dart';
 import '../../admin_features/reports/end_of_day_report_screen.dart';
 import '../../admin_features/settings/business_day_settings_screen.dart';
+import '../../admin_features/settings/daily_sound_settings_screen.dart';
 import '../../admin_features/settings/maintenance_settings_screen.dart';
 import '../../admin_features/settings/about_system_screen.dart';
 import '../../admin_features/settings/printer_settings_page.dart';
@@ -156,6 +157,19 @@ GoRouter createAppRouter(AuthNotifier authNotifier) {
             child: AdminWrapper(
               slug: slug,
               child: BusinessDaySettingsScreen(slug: slug),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/:slug/admin/settings/daily-sound',
+        name: 'daily-sound-settings',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['slug'] ?? '';
+          return NoTransitionPage<void>(
+            child: AdminWrapper(
+              slug: slug,
+              child: DailySoundSettingsScreen(slug: slug),
             ),
           );
         },

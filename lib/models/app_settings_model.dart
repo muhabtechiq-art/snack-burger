@@ -9,6 +9,11 @@ class AppSettingsModel {
     required this.maintenanceMessage,
     required this.phone1,
     required this.phone2,
+    required this.dailySoundEnabled,
+    required this.dailySoundUrl,
+    required this.dailySoundTitle,
+    required this.dailySoundVolume,
+    required this.dailySoundLoop,
     this.updatedAt,
   });
 
@@ -18,7 +23,16 @@ class AppSettingsModel {
   final String maintenanceMessage;
   final String phone1;
   final String phone2;
+  final bool dailySoundEnabled;
+  final String dailySoundUrl;
+  final String dailySoundTitle;
+  final double dailySoundVolume;
+  final bool dailySoundLoop;
   final DateTime? updatedAt;
+
+  /// صوت اليوم جاهز للعرض في واجهة الزبون.
+  bool get hasDailySound =>
+      dailySoundEnabled && dailySoundUrl.trim().isNotEmpty;
 
   factory AppSettingsModel.defaults() {
     return const AppSettingsModel(
@@ -28,6 +42,11 @@ class AppSettingsModel {
       maintenanceMessage: AppSettingsDefaults.maintenanceMessage,
       phone1: AppSettingsDefaults.phone1,
       phone2: AppSettingsDefaults.phone2,
+      dailySoundEnabled: AppSettingsDefaults.dailySoundEnabled,
+      dailySoundUrl: AppSettingsDefaults.dailySoundUrl,
+      dailySoundTitle: AppSettingsDefaults.dailySoundTitle,
+      dailySoundVolume: AppSettingsDefaults.dailySoundVolume,
+      dailySoundLoop: AppSettingsDefaults.dailySoundLoop,
     );
   }
 
@@ -54,6 +73,22 @@ class AppSettingsModel {
         map['phone_2'] ?? map['phone2'],
         fallback: AppSettingsDefaults.phone2,
       ),
+      dailySoundEnabled: map['daily_sound_enabled'] == true ||
+          map['dailySoundEnabled'] == true,
+      dailySoundUrl: _readString(
+        map['daily_sound_url'] ?? map['dailySoundUrl'],
+        fallback: AppSettingsDefaults.dailySoundUrl,
+      ),
+      dailySoundTitle: _readString(
+        map['daily_sound_title'] ?? map['dailySoundTitle'],
+        fallback: AppSettingsDefaults.dailySoundTitle,
+      ),
+      dailySoundVolume: _readVolume(
+        map['daily_sound_volume'] ?? map['dailySoundVolume'],
+        fallback: AppSettingsDefaults.dailySoundVolume,
+      ),
+      dailySoundLoop:
+          map['daily_sound_loop'] == true || map['dailySoundLoop'] == true,
       updatedAt: _readDateTime(map['updated_at'] ?? map['updatedAt']),
     );
   }
@@ -65,6 +100,12 @@ class AppSettingsModel {
       'maintenance_message': maintenanceMessage.trim(),
       'phone_1': phone1.trim(),
       'phone_2': phone2.trim(),
+      'daily_sound_enabled': dailySoundEnabled,
+      'daily_sound_url': dailySoundUrl.trim().isEmpty ? null : dailySoundUrl.trim(),
+      'daily_sound_title':
+          dailySoundTitle.trim().isEmpty ? null : dailySoundTitle.trim(),
+      'daily_sound_volume': dailySoundVolume.clamp(0.0, 1.0),
+      'daily_sound_loop': dailySoundLoop,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
   }
@@ -75,6 +116,11 @@ class AppSettingsModel {
     String? maintenanceMessage,
     String? phone1,
     String? phone2,
+    bool? dailySoundEnabled,
+    String? dailySoundUrl,
+    String? dailySoundTitle,
+    double? dailySoundVolume,
+    bool? dailySoundLoop,
   }) {
     return AppSettingsModel(
       id: id,
@@ -83,6 +129,11 @@ class AppSettingsModel {
       maintenanceMessage: maintenanceMessage ?? this.maintenanceMessage,
       phone1: phone1 ?? this.phone1,
       phone2: phone2 ?? this.phone2,
+      dailySoundEnabled: dailySoundEnabled ?? this.dailySoundEnabled,
+      dailySoundUrl: dailySoundUrl ?? this.dailySoundUrl,
+      dailySoundTitle: dailySoundTitle ?? this.dailySoundTitle,
+      dailySoundVolume: dailySoundVolume ?? this.dailySoundVolume,
+      dailySoundLoop: dailySoundLoop ?? this.dailySoundLoop,
       updatedAt: updatedAt,
     );
   }
@@ -91,6 +142,18 @@ class AppSettingsModel {
     if (value == null) return fallback;
     final text = value.toString().trim();
     return text.isEmpty ? fallback : text;
+  }
+
+  static double _readVolume(dynamic value, {required double fallback}) {
+    if (value == null) return fallback;
+    if (value is num) {
+      final parsed = value.toDouble();
+      if (parsed.isNaN) return fallback;
+      return parsed.clamp(0.0, 1.0);
+    }
+    final parsed = double.tryParse(value.toString());
+    if (parsed == null || parsed.isNaN) return fallback;
+    return parsed.clamp(0.0, 1.0);
   }
 
   static DateTime? _readDateTime(dynamic value) {

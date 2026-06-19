@@ -2,7 +2,18 @@
 -- نفّذ يدوياً في Supabase Dashboard → SQL Editor (لا يُنفَّذ من التطبيق)
 -- آمن للتشغيل المتكرر — لا يحذف policies ولا بيانات
 
-CREATE OR REPLACE FUNCTION public.submit_customer_order(
+DROP FUNCTION IF EXISTS public.submit_customer_order(
+  text,
+  text,
+  text,
+  text,
+  text,
+  numeric,
+  jsonb,
+  text
+);
+
+CREATE FUNCTION public.submit_customer_order(
   p_restaurant_id text,
   p_slug text,
   p_customer_name text,
@@ -16,8 +27,7 @@ RETURNS TABLE (
   id bigint,
   business_day_id uuid,
   status text,
-  slug text,
-  restaurant_id text
+  slug text
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -76,7 +86,6 @@ BEGIN
     order_items,
     status,
     slug,
-    restaurant_id,
     business_day_id,
     location_coordinates
   )
@@ -88,16 +97,14 @@ BEGIN
     p_order_items,
     'pending',
     v_slug,
-    v_restaurant_id,
     v_open_day_id,
     NULLIF(trim(p_location_coordinates), '')
   )
   RETURNING
-    orders.id,
-    orders.business_day_id,
-    orders.status,
-    orders.slug,
-    orders.restaurant_id;
+    orders.id::bigint,
+    orders.business_day_id::uuid,
+    orders.status::text,
+    orders.slug::text;
 END;
 $$;
 
