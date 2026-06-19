@@ -34,6 +34,7 @@ final class AdminOrderNotificationController {
   String? _activeStreamKey;
   String? _restaurantId;
   String? _slug;
+  String? _businessDayId;
   bool _starting = false;
   bool _reconnectScheduled = false;
   StreamHealth _lastHealth = StreamHealth.connecting;
@@ -45,8 +46,10 @@ final class AdminOrderNotificationController {
   Future<void> ensureListening({
     required String restaurantId,
     required String slug,
+    required String? businessDayId,
   }) async {
-    final key = '${restaurantId.trim()}|${slug.trim()}';
+    final key =
+        '${restaurantId.trim()}|${slug.trim()}|${businessDayId ?? 'none'}';
     if (_activeStreamKey == key && _subscription != null) {
       _logSubscriptionStatus('active');
       return;
@@ -59,8 +62,14 @@ final class AdminOrderNotificationController {
 
       _restaurantId = restaurantId;
       _slug = slug;
+      _businessDayId = businessDayId;
       _activeStreamKey = key;
       _coordinator.reset();
+
+      if (businessDayId == null || businessDayId.trim().isEmpty) {
+        debugPrint('[QA][OrderSound] listener skipped — no open business day');
+        return;
+      }
 
       debugPrint('[QA][OrderSound] listener started key=$key');
       await _subscribeRealtime();
@@ -72,18 +81,16 @@ final class AdminOrderNotificationController {
   }
 
   Future<void> _subscribeRealtime() async {
-    final restaurantId = _restaurantId;
-    final slug = _slug;
-    if (restaurantId == null || slug == null) return;
+    final businessDayId = _businessDayId;
+    if (businessDayId == null || businessDayId.trim().isEmpty) return;
 
     await _subscription?.cancel();
     _subscription = null;
     _logSubscriptionStatus('connecting');
 
     _subscription = _repository
-        .watchPendingOrders(
-          restaurantId: restaurantId,
-          slug: slug,
+        .watchPendingOrdersForBusinessDay(
+          businessDayId: businessDayId,
           onHealthChanged: _onStreamHealth,
         )
         .listen(
@@ -151,15 +158,18 @@ final class AdminOrderNotificationController {
   }
 
   Future<void> _pollPendingOrders() async {
-    final restaurantId = _restaurantId;
-    final slug = _slug;
+    final businessDayId = _businessDayId;
     final startedAt = _coordinator.listeningStartedAt;
-    if (restaurantId == null || slug == null || startedAt == null) return;
+    if (businessDayId == null ||
+        businessDayId.trim().isEmpty ||
+        startedAt == null) {
+      return;
+    }
 
     try {
-      final orders = await _repository.fetchPendingOrdersCreatedAfter(
-        restaurantId: restaurantId,
-        slug: slug,
+      final orders =
+          await _repository.fetchPendingOrdersForBusinessDayCreatedAfter(
+        businessDayId: businessDayId,
         after: startedAt,
       );
       _coordinator.onOrdersBatch(orders, source: 'polling');
@@ -206,6 +216,7 @@ final class AdminOrderNotificationController {
     _activeStreamKey = null;
     _restaurantId = null;
     _slug = null;
+    _businessDayId = null;
     _lastStreamEventAt = null;
     _lastHealth = StreamHealth.disposed;
     _coordinator.clear();

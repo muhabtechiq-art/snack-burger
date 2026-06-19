@@ -23,6 +23,7 @@ class DeliveryOrder {
     required this.status,
     required this.createdAt,
     this.rejectionReason,
+    this.businessDayId,
   });
 
   final String id;
@@ -46,6 +47,7 @@ class DeliveryOrder {
   final String status;
   final DateTime createdAt;
   final String? rejectionReason;
+  final String? businessDayId;
 
   bool get hasLocation => latitude != null && longitude != null;
 
@@ -131,6 +133,9 @@ class DeliveryOrder {
       createdAt: parseModelDate(data['created_at'] ?? data['createdAt']),
       rejectionReason: _readNullableString(
         data['rejection_reason'] ?? data['rejectionReason'],
+      ),
+      businessDayId: _readNullableString(
+        data['business_day_id'] ?? data['businessDayId'],
       ),
     );
   }

@@ -7,8 +7,6 @@ import '../services/supabase_app_settings_service.dart';
 
 /// حالة إعدادات التطبيق العامة — وضع الصيانة وأرقام الطوارئ.
 class AppSettingsNotifier extends ChangeNotifier {
-  AppSettingsNotifier();
-
   AppSettingsModel _settings = AppSettingsModel.defaults();
   bool _loading = true;
   bool _emergencyFallback = false;
@@ -65,7 +63,6 @@ class AppSettingsNotifier extends ChangeNotifier {
     return saved;
   }
 
-  /// fallback عند فشل حرج في تحميل المنيو — نفس شاشة الصيانة.
   void activateEmergencyFallback() {
     if (_emergencyFallback) return;
     _emergencyFallback = true;

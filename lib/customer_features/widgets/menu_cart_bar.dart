@@ -26,6 +26,7 @@ import '../services/customer_last_order_notifier.dart';
 import 'order_confirmation_dialog.dart';
 import '../../../services/supabase_order_service.dart';
 import '../../../state/app_settings_notifier.dart';
+import '../../../state/business_day_notifier.dart';
 import '../../../state/cart_notifier.dart';
 import '../../../state/delivery_location_notifier.dart';
 
@@ -418,6 +419,15 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
       return;
     }
 
+    if (!sheetContext.read<BusinessDayNotifier>().hasOpenDay) {
+      ScaffoldMessenger.of(sheetContext).showSnackBar(
+        const SnackBar(
+          content: Text(SupabaseOrderService.closedRestaurantMessage),
+        ),
+      );
+      return;
+    }
+
     if (LocationFeatureFlags.enabled) {
       if (!location.hasLocation) {
         ScaffoldMessenger.of(sheetContext).showSnackBar(
@@ -473,11 +483,15 @@ class _CartOrderSheetState extends State<_CartOrderSheet> {
       if (!sheetContext.mounted) return;
       final isMaintenance = error is StateError &&
           error.message == SupabaseOrderService.maintenanceBlockedCode;
+      final isClosed = error is StateError &&
+          error.message == SupabaseOrderService.noOpenBusinessDayCode;
       final message = isMaintenance
           ? 'الخدمة متوقفة مؤقتاً للصيانة — يمكنكم الطلب عبر الهاتف'
-          : error is NetworkTimeoutException || isLikelyNetworkFailure(error)
-              ? 'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى'
-              : 'تعذّر إرسال الطلب. حاول مرة أخرى';
+          : isClosed
+              ? SupabaseOrderService.closedRestaurantMessage
+              : error is NetworkTimeoutException || isLikelyNetworkFailure(error)
+                  ? 'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى'
+                  : 'تعذّر إرسال الطلب. حاول مرة أخرى';
       ScaffoldMessenger.of(sheetContext).showSnackBar(
         SnackBar(content: Text(message)),
       );

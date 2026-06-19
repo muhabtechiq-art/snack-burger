@@ -8,6 +8,7 @@ import '../../admin_features/orders/admin_order_notification_controller.dart';
 import '../../admin_features/orders/order_notification_player.dart';
 import '../../admin_features/shell/admin_panel_colors.dart';
 import '../../state/active_restaurant_notifier.dart';
+import '../../state/business_day_notifier.dart';
 import 'auth_notifier.dart';
 
 /// يغلّف شاشات الإدارة — Loading أثناء التحميل، خطأ إن فشل profile.
@@ -27,6 +28,7 @@ class AdminWrapper extends StatefulWidget {
 
 class _AdminWrapperState extends State<AdminWrapper> {
   bool _audioPrimed = false;
+  BusinessDayNotifier? _businessDayNotifier;
 
   void _primeAudioOnUserGesture() {
     if (_audioPrimed) return;
@@ -38,8 +40,20 @@ class _AdminWrapperState extends State<AdminWrapper> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _businessDayNotifier = context.read<BusinessDayNotifier>();
+      _businessDayNotifier!.addListener(_onBusinessDayChanged);
       unawaited(_syncOrderSoundListener());
     });
+  }
+
+  @override
+  void dispose() {
+    _businessDayNotifier?.removeListener(_onBusinessDayChanged);
+    super.dispose();
+  }
+
+  void _onBusinessDayChanged() {
+    unawaited(_syncOrderSoundListener());
   }
 
   @override
@@ -68,9 +82,17 @@ class _AdminWrapperState extends State<AdminWrapper> {
     }
     if (restaurant == null) return;
 
+    final businessDayNotifier = context.read<BusinessDayNotifier>();
+    await businessDayNotifier.ensureScope(
+          restaurantId: restaurant.id,
+          slug: widget.slug,
+        );
+    if (!mounted) return;
+
     await AdminOrderNotificationController.instance.ensureListening(
       restaurantId: restaurant.id,
       slug: widget.slug,
+      businessDayId: businessDayNotifier.openDay?.id,
     );
   }
 

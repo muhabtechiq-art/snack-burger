@@ -12,6 +12,7 @@ import '../../models/delivery_order_status.dart';
 import '../../models/end_of_day_report_model.dart';
 import '../../services/receipt_escpos_printer.dart';
 import '../../state/active_restaurant_notifier.dart';
+import '../../state/business_day_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
@@ -66,10 +67,28 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
       return;
     }
 
+    await context.read<BusinessDayNotifier>().ensureScope(
+          restaurantId: resolved.id,
+          slug: widget.slug,
+        );
+
+    if (!mounted) return;
+    final openDay = context.read<BusinessDayNotifier>().openDay;
+    if (openDay == null) {
+      setState(() {
+        _report = null;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
+
     try {
-      final report = await _orderRepository.fetchTodayClosingReport(
+      final report = await _orderRepository.fetchClosingReport(
         restaurantId: resolved.id,
         slug: widget.slug,
+        businessDayId: openDay.id,
+        businessDay: openDay,
       );
       if (!mounted) return;
       setState(() {
@@ -214,6 +233,41 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
               FilledButton(
                 onPressed: _loadReport,
                 child: const Text('إعادة المحاولة'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_report == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '🔴 لا يوجد يوم عمل مفتوح',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AdminPanelColors.textMuted,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'ابدأ يوم العمل من إعدادات «يوم العمل» لعرض التقرير.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AdminPanelColors.textMuted.withValues(alpha: 0.9),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _loadReport,
+                child: const Text('تحديث'),
               ),
             ],
           ),

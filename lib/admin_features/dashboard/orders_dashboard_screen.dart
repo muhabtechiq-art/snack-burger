@@ -9,6 +9,7 @@ import '../../core/theme/tenant_palette.dart';
 import '../../models/delivery_order_model.dart';
 import '../../services/supabase_order_service.dart';
 import '../../state/active_restaurant_notifier.dart';
+import '../../state/business_day_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../orders/pending_order_actions.dart';
 import '../orders/widgets/rejected_order_reason_sheet.dart';
@@ -159,8 +160,8 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
     return AdminPageScaffold(
       slug: widget.slug,
       title: 'إدارة الطلبات',
-      body: Consumer<ActiveRestaurantNotifier>(
-        builder: (context, tenant, _) {
+      body: Consumer2<ActiveRestaurantNotifier, BusinessDayNotifier>(
+        builder: (context, tenant, businessDay, _) {
           final restaurant = tenant.restaurant;
           if (restaurant == null) {
             return const Center(
@@ -168,14 +169,28 @@ class _OrdersDashboardScreenState extends State<OrdersDashboardScreen>
             );
           }
 
-          final streamKey = '${restaurant.id}|${widget.slug}';
+          final openDayId = businessDay.openDay?.id;
+          if (openDayId == null) {
+            return const Center(
+              child: Text(
+                'لا يوجد يوم عمل مفتوح — ابدأ يوم العمل لاستقبال الطلبات',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AdminPanelColors.textLight,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            );
+          }
+
+          final streamKey = '${restaurant.id}|${widget.slug}|$openDayId';
           final palette = TenantPalette.fromRestaurant(restaurant);
           if (_streamKey != streamKey || _ordersStream == null) {
             _streamKey = streamKey;
             _streamHealth = StreamHealth.connecting;
-            _ordersStream = _orderRepository.watchKitchenDashboardOrders(
-              restaurantId: restaurant.id,
-              slug: widget.slug,
+            _ordersStream =
+                _orderRepository.watchKitchenDashboardOrdersForBusinessDay(
+              businessDayId: openDayId,
               onHealthChanged: _handleStreamHealth,
             );
           }

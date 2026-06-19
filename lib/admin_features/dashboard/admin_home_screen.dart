@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/router/admin_route_observer.dart';
+import '../../models/business_day_order_stats.dart';
 import '../../models/delivery_order_model.dart';
+import '../../state/business_day_notifier.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import '../shell/admin_page_scaffold.dart';
@@ -28,6 +30,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
 
   int _todayOrderCount = 0;
   double _todaySales = 0;
+  int _pendingOrderCount = 0;
+  List<DeliveryOrder> _recentPendingOrders = const [];
   int _productCount = 0;
   bool _loadingStats = false;
 
@@ -36,11 +40,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
   int _refreshGeneration = 0;
   String? _subscribedOrdersKey;
   ModalRoute<void>? _route;
+  BusinessDayNotifier? _businessDayNotifier;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapDashboard());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _businessDayNotifier = context.read<BusinessDayNotifier>();
+      _businessDayNotifier!.addListener(_onBusinessDayChanged);
+      unawaited(_bootstrapDashboard());
+    });
+  }
+
+  void _onBusinessDayChanged() {
+    unawaited(_refreshDashboardStats(includeProducts: false));
   }
 
   @override
@@ -58,6 +71,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
 
   @override
   void dispose() {
+    _businessDayNotifier?.removeListener(_onBusinessDayChanged);
     adminRouteObserver.unsubscribe(this);
     _orderChangesSubscription?.cancel();
     _realtimeRefreshDebounce?.cancel();
@@ -79,27 +93,29 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
     final restaurant = context.read<ActiveRestaurantNotifier>().restaurant;
     if (restaurant == null) return;
 
+    final businessDayNotifier = context.read<BusinessDayNotifier>();
+    await businessDayNotifier.ensureScope(
+          restaurantId: restaurant.id,
+          slug: widget.slug,
+        );
+    if (!mounted) return;
+
     _ensureOrderChangeSubscription(
-      restaurantId: restaurant.id,
-      slug: widget.slug,
+      businessDayId: businessDayNotifier.openDay?.id,
     );
     await _refreshDashboardStats(includeProducts: true);
   }
 
-  void _ensureOrderChangeSubscription({
-    required String restaurantId,
-    required String slug,
-  }) {
-    final key = '$restaurantId|$slug';
+  void _ensureOrderChangeSubscription({required String? businessDayId}) {
+    final key = businessDayId ?? 'none';
     if (_subscribedOrdersKey == key) return;
 
     _orderChangesSubscription?.cancel();
     _subscribedOrdersKey = key;
+    if (businessDayId == null) return;
+
     _orderChangesSubscription = _orderRepository
-        .watchPendingOrders(
-          restaurantId: restaurantId,
-          slug: slug,
-        )
+        .watchOrdersForBusinessDay(businessDayId: businessDayId)
         .listen((_) => _scheduleRealtimeReportRefresh());
   }
 
@@ -122,8 +138,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
     if (restaurant == null) return;
 
     _ensureOrderChangeSubscription(
-      restaurantId: restaurant.id,
-      slug: widget.slug,
+      businessDayId: context.read<BusinessDayNotifier>().openDay?.id,
     );
 
     final generation = ++_refreshGeneration;
@@ -132,10 +147,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
     }
 
     try {
-      final report = await _orderRepository.fetchTodayClosingReport(
-        restaurantId: restaurant.id,
-        slug: widget.slug,
-      );
+      final openDay = context.read<BusinessDayNotifier>().openDay;
+      BusinessDayOrderStats? stats;
+      if (openDay != null) {
+        stats = await _orderRepository.fetchBusinessDayOrderStats(
+          businessDayId: openDay.id,
+          businessDay: openDay,
+        );
+      }
       final products = includeProducts
           ? await _productRepository.fetchProducts(
               restaurantId: restaurant.id,
@@ -145,14 +164,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
 
       if (!mounted || generation != _refreshGeneration) return;
 
-      debugPrint(
-        '[QA][DashboardReport] orderCount=${report.orderCount} '
-        'totalSales=${report.totalSales} at=${DateTime.now().toIso8601String()}',
-      );
+      if (stats != null) {
+        debugPrint(
+          '[QA][DashboardReport] pending=${stats.pendingOrdersCount} '
+          'countableOrders=${stats.closingCountableOrders} '
+          'countableSales=${stats.closingCountableSales} '
+          'at=${DateTime.now().toIso8601String()}',
+        );
+      }
 
       setState(() {
-        _todayOrderCount = report.orderCount;
-        _todaySales = report.totalSales;
+        _pendingOrderCount = stats?.pendingOrdersCount ?? 0;
+        _recentPendingOrders = stats?.pendingOrders.take(2).toList() ??
+            const <DeliveryOrder>[];
+        _todayOrderCount = stats?.closingCountableOrders ?? 0;
+        _todaySales = stats?.closingCountableSales ?? 0;
         if (products != null) {
           _productCount = products.length;
         }
@@ -160,7 +186,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
       });
     } catch (_) {
       if (!mounted || generation != _refreshGeneration) return;
-      final hadStats = _todayOrderCount > 0 || _todaySales > 0 || _productCount > 0;
+      final hadStats = _todayOrderCount > 0 ||
+          _todaySales > 0 ||
+          _pendingOrderCount > 0 ||
+          _productCount > 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
@@ -224,56 +253,42 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
             );
           }
 
-          final pendingStream = _orderRepository.watchPendingOrders(
-            restaurantId: restaurant.id,
-            slug: widget.slug,
-          );
-
-          return StreamBuilder<List<DeliveryOrder>>(
-            stream: pendingStream,
-            builder: (context, snapshot) {
-              final pending = snapshot.data ?? const <DeliveryOrder>[];
-              final pendingCount = pending.length;
-              final recent = pending.take(2).toList();
-
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AdminPanelColors.loginGradient,
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _DashboardWelcomeHeader(),
-                        const SizedBox(height: 14),
-                        _DashboardStatsGrid(
-                          pendingCount: pendingCount,
-                          todayOrderCount: _todayOrderCount,
-                          todaySales: _todaySales,
-                          productCount: _productCount,
-                        ),
-                        const SizedBox(height: 20),
-                        _RecentOrdersSection(
-                          orders: recent,
-                          showViewAll: pendingCount > 2,
-                          onViewAll: _openOrders,
-                          onOrderTap: _openOrders,
-                        ),
-                        const SizedBox(height: 16),
-                        _PendingOrdersCta(
-                          pendingCount: pendingCount,
-                          onTap: _openOrders,
-                        ),
-                      ],
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: AdminPanelColors.loginGradient,
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _DashboardWelcomeHeader(),
+                    const SizedBox(height: 14),
+                    _DashboardStatsGrid(
+                      pendingCount: _pendingOrderCount,
+                      todayOrderCount: _todayOrderCount,
+                      todaySales: _todaySales,
+                      productCount: _productCount,
                     ),
-                  ),
+                    const SizedBox(height: 20),
+                    _RecentOrdersSection(
+                      orders: _recentPendingOrders,
+                      showViewAll: _pendingOrderCount > 2,
+                      onViewAll: _openOrders,
+                      onOrderTap: _openOrders,
+                    ),
+                    const SizedBox(height: 16),
+                    _PendingOrdersCta(
+                      pendingCount: _pendingOrderCount,
+                      onTap: _openOrders,
+                    ),
+                  ],
                 ),
-              );
-            },
+              ),
+            ),
           );
         },
       ),

@@ -11,6 +11,7 @@ import '../../../core/config/printer_config.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
 import '../../../models/restaurant_model.dart';
+import '../../../state/business_day_notifier.dart';
 import '../data/admin_repositories.dart';
 import 'admin_panel_colors.dart';
 
@@ -33,17 +34,6 @@ class AdminDrawer extends StatefulWidget {
 
 class _AdminDrawerState extends State<AdminDrawer> {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
-
-  late Stream<List<DeliveryOrder>> _pendingStream;
-
-  @override
-  void initState() {
-    super.initState();
-    _pendingStream = _orderRepository.watchPendingOrders(
-      restaurantId: widget.restaurant.id,
-      slug: widget.slug,
-    );
-  }
 
   Future<void> _signOut() async {
     await context.read<AuthNotifier>().signOut();
@@ -81,21 +71,41 @@ class _AdminDrawerState extends State<AdminDrawer> {
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
                     children: [
                       const _SectionLabel(title: 'العمليات اليومية'),
-                      StreamBuilder<List<DeliveryOrder>>(
-                        stream: _pendingStream,
-                        builder: (context, snapshot) {
-                          final count = snapshot.data?.length ?? 0;
+                      Consumer<BusinessDayNotifier>(
+                        builder: (context, businessDay, _) {
+                          final openDayId = businessDay.openDay?.id;
+                          if (openDayId == null) {
+                            return _AdminTile(
+                              icon: Icons.notifications_active_rounded,
+                              title: 'الطلبات المعلقة',
+                              subtitle: 'لا يوجد يوم عمل مفتوح',
+                              onTap: () {
+                                Navigator.pop(context);
+                                context.push('/${widget.slug}/admin/orders');
+                              },
+                            );
+                          }
 
-                          return _AdminTile(
-                            icon: Icons.notifications_active_rounded,
-                            title: 'الطلبات المعلقة',
-                            subtitle: count == 0
-                                ? 'لا توجد طلبات جديدة — بث مباشر'
-                                : '$count طلب بانتظار القبول',
-                            badge: count > 0 ? '$count' : null,
-                            onTap: () {
-                              Navigator.pop(context);
-                              context.push('/${widget.slug}/admin/orders');
+                          return StreamBuilder<List<DeliveryOrder>>(
+                            stream: _orderRepository
+                                .watchPendingOrdersForBusinessDay(
+                              businessDayId: openDayId,
+                            ),
+                            builder: (context, snapshot) {
+                              final count = snapshot.data?.length ?? 0;
+
+                              return _AdminTile(
+                                icon: Icons.notifications_active_rounded,
+                                title: 'الطلبات المعلقة',
+                                subtitle: count == 0
+                                    ? 'لا توجد طلبات جديدة — بث مباشر'
+                                    : '$count طلب بانتظار القبول',
+                                badge: count > 0 ? '$count' : null,
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  context.push('/${widget.slug}/admin/orders');
+                                },
+                              );
                             },
                           );
                         },
@@ -160,6 +170,17 @@ class _AdminDrawerState extends State<AdminDrawer> {
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                   child: Column(
                     children: [
+                      _AdminTile(
+                        icon: Icons.schedule_rounded,
+                        title: 'يوم العمل',
+                        subtitle: 'فتح/إغلاق يوم العمل يدوياً',
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.push(
+                            '/${widget.slug}/admin/settings/business-day',
+                          );
+                        },
+                      ),
                       _AdminTile(
                         icon: Icons.construction_rounded,
                         title: 'وضع الصيانة',

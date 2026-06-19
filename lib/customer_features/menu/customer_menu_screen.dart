@@ -7,6 +7,7 @@ import '../../models/product_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../state/active_restaurant_notifier.dart';
 import '../../state/app_settings_notifier.dart';
+import '../../state/business_day_notifier.dart';
 import '../../state/cart_notifier.dart';
 import '../../state/delivery_location_notifier.dart';
 import 'customer_menu_banners_controller.dart';
@@ -48,6 +49,22 @@ class _CustomerMenuScopeState extends State<_CustomerMenuScope> {
   void initState() {
     super.initState();
     _lastOrderNotifier = CustomerLastOrderNotifier(slug: widget.slug);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureBusinessDayScope());
+  }
+
+  Future<void> _ensureBusinessDayScope() async {
+    final tenant = context.read<ActiveRestaurantNotifier>();
+    if (tenant.restaurant == null) {
+      await tenant.resolveSlug(widget.slug);
+    }
+    if (!mounted) return;
+    final restaurant = context.read<ActiveRestaurantNotifier>().restaurant;
+    if (restaurant == null) return;
+
+    await context.read<BusinessDayNotifier>().ensureScope(
+          restaurantId: restaurant.id,
+          slug: widget.slug,
+        );
   }
 
   @override

@@ -1,32 +1,24 @@
 import '../../models/delivery_order_model.dart';
+import '../config/business_day_runtime.dart';
+import '../utils/business_day_scope.dart';
 
-/// قواعد عرض وحذف الطلبات المرفوضة — اليوم المحلي فقط.
+/// قواعد عرض الطلبات المرفوضة — يوم العمل المفتوح يدوياً.
 abstract final class RejectedOrdersConfig {
   RejectedOrdersConfig._();
 
-  /// بداية اليوم المحلي (منتصف الليل).
-  static DateTime localDayStart({DateTime? referenceTime}) {
-    final local = (referenceTime ?? DateTime.now()).toLocal();
-    return DateTime(local.year, local.month, local.day);
+  /// هل يُعرض الطلب المرفوض ضمن يوم العمل المفتوح الحالي؟
+  static bool isRejectedVisibleForCurrentBusinessDay(DeliveryOrder order) {
+    final openId = BusinessDayRuntime.openBusinessDayId;
+    if (openId == null || openId.isEmpty) return false;
+    return BusinessDayScope.orderBelongsToBusinessDay(
+      orderBusinessDayId: order.businessDayId,
+      businessDayId: openId,
+    );
   }
 
-  /// هل أُنشئ الطلب في اليوم المحلي الحالي؟
-  static bool isCreatedOnLocalDay(
-    DateTime createdAt, {
-    DateTime? referenceTime,
-  }) {
-    final created = createdAt.toLocal();
-    final dayStart = localDayStart(referenceTime: referenceTime);
-    final dayEnd = dayStart.add(const Duration(days: 1));
-    return !created.isBefore(dayStart) && created.isBefore(dayEnd);
-  }
-
-  /// للقوائم: غير المرفوض يمرّ. المرفوض يُعرض إن كان من اليوم فقط.
-  static bool isVisibleInOrdersList(
-    DeliveryOrder order, {
-    DateTime? referenceTime,
-  }) {
+  /// للقوائم: غير المرفوض يمرّ. المرفوض يُعرض إن كان ضمن يوم العمل المفتوح.
+  static bool isVisibleInOrdersList(DeliveryOrder order) {
     if (!order.isRejected) return true;
-    return isCreatedOnLocalDay(order.createdAt, referenceTime: referenceTime);
+    return isRejectedVisibleForCurrentBusinessDay(order);
   }
 }

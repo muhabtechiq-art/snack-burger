@@ -6,19 +6,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/config/rejected_orders_config.dart';
-import '../core/network/network_timeout.dart';
-import '../core/observability/app_telemetry.dart';
-import '../core/utils/model_parse_validation.dart';
-import '../core/utils/iraqi_phone_validator.dart';
 import '../core/config/restaurant_ids.dart';
 import '../core/config/stability_phase1_flags.dart';
+import '../core/network/network_timeout.dart';
+import '../core/observability/app_telemetry.dart';
+import '../core/utils/business_day_order_aggregation.dart';
+import '../core/utils/business_day_scope.dart';
 import '../core/utils/delivery_coordinates.dart';
+import '../core/utils/iraqi_phone_validator.dart';
+import '../core/utils/model_parse_validation.dart';
+import '../models/business_day_model.dart';
+import '../models/business_day_order_stats.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
-import 'supabase_app_settings_service.dart';
-import 'supabase_error_reporter.dart';
 import '../models/end_of_day_report_model.dart';
 import '../models/order_model.dart';
+import 'supabase_app_settings_service.dart';
+import 'supabase_business_day_service.dart';
+import 'supabase_error_reporter.dart';
 
 /// إنشاء وقراءة وتحديث طلبات جدول `orders` في Supabase.
 abstract final class SupabaseOrderService {
@@ -56,44 +61,22 @@ abstract final class SupabaseOrderService {
     return DeliveryCoordinates.format(latitude, longitude);
   }
 
-  static Map<String, dynamic> _buildSubmitPayload({
-    required String? resolvedRestaurantUuid,
-    required String rawRestaurantId,
-    required String normalizedSlug,
-    required String customerName,
-    required String customerPhone,
-    required String address,
-    required List<Map<String, dynamic>> orderItems,
-    required double totalPrice,
-    String? locationCoordinates,
-  }) {
-    final payload = <String, dynamic>{
-      'customer_name': customerName.trim(),
-      'phone_number': customerPhone.trim(),
-      'address': address.trim(),
-      'total_price': totalPrice,
-      'order_items': orderItems,
-      'status': DeliveryOrderStatus.pending,
-    };
-
-    if (resolvedRestaurantUuid != null) {
-      payload['restaurant_id'] = resolvedRestaurantUuid;
-    } else if (rawRestaurantId.trim().isNotEmpty) {
-      debugPrint(
-        '[SupabaseOrderService] تخطي restaurant_id — القيمة ليست UUID: '
-        '${rawRestaurantId.trim()}',
-      );
+  static Map<String, dynamic> _parseSubmitOrderRpcRow(dynamic raw) {
+    if (raw is List) {
+      if (raw.isEmpty) {
+        throw StateError('submit_customer_order returned empty result');
+      }
+      return Map<String, dynamic>.from(raw.first as Map);
     }
-
-    if (normalizedSlug.isNotEmpty) {
-      payload['slug'] = normalizedSlug;
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
     }
+    throw StateError('submit_customer_order returned unexpected type: $raw');
+  }
 
-    if (locationCoordinates != null) {
-      payload['location_coordinates'] = locationCoordinates;
-    }
-
-    return payload;
+  static bool _isRpcNoOpenBusinessDay(PostgrestException error) {
+    final message = error.message.toLowerCase();
+    return message.contains(noOpenBusinessDayCode);
   }
 
   static ValueChanged<StreamHealth>? _streamHealthCallback(
@@ -105,8 +88,12 @@ abstract final class SupabaseOrderService {
   }
 
   static const String maintenanceBlockedCode = 'maintenance_mode_active';
+  static const String noOpenBusinessDayCode = 'no_open_business_day';
+  static const String businessDayIdNotPersistedCode = 'business_day_id_not_persisted';
+  static const String closedRestaurantMessage =
+      'المطعم مغلق حالياً، يرجى المحاولة لاحقاً.';
 
-  /// يحفظ طلباً جديداً ويعيد معرّف الصف.
+  /// يحفظ طلباً جديداً عبر RPC — قاعدة البيانات تربط `business_day_id`.
   static Future<String> submitOrder({
     required String restaurantId,
     required String slug,
@@ -123,33 +110,29 @@ abstract final class SupabaseOrderService {
       throw StateError(maintenanceBlockedCode);
     }
 
+    final resolvedRestaurantUuid =
+        _resolveRestaurantUuid(restaurantId) ??
+        _resolveRestaurantUuid(RestaurantIds.snackBurgerUuid ?? '');
+    final normalizedSlug = slug.trim().toLowerCase();
+    final scopedRestaurantId = resolvedRestaurantUuid ??
+        (restaurantId.trim().isNotEmpty
+            ? restaurantId.trim().toLowerCase()
+            : normalizedSlug);
+
     final correlationId = AppTelemetry.newCorrelationId(scope: 'order_submit');
     final orderItems = items.map((item) => item.toMap()).toList();
     final locationCoordinates = _resolveLocationCoordinates(
       latitude: latitude,
       longitude: longitude,
     );
-    final resolvedRestaurantUuid =
-        _resolveRestaurantUuid(restaurantId) ??
-        _resolveRestaurantUuid(RestaurantIds.snackBurgerUuid ?? '');
-    final normalizedSlug = slug.trim();
 
-    final payload = _buildSubmitPayload(
-      resolvedRestaurantUuid: resolvedRestaurantUuid,
-      rawRestaurantId: restaurantId,
-      normalizedSlug: normalizedSlug,
-      customerName: customerName,
-      customerPhone: customerPhone,
-      address: address,
-      orderItems: orderItems,
-      totalPrice: totalPrice,
-      locationCoordinates: locationCoordinates,
-    );
-
+    debugPrint('[SubmitOrder] scopedRestaurantId=$scopedRestaurantId');
+    debugPrint('[SubmitOrder] normalizedSlug=$normalizedSlug');
     debugPrint(
-      '[SupabaseOrderService] submitOrder — '
+      '[SupabaseOrderService] submitOrder RPC — '
       'restaurantUuid=${resolvedRestaurantUuid ?? 'null'}, '
-      'slug=$normalizedSlug, ${orderItems.length} عنصر، total=$totalPrice',
+      'slug=$normalizedSlug, '
+      '${orderItems.length} عنصر، total=$totalPrice',
     );
     AppTelemetry.logEvent(
       'order_submit_started',
@@ -162,29 +145,74 @@ abstract final class SupabaseOrderService {
     );
 
     try {
-      final row = await NetworkTimeouts.run(
-        () => _client
-            .from(tableName)
-            .insert(payload)
-            .select('id')
-            .single(),
+      final rpcParams = <String, dynamic>{
+        'p_restaurant_id': scopedRestaurantId,
+        'p_slug': normalizedSlug,
+        'p_customer_name': customerName.trim(),
+        'p_phone_number': customerPhone.trim(),
+        'p_address': address.trim(),
+        'p_total_price': totalPrice,
+        'p_order_items': orderItems,
+      };
+      if (locationCoordinates != null) {
+        rpcParams['p_location_coordinates'] = locationCoordinates;
+      }
+
+      final rawRow = await NetworkTimeouts.run(
+        () => _client.rpc<dynamic>(
+          'submit_customer_order',
+          params: rpcParams,
+        ),
         timeout: NetworkTimeouts.orderSubmit,
         timeoutMessage:
             'تعذر إرسال الطلب، تحقق من الإنترنت وحاول مرة أخرى',
       );
 
+      final row = _parseSubmitOrderRpcRow(rawRow);
       final id = row['id']?.toString() ?? '';
       if (id.isEmpty) {
-        throw StateError('لم يُرجَع id بعد إدراج الطلب في Supabase.');
+        throw StateError('لم يُرجَع id بعد RPC submit_customer_order.');
       }
 
-      debugPrint('[SupabaseOrderService] تم حفظ الطلب: $id');
+      final insertedBusinessDayId =
+          row['business_day_id']?.toString().trim() ?? '';
+      debugPrint(
+        '[SubmitOrder] rpc id=$id business_day_id=$insertedBusinessDayId '
+        'status=${row['status']} slug=${row['slug']} '
+        'restaurant_id=${row['restaurant_id']}',
+      );
+      if (insertedBusinessDayId.isEmpty) {
+        throw StateError(
+          '$businessDayIdNotPersistedCode: RPC submit_customer_order returned '
+          'null business_day_id',
+        );
+      }
+
+      debugPrint('[SupabaseOrderService] تم حفظ الطلب عبر RPC: $id');
       AppTelemetry.logEvent(
         'order_submit_succeeded',
         correlationId: correlationId,
-        fields: <String, Object?>{'order_id': id},
+        fields: <String, Object?>{
+          'order_id': id,
+          'business_day_id': insertedBusinessDayId,
+        },
       );
       return id;
+    } on PostgrestException catch (e, stack) {
+      if (_isRpcNoOpenBusinessDay(e)) {
+        debugPrint('[SupabaseOrderService] submitOrder — no open business day');
+        throw StateError(noOpenBusinessDayCode);
+      }
+      debugPrint('[SupabaseOrderService] submitOrder RPC فشل: $e\n$stack');
+      AppTelemetry.logError(
+        'order_submit_failed',
+        correlationId: correlationId,
+        error: e,
+        stackTrace: stack,
+        fields: <String, Object?>{'slug': normalizedSlug},
+      );
+      reportSupabaseError(e, stack, operation: 'submitOrder');
+      rethrow;
     } catch (e, stack) {
       debugPrint('[SupabaseOrderService] submitOrder فشل: $e\n$stack');
       AppTelemetry.logError(
@@ -231,6 +259,72 @@ abstract final class SupabaseOrderService {
         e,
         stack,
         operation: 'fetchPendingOrdersCreatedAfter',
+        showSnackBar: false,
+      );
+      rethrow;
+    }
+  }
+
+  /// بث الطلبات المعلقة ليوم عمل محدد — للوحة الإدارة والتنبيه.
+  static Stream<List<DeliveryOrder>> watchPendingOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchPendingOrdersForBusinessDay(businessDayId: businessDayId);
+    }
+    final normalizedDayId = businessDayId.trim();
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            order.status == DeliveryOrderStatus.pending &&
+            order.businessDayId?.trim() == normalizedDayId,
+        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+        logParseErrors: true,
+      ),
+      streamTag: 'watchPendingOrdersForBusinessDay(day=$normalizedDayId)',
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    );
+  }
+
+  /// جلب الطلبات المعلقة ليوم عمل بعد وقت محدد — polling احتياطي.
+  static Future<List<DeliveryOrder>> fetchPendingOrdersForBusinessDayCreatedAfter({
+    required String businessDayId,
+    required DateTime after,
+  }) async {
+    final normalizedDayId = businessDayId.trim();
+    try {
+      return await NetworkTimeouts.run(() async {
+        final rows = await _client
+            .from(tableName)
+            .select()
+            .eq('business_day_id', normalizedDayId)
+            .eq('status', DeliveryOrderStatus.pending)
+            .gte('created_at', after.toUtc().toIso8601String())
+            .order('created_at', ascending: false);
+
+        return _mapRowsToOrders(
+          rows: List<Map<String, dynamic>>.from(rows),
+          include: (order) =>
+              order.status == DeliveryOrderStatus.pending &&
+              order.businessDayId?.trim() == normalizedDayId,
+          compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+          logParseErrors: false,
+        );
+      });
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseOrderService] fetchPendingOrdersForBusinessDayCreatedAfter '
+        'فشل: $e\n$stack',
+      );
+      reportSupabaseError(
+        e,
+        stack,
+        operation: 'fetchPendingOrdersForBusinessDayCreatedAfter',
         showSnackBar: false,
       );
       rethrow;
@@ -349,13 +443,6 @@ abstract final class SupabaseOrderService {
     );
   }
 
-  static const Set<String> _closingCountableStatuses = {
-    DeliveryOrderStatus.accepted,
-    DeliveryOrderStatus.preparing,
-    DeliveryOrderStatus.delivering,
-    DeliveryOrderStatus.delivered,
-  };
-
   static const Set<String> _activeOrderStatuses = {
     DeliveryOrderStatus.pending,
     DeliveryOrderStatus.accepted,
@@ -380,7 +467,7 @@ abstract final class SupabaseOrderService {
   /// طلبات «طلباتي»: غير المرفوض ضمن نافذة 6 ساعات؛ المرفوض اليوم فقط.
   static bool _includeCustomerPhoneOrder(DeliveryOrder order) {
     if (order.isRejected) {
-      return RejectedOrdersConfig.isCreatedOnLocalDay(order.createdAt);
+      return RejectedOrdersConfig.isRejectedVisibleForCurrentBusinessDay(order);
     }
     return CustomerMyOrdersConfig.isOrderVisibleToCustomer(order.createdAt);
   }
@@ -393,9 +480,47 @@ abstract final class SupabaseOrderService {
     if (!_orderMatchesSlug(order, normalizedSlug)) return false;
     if (order.isPending) return true;
     if (order.isRejected) {
-      return RejectedOrdersConfig.isCreatedOnLocalDay(order.createdAt);
+      return RejectedOrdersConfig.isRejectedVisibleForCurrentBusinessDay(order);
     }
     return false;
+  }
+
+  /// لوحة الإدارة: معلّق أو مرفوض ضمن نفس يوم العمل.
+  static bool _includeKitchenDashboardOrderForBusinessDay(
+    DeliveryOrder order,
+    String businessDayId,
+  ) {
+    if (order.businessDayId?.trim() != businessDayId.trim()) return false;
+    if (order.isPending) return true;
+    if (order.isRejected) return true;
+    return false;
+  }
+
+  /// بث طلبات المطبخ ليوم عمل محدد: معلّقة + مرفوضة.
+  static Stream<List<DeliveryOrder>> watchKitchenDashboardOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchKitchenDashboardOrdersForBusinessDay(
+        businessDayId: businessDayId,
+      );
+    }
+    final normalizedDayId = businessDayId.trim();
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _includeKitchenDashboardOrderForBusinessDay(order, normalizedDayId),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
+      streamTag:
+          'watchKitchenDashboardOrdersForBusinessDay(day=$normalizedDayId)',
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    );
   }
 
   /// بث طلبات المطبخ: معلّقة + مرفوضة (لتبويبي لوحة الإدارة).
@@ -421,84 +546,151 @@ abstract final class SupabaseOrderService {
     );
   }
 
-  /// طلبات اليوم المحلية المقبولة/قيد التوصيل/المُسلّمة — لتقرير الإغلاق.
-  static Future<EndOfDayReport> fetchTodayClosingReport({
-    required String slug,
-    DateTime? day,
+  static Future<List<DeliveryOrder>> _fetchAllOrdersForBusinessDay(
+    String businessDayId,
+  ) async {
+    final rows = await _client
+        .from(tableName)
+        .select()
+        .eq('business_day_id', businessDayId)
+        .order('created_at', ascending: false);
+
+    return _mapRowsToOrders(
+      rows: List<Map<String, dynamic>>.from(rows),
+      include: (_) => true,
+      logParseErrors: true,
+    );
+  }
+
+  static List<ClosingProductLine> _buildClosingProductLines(
+    List<DeliveryOrder> closingOrders,
+  ) {
+    final lineAggregates = <String, ClosingProductLine>{};
+
+    for (final order in closingOrders) {
+      for (final item in order.items) {
+        final name = item.printableName.trim();
+        if (name.isEmpty) continue;
+
+        final key = '$name|${item.unitPrice}';
+        final existing = lineAggregates[key];
+        if (existing == null) {
+          lineAggregates[key] = ClosingProductLine(
+            productName: name,
+            quantitySold: item.quantity,
+            unitPrice: item.unitPrice,
+          );
+        } else {
+          lineAggregates[key] = ClosingProductLine(
+            productName: name,
+            quantitySold: existing.quantitySold + item.quantity,
+            unitPrice: item.unitPrice,
+          );
+        }
+      }
+    }
+
+    return lineAggregates.values.toList()
+      ..sort((a, b) => a.productName.compareTo(b.productName));
+  }
+
+  /// إحصائيات موحّدة ليوم عمل — تعتمد على `business_day_id` فقط.
+  static Future<BusinessDayOrderStats> fetchBusinessDayOrderStats({
+    required String businessDayId,
+    BusinessDayModel? businessDay,
   }) async {
-    final localDay = day ?? DateTime.now();
-    final dayStart = DateTime(localDay.year, localDay.month, localDay.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
-    final normalized = _normalizeSlug(slug);
+    final day = businessDay ??
+        await SupabaseBusinessDayService.fetchById(businessDayId);
+    if (day == null) {
+      throw StateError('business_day_not_found');
+    }
 
     try {
       return await NetworkTimeouts.run(() async {
-        final rows = await _client
-            .from(tableName)
-            .select()
-            .gte('created_at', dayStart.toUtc().toIso8601String())
-            .lt('created_at', dayEnd.toUtc().toIso8601String())
-            .order('created_at', ascending: false);
-
-        final orders = _mapRowsToOrders(
-          rows: List<Map<String, dynamic>>.from(rows),
-          include: (order) =>
-              _closingCountableStatuses.contains(order.status) &&
-              _orderMatchesSlug(order, normalized),
-          logParseErrors: true,
-        );
-
-        var totalSales = 0.0;
-        final lineAggregates = <String, ClosingProductLine>{};
-
-        for (final order in orders) {
-          totalSales += order.totalPrice;
-          for (final item in order.items) {
-            final name = item.printableName.trim();
-            if (name.isEmpty) continue;
-
-            final key = '$name|${item.unitPrice}';
-            final existing = lineAggregates[key];
-            if (existing == null) {
-              lineAggregates[key] = ClosingProductLine(
-                productName: name,
-                quantitySold: item.quantity,
-                unitPrice: item.unitPrice,
-              );
-            } else {
-              lineAggregates[key] = ClosingProductLine(
-                productName: name,
-                quantitySold: existing.quantitySold + item.quantity,
-                unitPrice: item.unitPrice,
-              );
-            }
-          }
-        }
-
-        final productLines = lineAggregates.values.toList()
-          ..sort((a, b) => a.productName.compareTo(b.productName));
-
-        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final allOrders = await _fetchAllOrdersForBusinessDay(businessDayId);
+        final stats = aggregateBusinessDayOrders(allOrders);
 
         debugPrint(
-          '[SupabaseOrderService] تقرير إغلاق $dayStart — '
-          '${orders.length} طلب، $totalSales د.ع، '
+          '[SupabaseOrderService] إحصائيات يوم العمل ${day.id} — '
+          'الكل=${stats.allOrdersCount} معلّق=${stats.pendingOrdersCount} '
+          'محتسب=${stats.closingCountableOrders} '
+          'مبيعات=${stats.closingCountableSales} د.ع',
+        );
+
+        return stats;
+      });
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseOrderService] fetchBusinessDayOrderStats فشل: $e\n$stack',
+      );
+      reportSupabaseError(e, stack, operation: 'fetchBusinessDayOrderStats');
+      rethrow;
+    }
+  }
+
+  /// تقرير إغلاق يوم عمل محدد — يعتمد على `business_day_id` فقط.
+  static Future<EndOfDayReport> fetchClosingReport({
+    required String businessDayId,
+    String? slug,
+    BusinessDayModel? businessDay,
+  }) async {
+    final day = businessDay ??
+        await SupabaseBusinessDayService.fetchById(businessDayId);
+    if (day == null) {
+      throw StateError('business_day_not_found');
+    }
+
+    try {
+      return await NetworkTimeouts.run(() async {
+        final allOrders = await _fetchAllOrdersForBusinessDay(businessDayId);
+        final stats = aggregateBusinessDayOrders(allOrders);
+        final closingOrders = stats.closingOrders;
+        final productLines = _buildClosingProductLines(closingOrders);
+
+        debugPrint(
+          '[SupabaseOrderService] تقرير يوم العمل ${day.id} — '
+          '${stats.closingCountableOrders} طلب محتسب، '
+          '${stats.closingCountableSales} د.ع، '
           '${productLines.length} منتج',
         );
 
         return EndOfDayReport(
-          reportDate: dayStart,
-          orderCount: orders.length,
-          totalSales: totalSales,
+          reportDate: BusinessDayScope.reportDateFor(day),
+          orderCount: stats.closingCountableOrders,
+          totalSales: stats.closingCountableSales,
           productLines: productLines,
-          orders: orders,
+          orders: closingOrders,
         );
       });
     } catch (e, stack) {
-      debugPrint('[SupabaseOrderService] fetchTodayClosingReport فشل: $e\n$stack');
-      reportSupabaseError(e, stack, operation: 'fetchTodayClosingReport');
+      debugPrint('[SupabaseOrderService] fetchClosingReport فشل: $e\n$stack');
+      reportSupabaseError(e, stack, operation: 'fetchClosingReport');
       rethrow;
     }
+  }
+
+  /// بث كل الطلبات المرتبطة بيوم عمل — للتحديث الفوري في لوحة التحكم.
+  static Stream<List<DeliveryOrder>> watchOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
+      return _legacyWatchOrdersForBusinessDay(businessDayId: businessDayId);
+    }
+    final normalizedDayId = businessDayId.trim();
+
+    return _resilientOrdersStream(
+      sourceFactory: () =>
+          _client.from(tableName).stream(primaryKey: const ['id']),
+      transform: (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) => order.businessDayId?.trim() == normalizedDayId,
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+        logParseErrors: true,
+      ),
+      streamTag: 'watchOrdersForBusinessDay(day=$normalizedDayId)',
+      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    );
   }
 
   /// تحديث حالة الطلب.
@@ -774,6 +966,36 @@ abstract final class SupabaseOrderService {
   }
 
   /// Legacy path kept as strict rollback target.
+  static Stream<List<DeliveryOrder>> _legacyWatchPendingOrdersForBusinessDay({
+    required String businessDayId,
+  }) {
+    final normalizedDayId = businessDayId.trim();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            order.status == DeliveryOrderStatus.pending &&
+            order.businessDayId?.trim() == normalizedDayId,
+        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+      ),
+    );
+  }
+
+  static Stream<List<DeliveryOrder>> _legacyWatchKitchenDashboardOrdersForBusinessDay({
+    required String businessDayId,
+  }) {
+    final normalizedDayId = businessDayId.trim();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) =>
+            _includeKitchenDashboardOrderForBusinessDay(order, normalizedDayId),
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      ),
+    );
+  }
+
+  /// Legacy path kept as strict rollback target.
   static Stream<List<DeliveryOrder>> _legacyWatchPendingOrders({
     required String slug,
   }) {
@@ -826,6 +1048,20 @@ abstract final class SupabaseOrderService {
         rows: rows,
         normalizedSlug: slug,
         normalizedPhone: phoneNumber,
+      ),
+    );
+  }
+
+  /// Legacy path kept as strict rollback target.
+  static Stream<List<DeliveryOrder>> _legacyWatchOrdersForBusinessDay({
+    required String businessDayId,
+  }) {
+    final normalizedDayId = businessDayId.trim();
+    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+      (rows) => _mapRowsToOrders(
+        rows: rows,
+        include: (order) => order.businessDayId?.trim() == normalizedDayId,
+        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       ),
     );
   }

@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/auth/admin_profile_session.dart';
 import '../../core/config/restaurant_ids.dart';
+import '../../models/business_day_model.dart';
+import '../../models/business_day_order_stats.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/end_of_day_report_model.dart';
 import '../../models/product_model.dart';
@@ -48,6 +50,36 @@ class AdminOrderRepository {
   }) {
     return watch(
       slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
+  Stream<List<DeliveryOrder>> watchPendingOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    return SupabaseOrderService.watchPendingOrdersForBusinessDay(
+      businessDayId: businessDayId,
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
+  Future<List<DeliveryOrder>> fetchPendingOrdersForBusinessDayCreatedAfter({
+    required String businessDayId,
+    required DateTime after,
+  }) {
+    return SupabaseOrderService.fetchPendingOrdersForBusinessDayCreatedAfter(
+      businessDayId: businessDayId,
+      after: after,
+    );
+  }
+
+  Stream<List<DeliveryOrder>> watchKitchenDashboardOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    return SupabaseOrderService.watchKitchenDashboardOrdersForBusinessDay(
+      businessDayId: businessDayId,
       onHealthChanged: onHealthChanged,
     );
   }
@@ -122,14 +154,35 @@ class AdminOrderRepository {
     );
   }
 
-  Future<EndOfDayReport> fetchTodayClosingReport({
+  Stream<List<DeliveryOrder>> watchOrdersForBusinessDay({
+    required String businessDayId,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    return SupabaseOrderService.watchOrdersForBusinessDay(
+      businessDayId: businessDayId,
+      onHealthChanged: onHealthChanged,
+    );
+  }
+
+  Future<BusinessDayOrderStats> fetchBusinessDayOrderStats({
+    required String businessDayId,
+    BusinessDayModel? businessDay,
+  }) {
+    return SupabaseOrderService.fetchBusinessDayOrderStats(
+      businessDayId: businessDayId,
+      businessDay: businessDay,
+    );
+  }
+
+  Future<EndOfDayReport> fetchClosingReport({
     required String restaurantId,
     required String slug,
-    DateTime? day,
+    required String businessDayId,
+    BusinessDayModel? businessDay,
   }) {
-    return SupabaseOrderService.fetchTodayClosingReport(
-      slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
-      day: day,
+    return SupabaseOrderService.fetchClosingReport(
+      businessDayId: businessDayId,
+      businessDay: businessDay,
     );
   }
 }

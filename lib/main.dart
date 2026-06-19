@@ -19,6 +19,7 @@ import 'services/order_realtime_notification_service.dart';
 import 'services/windows_printer_bridge.dart';
 import 'state/active_restaurant_notifier.dart';
 import 'state/app_settings_notifier.dart';
+import 'state/business_day_notifier.dart';
 
 Future<void> main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -69,6 +70,7 @@ Future<void> main() async {
   final tenantNotifier = ActiveRestaurantNotifier();
   final appSettingsNotifier = AppSettingsNotifier();
   await appSettingsNotifier.initialize();
+  final businessDayNotifier = BusinessDayNotifier();
   final authNotifier = AuthNotifier();
   await authNotifier.waitUntilReady();
   await _startOrderRealtimeNotificationsIfAdmin(authNotifier);
@@ -85,6 +87,9 @@ Future<void> main() async {
             ),
             ChangeNotifierProvider<AppSettingsNotifier>.value(
               value: appSettingsNotifier,
+            ),
+            ChangeNotifierProvider<BusinessDayNotifier>.value(
+              value: businessDayNotifier,
             ),
             ChangeNotifierProvider<AuthNotifier>.value(
               value: authNotifier,
