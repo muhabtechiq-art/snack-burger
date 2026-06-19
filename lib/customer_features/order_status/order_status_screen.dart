@@ -262,7 +262,10 @@ class _OrderSummaryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('رقم الطلب: ${order.id}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(
+              order.displayOrderHeroLabel,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             Text('الاسم: ${order.customerName}'),
             Text('الهاتف: ${order.customerPhone}'),

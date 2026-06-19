@@ -1,4 +1,5 @@
 import '../core/config/location_feature_flags.dart';
+import '../core/config/restaurant_ids.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../core/utils/model_parse_validation.dart';
 import 'delivery_order_status.dart';
@@ -24,6 +25,7 @@ class DeliveryOrder {
     required this.createdAt,
     this.rejectionReason,
     this.businessDayId,
+    this.businessDayOrderNumber,
   });
 
   final String id;
@@ -49,6 +51,26 @@ class DeliveryOrder {
   final String? rejectionReason;
   final String? businessDayId;
 
+  /// رقم تسلسلي داخل يوم العمل (1، 2، 3…) — null للطلبات القديمة.
+  final int? businessDayOrderNumber;
+
+  /// رقم العرض للزبون والكاشير — يومي إن وُجد، وإلا الرقم الداخلي المنسّق.
+  String get displayOrderNumber {
+    final daily = businessDayOrderNumber;
+    if (daily != null && daily > 0) return '#$daily';
+    return legacyFormattedOrderId;
+  }
+
+  /// سطر البطل في الفاتورة والواجهات.
+  String get displayOrderHeroLabel => 'طلب رقم $displayOrderNumber';
+
+  /// الرقم الداخلي من قاعدة البيانات — للسجلات والمسارات فقط.
+  String get legacyFormattedOrderId {
+    final digits = id.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return '#000000';
+    return '#${digits.padLeft(6, '0')}';
+  }
+
   bool get hasLocation => latitude != null && longitude != null;
 
   String? get googleMapsUrl {
@@ -72,11 +94,66 @@ class DeliveryOrder {
 
   bool get isDelivered => status == DeliveryOrderStatus.delivered;
 
-  factory DeliveryOrder.fromSupabase(Map<String, dynamic> row) {
-    return DeliveryOrder.fromMap(
-      row,
-      id: row['id']?.toString() ?? '',
+  factory DeliveryOrder.fromSupabase(
+    Map<String, dynamic> row, {
+    String? fallbackSlug,
+    String? fallbackRestaurantId,
+  }) {
+    final data = Map<String, dynamic>.from(row);
+    _applyRestaurantScopeFallback(
+      data,
+      fallbackSlug: fallbackSlug,
+      fallbackRestaurantId: fallbackRestaurantId,
     );
+    return DeliveryOrder.fromMap(
+      data,
+      id: data['id']?.toString() ?? '',
+    );
+  }
+
+  /// يملأ slug أو restaurant_id الناقص قبل التحقق — للطلبات القديمة.
+  static void applyRestaurantScopeFallback(
+    Map<String, dynamic> data, {
+    String? fallbackSlug,
+    String? fallbackRestaurantId,
+  }) {
+    _applyRestaurantScopeFallback(
+      data,
+      fallbackSlug: fallbackSlug,
+      fallbackRestaurantId: fallbackRestaurantId,
+    );
+  }
+
+  static void _applyRestaurantScopeFallback(
+    Map<String, dynamic> data, {
+    String? fallbackSlug,
+    String? fallbackRestaurantId,
+  }) {
+    if (ModelParseValidation.hasAnyValue(data, [
+      'restaurant_id',
+      'restaurantId',
+      'slug',
+    ])) {
+      return;
+    }
+
+    final slug = fallbackSlug?.trim().toLowerCase();
+    if (slug != null && slug.isNotEmpty) {
+      data['slug'] = slug;
+    }
+
+    final restaurantId = fallbackRestaurantId?.trim();
+    if (restaurantId != null && restaurantId.isNotEmpty) {
+      data['restaurant_id'] = restaurantId;
+    }
+
+    if (!ModelParseValidation.hasAnyValue(data, [
+      'restaurant_id',
+      'restaurantId',
+      'slug',
+    ])) {
+      data['slug'] = RestaurantIds.snackBurgerSlug;
+    }
   }
 
   factory DeliveryOrder.fromMap(
@@ -110,10 +187,8 @@ class DeliveryOrder {
 
     return DeliveryOrder(
       id: id.isNotEmpty ? id : (data['id']?.toString() ?? ''),
-      restaurantId: (data['restaurant_id'] ?? data['restaurantId'] ?? '')
-          as String? ??
-          '',
-      slug: data['slug'] as String? ?? '',
+      restaurantId: _readString(data['restaurant_id'] ?? data['restaurantId']),
+      slug: _readString(data['slug']),
       customerName: (data['customer_name'] ?? data['customerName'] ?? '')
           as String? ??
           '',
@@ -136,6 +211,9 @@ class DeliveryOrder {
       ),
       businessDayId: _readNullableString(
         data['business_day_id'] ?? data['businessDayId'],
+      ),
+      businessDayOrderNumber: _readNullableInt(
+        data['business_day_order_number'] ?? data['businessDayOrderNumber'],
       ),
     );
   }
@@ -186,6 +264,18 @@ String? _readNullableString(dynamic value) {
   if (value == null) return null;
   final text = value.toString().trim();
   return text.isEmpty ? null : text;
+}
+
+int? _readNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString().trim());
+}
+
+String _readString(dynamic value) {
+  if (value == null) return '';
+  return value.toString().trim();
 }
 
 double _readDouble(dynamic value) {

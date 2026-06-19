@@ -1,4 +1,3 @@
-import '../core/utils/price_utils.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
@@ -8,73 +7,73 @@ import 'receipt_cashier_layout.dart';
 ///
 /// عرض ~42 حرفاً لورق 80mm — مناسب لصفحة اختبار Windows.
 abstract final class ReceiptTextBuilder {
-  static const int lineWidth = 42;
+  static int get lineWidth => ReceiptCashierLayout.lineWidth;
 
   static String buildCashierReceipt(DeliveryOrder order) {
-    final local = order.createdAt.toLocal();
-    final dateStr = _formatDateTime(local);
-    final buffer = StringBuffer()
-      ..writeln(_center(PrinterConfig.restaurantDisplayName))
-      ..writeln(_center('CASHIER RECEIPT'))
-      ..writeln(_separator())
-      ..writeln('Customer: ${order.customerName}')
-      ..writeln('Phone:    ${order.customerPhone}')
-      ..writeln('Address:  ${_wrap(order.address)}')
-      ..writeln('Time:     $dateStr');
+    final plan = ReceiptCashierLayout.buildPrintPlan(order);
+    final buffer = StringBuffer();
 
-    if (order.latitude != null && order.longitude != null) {
-      buffer.writeln(
-        'GPS: ${order.latitude!.toStringAsFixed(5)}, '
-        '${order.longitude!.toStringAsFixed(5)}',
-      );
-    }
-
-    buffer
-      ..writeln(_separator())
-      ..writeln(ReceiptCashierLayout.tableHeader())
-      ..writeln(_separator());
-
-    for (final item in order.items) {
-      buffer.writeln(ReceiptCashierLayout.itemRow(item));
-      for (final addon in item.selectedAddons) {
+    for (final line in plan.beforeQr) {
+      _writeLine(buffer, line);
+      if (line.style == ReceiptLineStyle.customerTime &&
+          order.latitude != null &&
+          order.longitude != null) {
         buffer.writeln(
-          ReceiptCashierLayout.addonRow(
-            name: addon.name,
-            quantity: addon.quantity,
-            lineTotal: item.receiptAddonLineTotal(addon),
-          ),
+          'GPS: ${order.latitude!.toStringAsFixed(5)}, '
+          '${order.longitude!.toStringAsFixed(5)}',
         );
       }
     }
 
-    buffer
-      ..writeln(_separator())
-      ..writeln(
-        'TOTAL: ${PriceUtils.formatPriceWithCurrency(order.totalPrice, currency: 'IQD')}',
-      )
-      ..writeln()
-      ..writeln(_center('Thank you'));
+    for (final line in plan.afterQr) {
+      _writeLine(buffer, line);
+    }
 
     return buffer.toString();
   }
 
+  static void _writeLine(StringBuffer buffer, ReceiptCashierLine line) {
+    if (line.isTable) {
+      buffer.writeln(
+        ReceiptCashierLayout.formatReceiptRow(
+          product: line.product!,
+          quantity: line.quantity!,
+          price: line.price!,
+        ),
+      );
+      return;
+    }
+    final text = line.text?.trim() ?? '';
+    if (text.isEmpty) return;
+    buffer.writeln(line.center ? ReceiptCashierLayout.centerText(text) : text);
+  }
+
   static String buildKitchenReceipt(DeliveryOrder order) {
     final local = order.createdAt.toLocal();
-    final dateStr = _formatDateTime(local);
     final buffer = StringBuffer()
       ..writeln(_center(PrinterConfig.restaurantDisplayName))
       ..writeln(_center('*** KITCHEN ***'))
       ..writeln(_separator())
       ..writeln('Customer: ${order.customerName}')
-      ..writeln('Time:     $dateStr')
+      ..writeln('Order:    ${order.displayOrderHeroLabel}')
+      ..writeln('Date:     ${ReceiptCashierLayout.formatDate(local)}')
+      ..writeln('Time:     ${ReceiptCashierLayout.formatTime12h(local)}')
       ..writeln(_separator());
 
     for (final item in order.items) {
-      buffer.writeln('x${item.quantity}  ${item.displayName}');
+      for (final line in ReceiptKitchenLayout.itemLines(
+        quantity: item.quantity,
+        name: item.displayName,
+      )) {
+        buffer.writeln(line);
+      }
       for (final addon in item.selectedAddons) {
-        buffer.writeln(
-          '   + x${addon.quantity} ${addon.name}',
-        );
+        for (final line in ReceiptKitchenLayout.addonLines(
+          quantity: addon.quantity,
+          name: addon.name,
+        )) {
+          buffer.writeln(line);
+        }
       }
     }
 
@@ -85,28 +84,12 @@ abstract final class ReceiptTextBuilder {
     return buffer.toString();
   }
 
-  static String _formatDateTime(DateTime dt) {
-    return '${dt.year}-${_two(dt.month)}-${_two(dt.day)} '
-        '${_two(dt.hour)}:${_two(dt.minute)}';
-  }
+  static String _separator() => ReceiptCashierLayout.separator(width: lineWidth);
 
-  static String _two(int n) => n.toString().padLeft(2, '0');
-
-  static String _separator() => List.filled(lineWidth, '-').join();
-
-  static String _center(String text) {
-    final trimmed = text.trim();
-    if (trimmed.length >= lineWidth) return trimmed.substring(0, lineWidth);
-    final pad = ((lineWidth - trimmed.length) / 2).floor();
-    return '${' ' * pad}$trimmed'.padRight(lineWidth);
-  }
+  static String _center(String text) =>
+      ReceiptCashierLayout.centerText(text, width: lineWidth);
 
   /// سطر تفاصيل المنتج — يفوّض إلى [ReceiptCashierLayout].
   static String formatCashierItemLine(CartItem item) =>
-      ReceiptCashierLayout.itemRow(item);
-
-  static String _wrap(String text) {
-    if (text.length <= lineWidth) return text;
-    return '${text.substring(0, lineWidth - 3)}...';
-  }
+      ReceiptCashierLayout.itemLines(item).first;
 }

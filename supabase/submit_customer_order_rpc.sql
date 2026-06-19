@@ -27,7 +27,8 @@ RETURNS TABLE (
   id bigint,
   business_day_id uuid,
   status text,
-  slug text
+  slug text,
+  business_day_order_number integer
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -37,6 +38,7 @@ DECLARE
   v_restaurant_id text;
   v_slug text;
   v_open_day_id uuid;
+  v_day_order_number integer;
 BEGIN
   v_restaurant_id := lower(trim(p_restaurant_id));
   v_slug := lower(trim(p_slug));
@@ -63,6 +65,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
+  -- قفل صف يوم العمل المفت open — يُسلسل الطلبات المتزامنة على نفس اليوم
   SELECT bd.id
   INTO v_open_day_id
   FROM public.business_days bd
@@ -77,6 +80,11 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  SELECT COALESCE(MAX(o.business_day_order_number), 0) + 1
+  INTO v_day_order_number
+  FROM public.orders o
+  WHERE o.business_day_id = v_open_day_id;
+
   RETURN QUERY
   INSERT INTO public.orders (
     customer_name,
@@ -87,6 +95,7 @@ BEGIN
     status,
     slug,
     business_day_id,
+    business_day_order_number,
     location_coordinates
   )
   VALUES (
@@ -98,20 +107,22 @@ BEGIN
     'pending',
     v_slug,
     v_open_day_id,
+    v_day_order_number,
     NULLIF(trim(p_location_coordinates), '')
   )
   RETURNING
     orders.id::bigint,
     orders.business_day_id::uuid,
     orders.status::text,
-    orders.slug::text;
+    orders.slug::text,
+    orders.business_day_order_number::integer;
 END;
 $$;
 
 COMMENT ON FUNCTION public.submit_customer_order(
   text, text, text, text, text, numeric, jsonb, text
 ) IS
-  'إنشاء طلب pending مربوط بيوم العمل المفتوح — SECURITY DEFINER';
+  'إنشاء طلب pending مربوط بيوم العمل المفتوح مع رقم يومي — SECURITY DEFINER';
 
 REVOKE ALL ON FUNCTION public.submit_customer_order(
   text, text, text, text, text, numeric, jsonb, text

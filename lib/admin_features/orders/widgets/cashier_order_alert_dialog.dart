@@ -91,6 +91,10 @@ class CashierOrderAlertDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _InfoRow(
+                        label: 'رقم الطلب',
+                        value: order.displayOrderNumber,
+                      ),
                       _InfoRow(label: 'الزبون', value: order.customerName),
                       _InfoRow(label: 'الهاتف', value: order.customerPhone),
                       _InfoRow(label: 'العنوان', value: order.address),

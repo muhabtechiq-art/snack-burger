@@ -34,11 +34,23 @@ class AdminDrawer extends StatefulWidget {
 
 class _AdminDrawerState extends State<AdminDrawer> {
   final AdminOrderRepository _orderRepository = AdminOrderRepository();
+  String? _expandedGroup;
 
   Future<void> _signOut() async {
     await context.read<AuthNotifier>().signOut();
     if (!mounted) return;
     context.go('/${widget.slug}');
+  }
+
+  void _toggleGroup(String groupId) {
+    setState(() {
+      _expandedGroup = _expandedGroup == groupId ? null : groupId;
+    });
+  }
+
+  void _navigate(String path) {
+    Navigator.pop(context);
+    context.push(path);
   }
 
   @override
@@ -68,21 +80,18 @@ class _AdminDrawerState extends State<AdminDrawer> {
                 _DrawerHeader(displayName: displayName),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
                     children: [
-                      const _SectionLabel(title: 'العمليات اليومية'),
                       Consumer<BusinessDayNotifier>(
                         builder: (context, businessDay, _) {
                           final openDayId = businessDay.openDay?.id;
                           if (openDayId == null) {
                             return _AdminTile(
-                              icon: Icons.notifications_active_rounded,
-                              title: 'الطلبات المعلقة',
+                              icon: Icons.receipt_long_rounded,
+                              title: 'الطلبات',
                               subtitle: 'لا يوجد يوم عمل مفتوح',
-                              onTap: () {
-                                Navigator.pop(context);
-                                context.push('/${widget.slug}/admin/orders');
-                              },
+                              onTap: () =>
+                                  _navigate('/${widget.slug}/admin/orders'),
                             );
                           }
 
@@ -95,133 +104,115 @@ class _AdminDrawerState extends State<AdminDrawer> {
                               final count = snapshot.data?.length ?? 0;
 
                               return _AdminTile(
-                                icon: Icons.notifications_active_rounded,
-                                title: 'الطلبات المعلقة',
+                                icon: Icons.receipt_long_rounded,
+                                title: 'الطلبات',
                                 subtitle: count == 0
                                     ? 'لا توجد طلبات جديدة — بث مباشر'
                                     : '$count طلب بانتظار القبول',
                                 badge: count > 0 ? '$count' : null,
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  context.push('/${widget.slug}/admin/orders');
-                                },
+                                onTap: () =>
+                                    _navigate('/${widget.slug}/admin/orders'),
                               );
                             },
                           );
                         },
                       ),
-                      if (!kIsWeb && Platform.isWindows)
-                        _AdminTile(
-                          icon: Icons.print_outlined,
-                          title: 'إعدادات الطباعة',
-                          subtitle: 'Generic / Text Only — RAW spooler',
-                          onTap: () {
-                            Navigator.pop(context);
-                            context.push(
-                              '/${widget.slug}/admin/settings/printer',
-                            );
-                          },
-                        ),
-                      const SizedBox(height: 8),
-                      const _SectionLabel(title: 'إدارة المطعم'),
-                      _AdminTile(
-                        icon: Icons.restaurant_menu_rounded,
-                        title: 'المنتجات',
-                        subtitle: 'عرض، إضافة، وتعديل الوجبات',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/products/manage',
-                          );
-                        },
-                      ),
-                      _AdminTile(
-                        icon: Icons.view_carousel_rounded,
-                        title: 'البانرات',
-                        subtitle: 'صور ترويجية دوّارة في المنيو',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/banners/manage',
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      const _SectionLabel(title: 'التقارير'),
-                      _AdminTile(
-                        icon: Icons.summarize_rounded,
-                        title: 'تقارير الإغلاق',
-                        subtitle: 'مبيعات اليوم وطباعة التقرير',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/reports/closing',
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(14, 4, 14, 0),
-                  child: _SectionLabel(title: 'النظام'),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                  child: Column(
-                    children: [
                       _AdminTile(
                         icon: Icons.schedule_rounded,
                         title: 'يوم العمل',
                         subtitle: 'فتح/إغلاق يوم العمل يدوياً',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/settings/business-day',
-                          );
-                        },
+                        onTap: () => _navigate(
+                          '/${widget.slug}/admin/settings/business-day',
+                        ),
+                      ),
+                      _AdminExpandableGroup(
+                        groupId: 'content',
+                        expandedGroup: _expandedGroup,
+                        onToggle: _toggleGroup,
+                        icon: Icons.dashboard_customize_rounded,
+                        title: 'المحتوى',
+                        subtitle: 'المنتجات، البانرات، وصوت اليوم',
+                        children: [
+                          _AdminSubItem(
+                            icon: Icons.restaurant_menu_rounded,
+                            title: 'المنتجات',
+                            subtitle: 'عرض، إضافة، وتعديل الوجبات',
+                            onTap: () => _navigate(
+                              '/${widget.slug}/admin/products/manage',
+                            ),
+                          ),
+                          _AdminSubItem(
+                            icon: Icons.view_carousel_rounded,
+                            title: 'البانرات',
+                            subtitle: 'صور ترويجية دوّارة في المنيو',
+                            onTap: () => _navigate(
+                              '/${widget.slug}/admin/banners/manage',
+                            ),
+                          ),
+                          _AdminSubItem(
+                            icon: Icons.volume_up_rounded,
+                            title: 'صوت اليوم',
+                            subtitle: 'ترحيب أو إعلان صوتي اختياري للزبائن',
+                            onTap: () => _navigate(
+                              '/${widget.slug}/admin/settings/daily-sound',
+                            ),
+                          ),
+                        ],
                       ),
                       _AdminTile(
-                        icon: Icons.volume_up_rounded,
-                        title: 'صوت اليوم',
-                        subtitle: 'ترحيب أو إعلان صوتي اختياري للزبائن',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/settings/daily-sound',
-                          );
-                        },
+                        icon: Icons.summarize_rounded,
+                        title: 'التقارير',
+                        subtitle: 'تقارير الإغلاق والمبيعات',
+                        onTap: () => _navigate(
+                          '/${widget.slug}/admin/reports/closing',
+                        ),
                       ),
-                      _AdminTile(
-                        icon: Icons.construction_rounded,
-                        title: 'وضع الصيانة',
-                        subtitle: 'إيقاف استقبال طلبات الزبائن مؤقتاً',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push(
-                            '/${widget.slug}/admin/settings/maintenance',
-                          );
-                        },
-                      ),
-                      _AdminTile(
-                        icon: Icons.info_outline_rounded,
-                        title: 'حول النظام',
-                        subtitle: 'Snack Burger — أنظمة المهاب',
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push('/${widget.slug}/admin/about');
-                        },
-                      ),
-                      _AdminTile(
-                        icon: Icons.logout_rounded,
-                        title: 'تسجيل الخروج',
-                        subtitle: 'الخروج من لوحة الإدارة',
-                        onTap: () {
-                          Navigator.pop(context);
-                          unawaited(_signOut());
-                        },
+                      _AdminExpandableGroup(
+                        groupId: 'system',
+                        expandedGroup: _expandedGroup,
+                        onToggle: _toggleGroup,
+                        icon: Icons.settings_rounded,
+                        title: 'النظام',
+                        subtitle: 'الصيانة ومعلومات النظام',
+                        children: [
+                          _AdminSubItem(
+                            icon: Icons.construction_rounded,
+                            title: 'وضع الصيانة',
+                            subtitle: 'إيقاف استقبال طلبات الزبائن مؤقتاً',
+                            onTap: () => _navigate(
+                              '/${widget.slug}/admin/settings/maintenance',
+                            ),
+                          ),
+                          _AdminSubItem(
+                            icon: Icons.info_outline_rounded,
+                            title: 'حول النظام',
+                            subtitle: 'Snack Burger — أنظمة المهاب',
+                            onTap: () => _navigate('/${widget.slug}/admin/about'),
+                          ),
+                          if (!kIsWeb && Platform.isWindows)
+                            _AdminSubItem(
+                              icon: Icons.print_outlined,
+                              title: 'إعدادات الطباعة',
+                              subtitle: 'Generic / Text Only — RAW spooler',
+                              onTap: () => _navigate(
+                                '/${widget.slug}/admin/settings/printer',
+                              ),
+                            ),
+                        ],
                       ),
                     ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                  child: _AdminTile(
+                    icon: Icons.logout_rounded,
+                    title: 'تسجيل الخروج',
+                    subtitle: 'الخروج من لوحة الإدارة',
+                    onTap: () {
+                      Navigator.pop(context);
+                      unawaited(_signOut());
+                    },
                   ),
                 ),
               ],
@@ -318,23 +309,219 @@ class _DrawerHeader extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.title});
+class _AdminSubItem {
+  const _AdminSubItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
+  final IconData icon;
   final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+}
+
+class _AdminExpandableGroup extends StatelessWidget {
+  const _AdminExpandableGroup({
+    required this.groupId,
+    required this.expandedGroup,
+    required this.onToggle,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String groupId;
+  final String? expandedGroup;
+  final ValueChanged<String> onToggle;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<_AdminSubItem> children;
+
+  bool get _isExpanded => expandedGroup == groupId;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 10, 6, 8),
-      child: Text(
-        title,
-        textAlign: TextAlign.right,
-        style: const TextStyle(
-          color: AdminPanelColors.gold,
-          fontWeight: FontWeight.w900,
-          fontSize: 13,
-          letterSpacing: 0.2,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.white.withValues(alpha: _isExpanded ? 0.14 : 0.1),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: () => onToggle(groupId),
+              splashColor: AdminPanelColors.gold.withValues(alpha: 0.12),
+              highlightColor: Colors.white.withValues(alpha: 0.06),
+              child: Ink(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _isExpanded
+                        ? AdminPanelColors.gold.withValues(alpha: 0.35)
+                        : Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AdminPanelColors.charcoalLight
+                              .withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(13),
+                          border: Border.all(
+                            color: AdminPanelColors.gold.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: AdminPanelColors.gold,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              title,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                color: AdminPanelColors.textLight,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              textAlign: TextAlign.right,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AdminPanelColors.textMuted
+                                    .withValues(alpha: 0.92),
+                                fontSize: 11.5,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      AnimatedRotation(
+                        turns: _isExpanded ? -0.25 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: Icon(
+                          Icons.expand_more_rounded,
+                          size: 26,
+                          color: AdminPanelColors.gold.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_isExpanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < children.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 6),
+                      _AdminSubTile(item: children[i]),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminSubTile extends StatelessWidget {
+  const _AdminSubTile({required this.item});
+
+  final _AdminSubItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AdminPanelColors.charcoalLight.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: item.onTap,
+        splashColor: AdminPanelColors.gold.withValues(alpha: 0.1),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  item.icon,
+                  color: AdminPanelColors.gold.withValues(alpha: 0.9),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        item.title,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: AdminPanelColors.textLight,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle,
+                        textAlign: TextAlign.right,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color:
+                              AdminPanelColors.textMuted.withValues(alpha: 0.88),
+                          fontSize: 10.5,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_left_rounded,
+                  size: 20,
+                  color: AdminPanelColors.gold.withValues(alpha: 0.65),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -376,12 +563,12 @@ class _AdminTile extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               child: Row(
                 children: [
                   Container(
-                    width: 46,
-                    height: 46,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: AdminPanelColors.charcoalLight
                           .withValues(alpha: 0.55),
@@ -393,7 +580,7 @@ class _AdminTile extends StatelessWidget {
                     child: Icon(
                       icon,
                       color: AdminPanelColors.gold,
-                      size: 23,
+                      size: 24,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -406,11 +593,11 @@ class _AdminTile extends StatelessWidget {
                           textAlign: TextAlign.right,
                           style: const TextStyle(
                             color: AdminPanelColors.textLight,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           subtitle,
                           textAlign: TextAlign.right,
@@ -419,7 +606,7 @@ class _AdminTile extends StatelessWidget {
                           style: TextStyle(
                             color: AdminPanelColors.textMuted
                                 .withValues(alpha: 0.92),
-                            fontSize: 11,
+                            fontSize: 11.5,
                             height: 1.3,
                           ),
                         ),

@@ -712,6 +712,15 @@ class _RecentOrderTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
+                      order.displayOrderHeroLabel,
+                      style: TextStyle(
+                        color: AdminPanelColors.charcoal.withValues(alpha: 0.55),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
                       order.customerPhone,
                       style: TextStyle(
                         color: AdminPanelColors.charcoal.withValues(alpha: 0.6),

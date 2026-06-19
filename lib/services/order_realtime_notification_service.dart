@@ -121,7 +121,10 @@ final class OrderRealtimeNotificationService {
 
     DeliveryOrder? order;
     try {
-      order = DeliveryOrder.fromSupabase(Map<String, dynamic>.from(record));
+      order = DeliveryOrder.fromSupabase(
+        Map<String, dynamic>.from(record),
+        fallbackSlug: _activeSlug ?? RestaurantIds.snackBurgerSlug,
+      );
     } catch (e, stack) {
       debugPrint(
         '[OrderRealtimeNotificationService] parse INSERT failed: $e\n$stack',
@@ -148,6 +151,7 @@ final class OrderRealtimeNotificationService {
 
     final notificationId = order.id.hashCode & 0x7fffffff;
     final body =
+        '${order.displayOrderNumber} — '
         '${order.customerName.trim()} — '
         '${PriceUtils.formatPriceWithCurrency(order.totalPrice)}';
 

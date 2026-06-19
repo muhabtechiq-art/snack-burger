@@ -176,8 +176,10 @@ abstract final class SupabaseOrderService {
 
       final insertedBusinessDayId =
           row['business_day_id']?.toString().trim() ?? '';
+      final dayOrderNumber = row['business_day_order_number'];
       debugPrint(
         '[SubmitOrder] rpc id=$id business_day_id=$insertedBusinessDayId '
+        'business_day_order_number=$dayOrderNumber '
         'status=${row['status']} slug=${row['slug']} '
         'restaurant_id=${row['restaurant_id']}',
       );
@@ -195,6 +197,7 @@ abstract final class SupabaseOrderService {
         fields: <String, Object?>{
           'order_id': id,
           'business_day_id': insertedBusinessDayId,
+          'business_day_order_number': dayOrderNumber,
         },
       );
       return id;
@@ -249,6 +252,7 @@ abstract final class SupabaseOrderService {
               _orderMatchesSlug(order, normalized),
           compare: (a, b) => b.createdAt.compareTo(a.createdAt),
           logParseErrors: false,
+          fallbackSlug: normalized,
         );
       });
     } catch (e, stack) {
@@ -352,6 +356,7 @@ abstract final class SupabaseOrderService {
             _orderMatchesSlug(order, normalized),
         compare: (a, b) => a.createdAt.compareTo(b.createdAt),
         logParseErrors: true,
+        fallbackSlug: normalized,
       ),
       streamTag: 'watchPendingOrders(slug=$normalized)',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
@@ -437,6 +442,7 @@ abstract final class SupabaseOrderService {
             _activeOrderStatuses.contains(order.status) &&
             _orderMatchesSlug(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+        fallbackSlug: normalized,
       ),
       streamTag: 'watchActiveOrders(slug=$normalized)',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
@@ -540,6 +546,7 @@ abstract final class SupabaseOrderService {
         rows: rows,
         include: (order) => _includeKitchenDashboardOrder(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+        fallbackSlug: normalized,
       ),
       streamTag: 'watchKitchenDashboardOrders(slug=$normalized)',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
@@ -775,9 +782,15 @@ abstract final class SupabaseOrderService {
   static DeliveryOrder? _tryParseOrderRow(
     dynamic row, {
     String? rowIdForLog,
+    String? fallbackSlug,
+    String? fallbackRestaurantId,
   }) {
     try {
-      return DeliveryOrder.fromSupabase(Map<String, dynamic>.from(row));
+      return DeliveryOrder.fromSupabase(
+        Map<String, dynamic>.from(row),
+        fallbackSlug: fallbackSlug ?? RestaurantIds.snackBurgerSlug,
+        fallbackRestaurantId: fallbackRestaurantId,
+      );
     } catch (e, st) {
       final rowId = rowIdForLog ??
           (row is Map
@@ -798,12 +811,20 @@ abstract final class SupabaseOrderService {
     required bool Function(DeliveryOrder order) include,
     int Function(DeliveryOrder a, DeliveryOrder b)? compare,
     bool logParseErrors = false,
+    String? fallbackSlug,
+    String? fallbackRestaurantId,
   }) {
+    final resolvedFallbackSlug =
+        fallbackSlug?.trim().isNotEmpty == true
+            ? fallbackSlug!.trim().toLowerCase()
+            : RestaurantIds.snackBurgerSlug;
     final orders = <DeliveryOrder>[];
     for (final row in rows) {
       final order = _tryParseOrderRow(
         row,
         rowIdForLog: logParseErrors ? row['id']?.toString() : null,
+        fallbackSlug: resolvedFallbackSlug,
+        fallbackRestaurantId: fallbackRestaurantId,
       );
       if (order == null || !include(order)) continue;
       orders.add(order);
@@ -845,6 +866,7 @@ abstract final class SupabaseOrderService {
       },
       compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       logParseErrors: true,
+      fallbackSlug: normalizedSlug,
     );
   }
 
@@ -1007,6 +1029,7 @@ abstract final class SupabaseOrderService {
             order.status == DeliveryOrderStatus.pending &&
             _orderMatchesSlug(order, normalized),
         compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+        fallbackSlug: normalized,
       ),
     );
   }
@@ -1022,6 +1045,7 @@ abstract final class SupabaseOrderService {
             _activeOrderStatuses.contains(order.status) &&
             _orderMatchesSlug(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+        fallbackSlug: normalized,
       ),
     );
   }
@@ -1035,6 +1059,7 @@ abstract final class SupabaseOrderService {
         rows: rows,
         include: (order) => _includeKitchenDashboardOrder(order, normalized),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+        fallbackSlug: normalized,
       ),
     );
   }

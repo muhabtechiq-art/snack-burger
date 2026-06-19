@@ -569,6 +569,27 @@ class _OrderCard extends StatelessWidget {
                           isNewTab: isNewTab,
                         ),
                         const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AdminPanelColors.charcoal.withValues(
+                              alpha: 0.08,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            order.displayOrderNumber,
+                            style: const TextStyle(
+                              color: AdminPanelColors.charcoal,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             order.customerName,

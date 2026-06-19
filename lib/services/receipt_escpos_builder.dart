@@ -1,7 +1,6 @@
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
 
-import '../core/utils/price_utils.dart';
 import '../core/config/pos_code_table.dart';
 import '../core/config/printer_config.dart';
 import '../models/delivery_order_model.dart';
@@ -214,75 +213,52 @@ abstract final class ReceiptEscPosBuilder {
     Generator generator,
     DeliveryOrder order,
   ) async {
-    final local = order.createdAt.toLocal();
+    final plan = ReceiptCashierLayout.buildPrintPlan(order);
     final bytes = <int>[];
 
-    bytes
-      ..addAll(await _lineRaw(generator, PrinterConfig.restaurantDisplayName))
-      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.subtitle))
-      ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(await _lineRaw(generator, 'الاسم: ${order.customerName}'))
-      ..addAll(await _lineRaw(generator, 'الهاتف: ${order.customerPhone}'))
-      ..addAll(await _lineRaw(generator, 'العنوان: ${order.address}'))
-      ..addAll(
-        await _lineRaw(
-          generator,
-          'التاريخ: ${ReceiptCashierLayout.formatDate(local)}',
-        ),
-      )
-      ..addAll(
-        await _lineRaw(
-          generator,
-          'الوقت: ${ReceiptCashierLayout.formatTime(local)}',
-        ),
-      );
-
-    if (order.latitude != null && order.longitude != null) {
-      bytes.addAll(
-        await _lineRaw(
-          generator,
-          'GPS: ${order.latitude!.toStringAsFixed(5)}, '
-          '${order.longitude!.toStringAsFixed(5)}',
-        ),
-      );
-    }
-
-    bytes
-      ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.tableHeader()));
-
-    for (final item in order.items) {
-      bytes.addAll(
-        await _lineRaw(
-          generator,
-          ReceiptCashierLayout.itemRow(item),
-        ),
-      );
-      for (final addon in item.selectedAddons) {
+    for (final line in plan.beforeQr) {
+      bytes.addAll(await _emitCashierLine(generator, line));
+      if (line.style == ReceiptLineStyle.customerTime &&
+          order.latitude != null &&
+          order.longitude != null) {
         bytes.addAll(
           await _lineRaw(
             generator,
-            ReceiptCashierLayout.addonRow(
-              name: addon.name,
-              quantity: addon.quantity,
-              lineTotal: item.receiptAddonLineTotal(addon),
-            ),
+            'GPS: ${order.latitude!.toStringAsFixed(5)}, '
+            '${order.longitude!.toStringAsFixed(5)}',
           ),
         );
       }
     }
 
-    bytes
-      ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(
-        await _lineRaw(
-          generator,
-          'الإجمالي: ${PriceUtils.formatPriceWithCurrency(order.totalPrice)}',
-        ),
-      )
-      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.thanksMessage));
+    for (final line in plan.afterQr) {
+      bytes.addAll(await _emitCashierLine(generator, line));
+    }
 
     return bytes;
+  }
+
+  static Future<List<int>> _emitCashierLine(
+    Generator generator,
+    ReceiptCashierLine line,
+  ) async {
+    if (line.isTable) {
+      return _lineRaw(
+        generator,
+        ReceiptCashierLayout.formatReceiptRow(
+          product: line.product!,
+          quantity: line.quantity!,
+          price: line.price!,
+        ),
+      );
+    }
+
+    final text = line.text?.trim() ?? '';
+    if (text.isEmpty) return const <int>[];
+    return _lineRaw(
+      generator,
+      line.center ? ReceiptCashierLayout.centerText(text) : text,
+    );
   }
 
   static Future<List<int>> buildKitchenTicket(
@@ -290,31 +266,41 @@ abstract final class ReceiptEscPosBuilder {
     DeliveryOrder order,
   ) async {
     final local = order.createdAt.toLocal();
-    final dateStr = _formatDateTime(local);
     final bytes = <int>[];
 
     bytes
       ..addAll(await _lineRaw(generator, PrinterConfig.restaurantDisplayName))
       ..addAll(await _lineRaw(generator, 'بون المطبخ'))
-      ..addAll(await _lineRaw(generator, '------------------------------'))
-      ..addAll(await _lineRaw(generator, 'الزبون: ${order.customerName}'))
-      ..addAll(await _lineRaw(generator, 'الوقت: $dateStr'))
-      ..addAll(await _lineRaw(generator, '------------------------------'));
-
-    for (final item in order.items) {
-      bytes.addAll(
+      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.separator()))
+      ..addAll(
         await _lineRaw(
           generator,
-          'x${item.quantity}  ${item.displayName}',
+          ReceiptCashierLayout.orderHeroText(order),
         ),
-      );
+      )
+      ..addAll(await _lineRaw(generator, 'الزبون: ${order.customerName}'))
+      ..addAll(
+        await _lineRaw(generator, ReceiptKitchenLayout.formatDateLine(local)),
+      )
+      ..addAll(
+        await _lineRaw(generator, ReceiptKitchenLayout.formatTimeLine(local)),
+      )
+      ..addAll(await _lineRaw(generator, ReceiptCashierLayout.separator()));
+
+    for (final item in order.items) {
+      for (final line in ReceiptKitchenLayout.itemLines(
+        quantity: item.quantity,
+        name: item.displayName,
+      )) {
+        bytes.addAll(await _lineRaw(generator, line));
+      }
       for (final addon in item.selectedAddons) {
-        bytes.addAll(
-          await _lineRaw(
-            generator,
-            '  + x${addon.quantity}  ${addon.name}',
-          ),
-        );
+        for (final line in ReceiptKitchenLayout.addonLines(
+          quantity: addon.quantity,
+          name: addon.name,
+        )) {
+          bytes.addAll(await _lineRaw(generator, line));
+        }
       }
     }
 
@@ -322,11 +308,4 @@ abstract final class ReceiptEscPosBuilder {
 
     return bytes;
   }
-
-  static String _formatDateTime(DateTime dt) {
-    return '${dt.year}-${_two(dt.month)}-${_two(dt.day)} '
-        '${_two(dt.hour)}:${_two(dt.minute)}';
-  }
-
-  static String _two(int n) => n.toString().padLeft(2, '0');
 }

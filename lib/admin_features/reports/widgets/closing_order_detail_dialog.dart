@@ -85,6 +85,10 @@ class ClosingOrderDetailDialog extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _InfoRow(
+                        label: 'رقم الطلب',
+                        value: order.displayOrderNumber,
+                      ),
+                      _InfoRow(
                         label: 'الوقت',
                         value: _formatTimestamp(order.createdAt),
                       ),
