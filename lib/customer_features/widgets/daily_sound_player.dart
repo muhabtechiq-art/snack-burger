@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../theme/customer_menu_theme.dart';
 
-/// زر صوت اليوم — لا يُحمّل الملف إلا بعد ضغط المستخدم (بدون تشغيل تلقائي).
+/// زر صوت اليوم — تشغيل/إيقاف فقط، بدون تشغيل تلقائي.
 class DailySoundPlayer extends StatefulWidget {
   const DailySoundPlayer({
     super.key,
@@ -20,59 +21,102 @@ class DailySoundPlayer extends StatefulWidget {
   final bool loop;
   final String? title;
 
+  /// ارتفاع شريط التنقل السفلي في واجهة المنيو.
+  static const double bottomNavHeight = 64;
+
+  /// هامش بين الزر وشريط التنقل.
+  static const double bottomMargin = 12;
+
+  static const double fabSize = 44;
+
   @override
   State<DailySoundPlayer> createState() => _DailySoundPlayerState();
 }
 
 class _DailySoundPlayerState extends State<DailySoundPlayer> {
   AudioPlayer? _player;
-  bool _expanded = false;
-  bool _playing = false;
+  StreamSubscription<PlayerState>? _stateSubscription;
+
+  bool _isPlaying = false;
   bool _loading = false;
-  double _volume = 0.3;
+  bool _ignorePlayerState = false;
   String? _error;
+
+  static void _log(String message) => debugPrint('[DailySound] $message');
 
   @override
   void initState() {
     super.initState();
-    _volume = widget.defaultVolume.clamp(0.0, 1.0);
   }
 
   @override
   void didUpdateWidget(covariant DailySoundPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.soundUrl != widget.soundUrl) {
-      unawaited(_stopAndDisposePlayer());
-      if (mounted) {
-        setState(() {
-          _expanded = false;
-          _playing = false;
-          _loading = false;
-          _error = null;
-        });
-      }
-    }
-    if (oldWidget.defaultVolume != widget.defaultVolume && _player == null) {
-      setState(() => _volume = widget.defaultVolume.clamp(0.0, 1.0));
+      unawaited(_disposePlayer());
+      _patchState(() {
+        _isPlaying = false;
+        _loading = false;
+        _error = null;
+      });
     }
   }
 
   @override
   void dispose() {
-    unawaited(_stopAndDisposePlayer());
+    unawaited(_disposePlayer());
     super.dispose();
   }
 
-  Future<void> _stopAndDisposePlayer() async {
+  void _patchState(VoidCallback fn) {
+    if (!mounted) return;
+    fn();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  Future<void> _disposePlayer() async {
+    _stateSubscription?.cancel();
+    _stateSubscription = null;
+
     final player = _player;
     _player = null;
     if (player == null) return;
+
     try {
       await player.stop();
       await player.dispose();
     } catch (_) {
-      // ignored
+      try {
+        await player.dispose();
+      } catch (_) {
+        // ignored
+      }
     }
+  }
+
+  void _attachStateListener(AudioPlayer player) {
+    _stateSubscription?.cancel();
+    _stateSubscription = player.onPlayerStateChanged.listen((state) {
+      _log('player state = ${state.name}');
+      if (!mounted || _ignorePlayerState) return;
+
+      if (state == PlayerState.completed && !widget.loop) {
+        _patchState(() => _isPlaying = false);
+        return;
+      }
+
+      if (state == PlayerState.playing) {
+        _patchState(() => _isPlaying = true);
+        return;
+      }
+
+      if (state == PlayerState.paused || state == PlayerState.stopped) {
+        _patchState(() => _isPlaying = false);
+      }
+    });
   }
 
   Future<AudioPlayer> _ensurePlayer() async {
@@ -89,215 +133,174 @@ class _DailySoundPlayerState extends State<DailySoundPlayer> {
     await player.setReleaseMode(
       widget.loop ? ReleaseMode.loop : ReleaseMode.release,
     );
-    await player.setVolume(_volume);
 
-    player.onPlayerStateChanged.listen((state) {
-      if (!mounted) return;
-      setState(() {
-        _playing = state == PlayerState.playing;
-        if (state == PlayerState.completed && !widget.loop) {
-          _playing = false;
-        }
-      });
-    });
-
+    _attachStateListener(player);
     _player = player;
     return player;
   }
 
-  Future<void> _openAndPlay() async {
+  Future<void> _onFabPressed() async {
     if (_loading) return;
 
-    setState(() {
-      _expanded = true;
-      _error = null;
-    });
-
-    if (_playing) return;
-
-    setState(() => _loading = true);
-    try {
-      final player = await _ensurePlayer();
-      await player.setReleaseMode(
-        widget.loop ? ReleaseMode.loop : ReleaseMode.release,
-      );
-      await player.setVolume(_volume);
-      await player.play(UrlSource(widget.soundUrl));
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = 'تعذّر تشغيل الصوت');
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    if (_isPlaying) {
+      await _stop();
+    } else {
+      await _play();
     }
   }
 
-  Future<void> _togglePlayPause() async {
-    if (_loading) return;
-
-    setState(() {
+  Future<void> _play() async {
+    _log('play pressed');
+    _ignorePlayerState = true;
+    _patchState(() {
       _loading = true;
       _error = null;
     });
 
     try {
       final player = await _ensurePlayer();
-      if (_playing) {
-        await player.pause();
-      } else {
-        await player.setReleaseMode(
-          widget.loop ? ReleaseMode.loop : ReleaseMode.release,
-        );
-        await player.setVolume(_volume);
-        await player.play(UrlSource(widget.soundUrl));
+      await player.setReleaseMode(
+        widget.loop ? ReleaseMode.loop : ReleaseMode.release,
+      );
+      final volume = widget.defaultVolume.clamp(0.0, 1.0);
+      await player.setVolume(volume);
+      await player.play(UrlSource(widget.soundUrl));
+      _patchState(() => _isPlaying = true);
+    } catch (error) {
+      _log('play failed error=$error');
+      _patchState(() {
+        _error = 'تعذّر تشغيل الصوت';
+        _isPlaying = false;
+      });
+    } finally {
+      _ignorePlayerState = false;
+      _patchState(() => _loading = false);
+    }
+  }
+
+  Future<void> _stop() async {
+    _log('stop pressed');
+    _ignorePlayerState = true;
+    _patchState(() {
+      _loading = true;
+      _error = null;
+      _isPlaying = false;
+    });
+
+    try {
+      final player = _player;
+      if (player != null) {
+        await player.stop();
       }
     } catch (error) {
-      if (mounted) {
-        setState(() => _error = 'تعذّر تشغيل الصوت');
-      }
+      _log('stop failed error=$error');
+      _patchState(() => _error = 'تعذّر إيقاف الصوت');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      _ignorePlayerState = false;
+      _patchState(() {
+        _loading = false;
+        _isPlaying = false;
+      });
     }
-  }
-
-  Future<void> _onVolumeChanged(double value) async {
-    setState(() => _volume = value);
-    final player = _player;
-    if (player != null) {
-      await player.setVolume(value);
-    }
-  }
-
-  Future<void> _collapse() async {
-    await _stopAndDisposePlayer();
-    if (!mounted) return;
-    setState(() {
-      _expanded = false;
-      _playing = false;
-      _loading = false;
-      _error = null;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_expanded) {
-      return Material(
-        elevation: 3,
-        shadowColor: Colors.black26,
-        color: CustomerMenuTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(24),
-        child: InkWell(
-          onTap: _openAndPlay,
-          borderRadius: BorderRadius.circular(24),
-          child: const Padding(
-            padding: EdgeInsets.all(10),
-            child: Text('🔊', style: TextStyle(fontSize: 22)),
+    final bottomInset = MediaQuery.paddingOf(context).bottom +
+        DailySoundPlayer.bottomNavHeight +
+        DailySoundPlayer.bottomMargin;
+
+    return PositionedDirectional(
+      bottom: bottomInset,
+      start: 16,
+      child: _SoundFab(
+        size: DailySoundPlayer.fabSize,
+        isPlaying: _isPlaying,
+        loading: _loading,
+        error: _error,
+        onTap: () => unawaited(_onFabPressed()),
+      ),
+    );
+  }
+}
+
+class _SoundFab extends StatelessWidget {
+  const _SoundFab({
+    required this.size,
+    required this.isPlaying,
+    required this.loading,
+    required this.error,
+    required this.onTap,
+  });
+
+  final double size;
+  final bool isPlaying;
+  final bool loading;
+  final String? error;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = isPlaying ? '⏹' : '🔊';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          elevation: 5,
+          shadowColor: Colors.black.withValues(alpha: 0.2),
+          color: CustomerMenuTheme.surfaceWhite,
+          shape: CircleBorder(
+            side: BorderSide(
+              color: CustomerMenuTheme.mustard.withValues(alpha: 0.6),
+              width: 1.5,
+            ),
+          ),
+          child: InkWell(
+            onTap: loading ? null : onTap,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Center(
+                child: loading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color:
+                              CustomerMenuTheme.mutedRed.withValues(alpha: 0.85),
+                        ),
+                      )
+                    : Text(
+                        icon,
+                        style: const TextStyle(fontSize: 20, height: 1),
+                      ),
+              ),
+            ),
           ),
         ),
-      );
-    }
-
-    return Material(
-      elevation: 4,
-      shadowColor: Colors.black26,
-      color: CustomerMenuTheme.surfaceWhite,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'صوت اليوم',
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Material(
+              color: CustomerMenuTheme.surfaceWhite.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  error!,
                   style: TextStyle(
-                    color: CustomerMenuTheme.ink,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
+                    color: Colors.red.shade700,
+                    fontSize: 10,
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                  onPressed: _loading ? null : _togglePlayPause,
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          _playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: CustomerMenuTheme.ink,
-                        ),
-                ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                  onPressed: _collapse,
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    size: 20,
-                    color: CustomerMenuTheme.ink,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(
-              width: 180,
-              child: Row(
-                children: [
-                  Icon(
-                    _volume <= 0.01
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_down_rounded,
-                    size: 18,
-                    color: CustomerMenuTheme.ink.withValues(alpha: 0.7),
-                  ),
-                  Expanded(
-                    child: Slider(
-                      value: _volume,
-                      min: 0,
-                      max: 1,
-                      divisions: 20,
-                      onChanged: _onVolumeChanged,
-                      activeColor: CustomerMenuTheme.ink,
-                    ),
-                  ),
-                  Icon(
-                    Icons.volume_up_rounded,
-                    size: 18,
-                    color: CustomerMenuTheme.ink.withValues(alpha: 0.7),
-                  ),
-                ],
               ),
             ),
-            if (_error != null)
-              Text(
-                _error!,
-                style: TextStyle(
-                  color: Colors.red.shade700,
-                  fontSize: 11,
-                ),
-              ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }

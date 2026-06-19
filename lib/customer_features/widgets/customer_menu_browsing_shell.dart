@@ -207,15 +207,11 @@ class _CustomerMenuBrowsingShellState extends State<CustomerMenuBrowsingShell> {
       clipBehavior: Clip.none,
       children: [
         menuScaffold,
-        Positioned(
-          top: MediaQuery.paddingOf(context).top + 8,
-          left: 12,
-          child: DailySoundPlayer(
-            soundUrl: dailySound.url,
-            defaultVolume: dailySound.volume,
-            loop: dailySound.loop,
-            title: dailySound.title,
-          ),
+        DailySoundPlayer(
+          soundUrl: dailySound.url,
+          defaultVolume: dailySound.volume,
+          loop: dailySound.loop,
+          title: dailySound.title,
         ),
       ],
     );

@@ -285,7 +285,7 @@ class _DailySoundSettingsScreenState extends State<DailySoundSettingsScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'الصيغ المدعومة: mp3, m4a, aac — الحد الأقصى 5MB',
+                              'الصيغ المدعومة: mp3, m4a, aac — ${DailySoundUploadService.maxSizeMessage}',
                               textAlign: TextAlign.right,
                               style: TextStyle(
                                 fontSize: 12,

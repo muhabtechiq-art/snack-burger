@@ -20,7 +20,9 @@ class DailySoundUploadService {
   DailySoundUploadService();
 
   static const String bucketName = 'daily-sounds';
-  static const int maxBytes = 5 * 1024 * 1024;
+  static const int maxBytes = 10 * 1024 * 1024;
+  static const String maxSizeMessage =
+      'الحد الأقصى لحجم الملف هو 10 ميجابايت.';
   static const Set<String> allowedExtensions = {'mp3', 'm4a', 'aac'};
   static const String _logTag = 'DailySoundUploadService';
 
@@ -111,7 +113,7 @@ class DailySoundUploadService {
     return segments.sublist(bucketIndex + 1).join('/');
   }
 
-  /// يختار ملفاً صوتياً من الجهاز (mp3 / m4a / aac — حد 5MB).
+  /// يختار ملفاً صوتياً من الجهاز (mp3 / m4a / aac — حد 10MB).
   Future<DailySoundPickResult?> pickAudioFile() async {
     try {
       final result = await FilePicker.platform
@@ -147,9 +149,7 @@ class DailySoundUploadService {
         throw const DailySoundUploadException('تعذّر قراءة الملف');
       }
       if (bytes.length > maxBytes) {
-        throw const DailySoundUploadException(
-          'حجم الملف كبير جداً. الحد الأقصى 5 ميغابايت',
-        );
+        throw const DailySoundUploadException(maxSizeMessage);
       }
 
       return DailySoundPickResult(fileName: name, bytes: bytes);
@@ -173,9 +173,7 @@ class DailySoundUploadService {
       throw const DailySoundUploadException('ملف الصوت فارغ');
     }
     if (bytes.length > maxBytes) {
-      throw const DailySoundUploadException(
-        'حجم الملف كبير جداً. الحد الأقصى 5 ميغابايت',
-      );
+      throw const DailySoundUploadException(maxSizeMessage);
     }
     if (!isAllowedExtension(fileName)) {
       throw const DailySoundUploadException(
