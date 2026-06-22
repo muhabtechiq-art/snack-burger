@@ -10,6 +10,8 @@ import '../../core/utils/product_id_generator.dart';
 import '../../models/product_model.dart';
 import '../../services/image_pick_upload_service.dart';
 import '../../services/image_upload_exception.dart';
+import '../../services/product_image_upload_service.dart';
+import '../../services/product_repository.dart';
 import '../data/admin_repositories.dart';
 import 'product_form_save_exception.dart';
 import 'product_form_validators.dart';
@@ -19,13 +21,15 @@ class ProductFormController extends ChangeNotifier {
   ProductFormController({
     this.productId,
     AdminProductRepository? productRepository,
+    ProductImageUploadService? productImageUploadService,
     ImagePickUploadService? imageService,
   })  : _productRepository = productRepository ?? AdminProductRepository(),
-        _imageService = imageService ?? ImagePickUploadService();
+        _productImageUploadService = productImageUploadService ??
+            ProductImageUploadService(imageUploadService: imageService);
 
   final String? productId;
   final AdminProductRepository _productRepository;
-  final ImagePickUploadService _imageService;
+  final ProductImageUploadService _productImageUploadService;
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
@@ -37,6 +41,7 @@ class ProductFormController extends ChangeNotifier {
 
   XFile? _pickedImageFile;
   Uint8List? _webImage;
+  Uint8List? _uploadBytes;
   String? _existingImageUrl;
   String? _errorMessage;
   bool _pickingImage = false;
@@ -255,50 +260,40 @@ class ProductFormController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// يختار صورة من المعرض ويحدّث المعاينة.
+  /// يختار صورة من المعرض ويحدّث المعاينة (ضغط على isolate منفصل).
   Future<void> pickFromGallery() async {
     if (_pickingImage || _uploadingImage || _disposed) return;
 
     _setPickingImage(true);
     try {
-      debugPrint(
-        '[ProductFormController] product_image_pick_start '
-        '${DateTime.now().toIso8601String()}',
-      );
-      final file = await _imageService.pickProductImageFromGallery();
-      debugPrint(
-        '[ProductFormController] product_image_pick_done '
-        '${DateTime.now().toIso8601String()}',
-      );
+      final file = await _productImageUploadService.pickProductImageFromGallery();
       if (_disposed) return;
 
       if (file == null) {
         return;
       }
 
-      debugPrint(
-        '[ProductFormController] product_image_read_start '
-        '${DateTime.now().toIso8601String()}',
-      );
-      final bytes = await _imageService.readFileBytes(file);
-      debugPrint(
-        '[ProductFormController] product_image_read_done '
-        '${DateTime.now().toIso8601String()}',
-      );
+      final processed = await _productImageUploadService.processPickedImage(file);
       if (_disposed) return;
 
-      if (bytes == null) {
+      if (processed == null) {
         _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
         return;
       }
 
-      _pickedImageFile = file;
-      _webImage = bytes;
+      _pickedImageFile = processed.file;
+      _webImage = processed.previewBytes;
+      _uploadBytes = processed.uploadBytes;
       _existingImageUrl = null;
       clearError();
       notifyListeners();
+    } on ImageUploadException catch (e, st) {
+      debugPrint('[ProductImageUpload][ERROR] pickFromGallery: $e\n$st');
+      if (!_disposed) {
+        _setError(e.message);
+      }
     } catch (e, st) {
-      debugPrint('ProductFormController.pickFromGallery: $e\n$st');
+      debugPrint('[ProductImageUpload][ERROR] pickFromGallery: $e\n$st');
       if (!_disposed) {
         _setError('تعذّر اختيار الصورة. حاول مرة أخرى');
       }
@@ -311,6 +306,7 @@ class ProductFormController extends ChangeNotifier {
   void clearPickedImage() {
     _pickedImageFile = null;
     _webImage = null;
+    _uploadBytes = null;
     _existingImageUrl = null;
     notifyListeners();
   }
@@ -539,18 +535,48 @@ class ProductFormController extends ChangeNotifier {
       final product = buildProductModel(restaurantId: restaurantId);
       String? imageUrl;
 
-      if (_pickedImageFile != null && _webImage != null) {
+      final bytesToUpload = _uploadBytes ?? _webImage;
+      if (_pickedImageFile != null && bytesToUpload != null) {
         _setUploadingImage(true);
         try {
-          imageUrl = await _productRepository.uploadProductImage(
+          final docId = ProductRepository.resolveRestaurantDocId(
             restaurantId: restaurantId,
             slug: slug,
-            pickedImageFile: _pickedImageFile!,
-            pickedImageBytes: _webImage!,
-            productId: product.id.trim().isNotEmpty ? product.id : null,
+          );
+          final targetId = product.id.trim().isNotEmpty
+              ? product.id.trim()
+              : _effectiveProductId();
+
+          debugPrint('[ProductImageUpload] upload start productId=$targetId');
+          imageUrl = await _productImageUploadService.uploadProductImage(
+            restaurantId: docId,
+            productId: targetId,
+            bytes: bytesToUpload,
+            fileName: _pickedImageFile!.name,
           );
           _existingImageUrl = imageUrl;
-          debugPrint('[ProductFormController] image publicUrl: $imageUrl');
+          debugPrint('[ProductImageUpload] upload end url=$imageUrl');
+        } on ImageUploadException catch (e, st) {
+          debugPrint('[ProductImageUpload][ERROR] saveProduct upload: $e\n$st');
+          _setError(productImageUploadFailureMessage);
+          throw ProductFormSaveException(
+            productImageUploadFailureMessage,
+            cause: e,
+          );
+        } on StorageException catch (e, st) {
+          debugPrint('[ProductImageUpload][ERROR] saveProduct storage: $e\n$st');
+          _setError(productImageUploadFailureMessage);
+          throw ProductFormSaveException(
+            productImageUploadFailureMessage,
+            cause: e,
+          );
+        } catch (e, st) {
+          debugPrint('[ProductImageUpload][ERROR] saveProduct upload: $e\n$st');
+          _setError(productImageUploadFailureMessage);
+          throw ProductFormSaveException(
+            productImageUploadFailureMessage,
+            cause: e,
+          );
         } finally {
           if (!_disposed) _setUploadingImage(false);
         }
@@ -558,17 +584,24 @@ class ProductFormController extends ChangeNotifier {
         imageUrl = _existingImageUrl;
       }
 
-      return await _productRepository.saveProduct(
+      debugPrint('[ProductImageUpload] product update start id=${product.id}');
+      final savedId = await _productRepository.saveProduct(
         restaurantId: restaurantId,
         slug: slug,
         product: product,
         imageUrl: imageUrl,
       );
+      debugPrint('[ProductImageUpload] product update end id=$savedId');
+      return savedId;
+    } on ProductFormSaveException {
+      rethrow;
     } on ImageUploadException catch (e, st) {
-      debugPrint('ProductFormController.saveProduct upload: $e\n$st');
-      final msg = e.message;
-      _setError(msg);
-      throw ProductFormSaveException(msg, cause: e);
+      debugPrint('[ProductImageUpload][ERROR] saveProduct: $e\n$st');
+      _setError(productImageUploadFailureMessage);
+      throw ProductFormSaveException(
+        productImageUploadFailureMessage,
+        cause: e,
+      );
     } on PostgrestException catch (e, st) {
       debugPrint(
         'ProductFormController.saveProduct Supabase: '

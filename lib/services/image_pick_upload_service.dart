@@ -12,6 +12,7 @@ class ImagePickUploadService {
 
   static const String bucketName = 'product-images';
   static const String _logTag = 'ImagePickUploadService';
+  static const Duration _uploadTimeout = Duration(seconds: 30);
 
   static final RegExp _pathSegmentPattern = RegExp(r'[^\w\-]');
   static final RegExp _fileNamePattern = RegExp(r'[^\w.\-]');
@@ -198,14 +199,26 @@ class ImagePickUploadService {
     try {
       final storage = _supabase.storage.from(bucketName);
 
-      final uploadedKey = await storage.uploadBinary(
-        storagePath,
-        bytes,
-        fileOptions: FileOptions(
-          contentType: contentTypeForFileName(resolvedName),
-          upsert: true,
-        ),
-      );
+      debugPrint('[ProductImageUpload] storage uploadBinary start path=$storagePath');
+
+      final uploadedKey = await storage
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: contentTypeForFileName(resolvedName),
+              upsert: true,
+            ),
+          )
+          .timeout(
+            _uploadTimeout,
+            onTimeout: () {
+              debugPrint('[ProductImageUpload][ERROR] storage upload timeout');
+              throw TimeoutException('storage upload timed out');
+            },
+          );
+
+      debugPrint('[ProductImageUpload] storage uploadBinary end key=$uploadedKey');
 
       final normalizedPath = normalizeUploadedKey(
         uploadedKey: uploadedKey,
@@ -230,14 +243,16 @@ class ImagePickUploadService {
       rethrow;
     } on TimeoutException catch (e, st) {
       _log('uploadProductImage', 'timeout', error: e, stack: st);
+      debugPrint('[ProductImageUpload][ERROR] upload timeout');
       throw ImageUploadException(
-        'انتهت مهلة رفع الصورة. حاول مرة أخرى',
+        productImageUploadFailureMessage,
         cause: e,
       );
     } catch (e, st) {
       _log('uploadProductImage', 'failed', error: e, stack: st);
+      debugPrint('[ProductImageUpload][ERROR] upload failed: $e');
       throw ImageUploadException(
-        'تعذّر رفع الصورة. حاول مرة أخرى',
+        productImageUploadFailureMessage,
         cause: e,
       );
     }

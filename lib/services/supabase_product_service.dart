@@ -1334,6 +1334,40 @@ abstract final class SupabaseProductService {
     return List<ProductModel>.unmodifiable(filtered);
   }
 
+  /// منيو الزبون (C-04) — يدمج صفوف RPC للمنتجات والإضافات والأحجام.
+  static List<ProductModel> assemblePublicMenuProducts({
+    required String restaurantDocId,
+    required List<Map<String, dynamic>> productRows,
+    required List<Map<String, dynamic>> addonRows,
+    required List<Map<String, dynamic>> variantRows,
+  }) {
+    final products = _parseAndFilter(productRows, restaurantDocId);
+    if (products.isEmpty) return products;
+
+    final addonsByProduct = _groupAddonsByProductId(addonRows);
+    final variantsByProduct = _groupVariantsByProductId(variantRows);
+
+    return products
+        .map((product) {
+          final fromTable = _lookupVariantsForProduct(
+            variantsByProduct,
+            product.id,
+          );
+          final resolved = _resolveVariantsWithSource(
+            productId: product.id,
+            jsonbVariants: product.variants,
+            tableVariants: fromTable ?? const [],
+          );
+          return _copyProductRelations(
+            product,
+            addons: addonsByProduct[_asString(product.id)] ?? const [],
+            variants: resolved.variants,
+            variantsSource: resolved.source,
+          );
+        })
+        .toList(growable: false);
+  }
+
   static List<ProductModel> _filterByRestaurant(
     List<ProductModel> products,
     String? restaurantId,

@@ -5,6 +5,7 @@ import '../core/utils/product_id_generator.dart';
 import '../models/product_model.dart';
 import '../models/product_variants_cleanup_report.dart';
 import 'image_pick_upload_service.dart';
+import 'public_catalog_service.dart';
 import 'supabase_product_service.dart';
 
 /// مصدر doc id للمطعم عند [ProductRepository.resolveRestaurantDocId].
@@ -113,12 +114,36 @@ class ProductRepository {
     );
   }
 
+  /// منيو الزبون — قراءة عبر RPC (C-04) وليس SELECT مباشر.
+  Future<List<ProductModel>> fetchProductsForCustomerMenu({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
+    return PublicCatalogService.fetchMenuProducts(
+      restaurantSlug: slug,
+      restaurantDocId: docId,
+    );
+  }
+
   Stream<List<ProductModel>> watchProductsForRestaurant({
     required String restaurantId,
     required String slug,
   }) {
     return SupabaseProductService.watchProducts(
       restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
+  }
+
+  /// منيو الزبون — polling عبر RPC (C-04).
+  Stream<List<ProductModel>> watchProductsForCustomerMenu({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
+    return PublicCatalogService.watchMenuProducts(
+      restaurantSlug: slug,
+      restaurantDocId: docId,
     );
   }
 

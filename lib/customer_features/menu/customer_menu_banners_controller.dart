@@ -67,7 +67,7 @@ class CustomerMenuBannersController extends ChangeNotifier {
     }
 
     try {
-      final items = await _bannerRepository.fetchActiveBanners(
+      final items = await _bannerRepository.fetchActiveBannersForCustomerMenu(
         restaurantId: restaurantId,
         slug: slug,
       );
@@ -92,7 +92,7 @@ class CustomerMenuBannersController extends ChangeNotifier {
     if (_disposed || generation != _bindGeneration) return;
 
     _subscription = _bannerRepository
-        .watchActiveBanners(restaurantId: restaurantId, slug: slug)
+        .watchActiveBannersForCustomerMenu(restaurantId: restaurantId, slug: slug)
         .listen(
       (banners) {
         if (_disposed || generation != _bindGeneration) return;

@@ -247,7 +247,7 @@ class CustomerMenuController extends ChangeNotifier {
     }
 
     try {
-      final fetched = await _productRepository.fetchProductsForRestaurant(
+      final fetched = await _productRepository.fetchProductsForCustomerMenu(
         restaurantId: restaurantId,
         slug: slug,
       );
@@ -275,7 +275,7 @@ class CustomerMenuController extends ChangeNotifier {
     if (_disposed || generation != _bindGeneration) return;
 
     _productsSubscription = _productRepository
-        .watchProductsForRestaurant(
+        .watchProductsForCustomerMenu(
           restaurantId: restaurantId,
           slug: slug,
         )

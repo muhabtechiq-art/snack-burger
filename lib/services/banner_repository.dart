@@ -6,6 +6,7 @@ import '../models/promo_banner_model.dart';
 import 'banner_image_diag_log.dart';
 import 'banner_image_upload_service.dart';
 import 'product_repository.dart';
+import 'public_catalog_service.dart';
 import 'supabase_banner_service.dart';
 
 /// مستودع البانرات — منفصل عن المنتجات.
@@ -36,12 +37,36 @@ class BannerRepository {
     );
   }
 
+  /// منيو الزبون — بانرات نشطة عبر RPC (C-04).
+  Future<List<PromoBannerModel>> fetchActiveBannersForCustomerMenu({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
+    return PublicCatalogService.fetchActiveBanners(
+      restaurantSlug: slug,
+      restaurantDocId: docId,
+    );
+  }
+
   Stream<List<PromoBannerModel>> watchActiveBanners({
     required String restaurantId,
     required String slug,
   }) {
     return SupabaseBannerService.watchActiveBanners(
       restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
+  }
+
+  /// منيو الزبون — polling بانرات عبر RPC (C-04).
+  Stream<List<PromoBannerModel>> watchActiveBannersForCustomerMenu({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final docId = _docId(restaurantId: restaurantId, slug: slug);
+    return PublicCatalogService.watchActiveBanners(
+      restaurantSlug: slug,
+      restaurantDocId: docId,
     );
   }
 

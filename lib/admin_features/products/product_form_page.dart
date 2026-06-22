@@ -264,7 +264,7 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
                   loadingLabel: controller.uploadingImage
                       ? 'جاري رفع الصورة إلى Supabase...'
                       : controller.pickingImage
-                          ? 'جاري تحميل الصورة...'
+                          ? 'جاري معالجة الصورة...'
                           : null,
                   onPickPressed: controller.pickFromGallery,
                   onClear: controller.clearPickedImage,
