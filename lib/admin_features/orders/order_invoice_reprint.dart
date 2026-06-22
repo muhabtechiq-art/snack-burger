@@ -1,27 +1,45 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/tenant_palette.dart';
+import '../../core/utils/safe_execute.dart';
 import '../../models/delivery_order_model.dart';
-import '../../services/order_invoice_printer.dart';
+import '../../services/receipt_escpos_printer.dart';
 
-/// يعيد طباعة فاتورة الطلب باستخدام [printOrderInvoice] الحالية.
+/// يعيد طباعة جزء من فاتورة الطلب (كاشير / مطبخ / الاثنين).
 Future<bool> reprintOrderInvoice({
   required BuildContext context,
   required DeliveryOrder order,
+  OrderReceiptPrintScope scope = OrderReceiptPrintScope.both,
 }) async {
-  debugPrint('[QA][Reprint] reprint requested orderId=${order.id}');
+  debugPrint(
+    '[QA][Reprint] reprint requested orderId=${order.id} scope=$scope',
+  );
 
-  final ok = await printOrderInvoice(order);
+  final ok = await safeExecuteVoid(
+    () async {
+      if (kIsWeb) {
+        throw UnsupportedError('إعادة الطباعة غير متاحة على الويب');
+      }
+      if (!Platform.isWindows) {
+        throw UnsupportedError('إعادة الطباعة متاحة على Windows فقط');
+      }
+      await ReceiptEscPosPrinter.printOrderReceipt(order, scope: scope);
+    },
+    tag: 'reprintOrderInvoice',
+  );
 
   if (!context.mounted) return ok;
 
   if (ok) {
-    debugPrint('[QA][Reprint] success');
+    debugPrint('[QA][Reprint] success scope=$scope');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم إرسال الفاتورة للطباعة')),
+      SnackBar(content: Text(_successMessage(scope))),
     );
   } else {
-    debugPrint('[QA][Reprint] failed error=printOrderInvoice returned false');
+    debugPrint('[QA][Reprint] failed scope=$scope');
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('تعذر الطباعة، تحقق من الطابعة')),
     );
@@ -30,7 +48,73 @@ Future<bool> reprintOrderInvoice({
   return ok;
 }
 
-/// زر إعادة طباعة الفاتورة — للاستخدام داخل نوافذ تفاصيل الطلب.
+String _successMessage(OrderReceiptPrintScope scope) {
+  return switch (scope) {
+    OrderReceiptPrintScope.cashierOnly => 'تم إرسال فاتورة الكاشير',
+    OrderReceiptPrintScope.kitchenOnly => 'تم إرسال بون المطبخ',
+    OrderReceiptPrintScope.both => 'تم إرسال الفاتورة للطباعة',
+  };
+}
+
+Future<OrderReceiptPrintScope?> pickReprintScope(
+  BuildContext context, {
+  required TenantPalette palette,
+}) {
+  return showModalBottomSheet<OrderReceiptPrintScope>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'إعادة الطباعة',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: palette.primary,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.receipt_long, color: palette.primary),
+                title: const Text('الاثنين'),
+                subtitle: const Text('كاشير + مطبخ'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  OrderReceiptPrintScope.both,
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.point_of_sale_rounded, color: palette.primary),
+                title: const Text('فاتورة الكاشير'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  OrderReceiptPrintScope.cashierOnly,
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.restaurant_rounded, color: palette.primary),
+                title: const Text('بون المطبخ'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  OrderReceiptPrintScope.kitchenOnly,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// زر إعادة طباعة — يفتح اختيار النطاق ثم يطبع.
 class ReprintInvoiceButton extends StatefulWidget {
   const ReprintInvoiceButton({
     super.key,
@@ -50,9 +134,20 @@ class _ReprintInvoiceButtonState extends State<ReprintInvoiceButton> {
 
   Future<void> _handleReprint() async {
     if (_busy) return;
+
+    final scope = await pickReprintScope(
+      context,
+      palette: widget.palette,
+    );
+    if (scope == null || !mounted) return;
+
     setState(() => _busy = true);
     try {
-      await reprintOrderInvoice(context: context, order: widget.order);
+      await reprintOrderInvoice(
+        context: context,
+        order: widget.order,
+        scope: scope,
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -75,7 +170,7 @@ class _ReprintInvoiceButtonState extends State<ReprintInvoiceButton> {
               )
             : Icon(Icons.print_rounded, color: widget.palette.primary),
         label: Text(
-          _busy ? 'جاري الإرسال...' : 'إعادة طباعة الفاتورة',
+          _busy ? 'جاري الإرسال...' : 'إعادة طباعة',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 15,
@@ -83,7 +178,9 @@ class _ReprintInvoiceButtonState extends State<ReprintInvoiceButton> {
           ),
         ),
         style: OutlinedButton.styleFrom(
-          side: BorderSide(color: widget.palette.primary.withValues(alpha: 0.65)),
+          side: BorderSide(
+            color: widget.palette.primary.withValues(alpha: 0.65),
+          ),
           padding: const EdgeInsets.symmetric(vertical: 13),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

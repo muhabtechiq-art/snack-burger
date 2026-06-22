@@ -259,34 +259,51 @@ class ProductFormController extends ChangeNotifier {
   Future<void> pickFromGallery() async {
     if (_pickingImage || _uploadingImage || _disposed) return;
 
+    _setPickingImage(true);
     try {
+      debugPrint(
+        '[ProductFormController] product_image_pick_start '
+        '${DateTime.now().toIso8601String()}',
+      );
       final file = await _imageService.pickProductImageFromGallery();
-      if (file == null || _disposed) return;
+      debugPrint(
+        '[ProductFormController] product_image_pick_done '
+        '${DateTime.now().toIso8601String()}',
+      );
+      if (_disposed) return;
 
-      _setPickingImage(true);
-      try {
-        final bytes = await _imageService.readFileBytes(file);
-        if (_disposed) return;
-
-        if (bytes == null) {
-        _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
-          return;
-        }
-
-        _pickedImageFile = file;
-        _webImage = bytes;
-        _existingImageUrl = null;
-        clearError();
-        notifyListeners();
-      } finally {
-        if (!_disposed) _setPickingImage(false);
+      if (file == null) {
+        return;
       }
+
+      debugPrint(
+        '[ProductFormController] product_image_read_start '
+        '${DateTime.now().toIso8601String()}',
+      );
+      final bytes = await _imageService.readFileBytes(file);
+      debugPrint(
+        '[ProductFormController] product_image_read_done '
+        '${DateTime.now().toIso8601String()}',
+      );
+      if (_disposed) return;
+
+      if (bytes == null) {
+        _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
+        return;
+      }
+
+      _pickedImageFile = file;
+      _webImage = bytes;
+      _existingImageUrl = null;
+      clearError();
+      notifyListeners();
     } catch (e, st) {
       debugPrint('ProductFormController.pickFromGallery: $e\n$st');
       if (!_disposed) {
-        _setPickingImage(false);
         _setError('تعذّر اختيار الصورة. حاول مرة أخرى');
       }
+    } finally {
+      if (!_disposed) _setPickingImage(false);
     }
   }
 

@@ -90,6 +90,9 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
   }
 
   Future<void> _loadSession() async {
+    if (mounted) {
+      await context.read<ActiveRestaurantNotifier>().resolveSlug(widget.slug);
+    }
     final phone = await CustomerOrderSession.getCustomerPhone(widget.slug);
     if (!mounted) return;
     setState(() {
@@ -107,8 +110,15 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     _waitingFirstEvent = true;
     if (mounted) setState(() {});
 
+    final restaurantUuid =
+        context.read<ActiveRestaurantNotifier>().restaurant?.restaurantUuid;
+
     _ordersSubscription = _repository
-        .watchOrdersByPhone(slug: widget.slug, phoneNumber: phone)
+        .watchOrdersByPhone(
+          slug: widget.slug,
+          phoneNumber: phone,
+          restaurantUuid: restaurantUuid,
+        )
         .listen(
       (orders) {
         if (!mounted) return;

@@ -20,6 +20,33 @@ abstract final class SupabaseBannerService {
 
   static SupabaseClient get _client => Supabase.instance.client;
 
+  static String _normalizeRestaurantId(String restaurantId) =>
+      restaurantId.trim().toLowerCase();
+
+  /// وصف فلتر server-side لبث البانرات — للاختبار والسجلات.
+  @visibleForTesting
+  static String bannersServerFilterLabel(String restaurantId) {
+    final normalized = _normalizeRestaurantId(restaurantId);
+    if (normalized.isEmpty) return 'none';
+    return 'restaurant_id=eq.$normalized';
+  }
+
+  /// Realtime rows stream للبانرات — `restaurant_id=eq.<id>` إن أمكن.
+  static Stream<List<Map<String, dynamic>>> _bannersRowsStream(
+    String normalizedRestaurantId, {
+    required String streamName,
+  }) {
+    final builder = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedRestaurantId.isEmpty) {
+      debugPrint(
+        '[SupabaseBannerService] $streamName: empty restaurantId — '
+        'server filter skipped; client filter guard active',
+      );
+      return builder;
+    }
+    return builder.eq('restaurant_id', normalizedRestaurantId);
+  }
+
   static List<PromoBannerModel> _parseRows(List<dynamic> rows) {
     final banners = <PromoBannerModel>[];
     for (final row in rows) {
@@ -87,28 +114,34 @@ abstract final class SupabaseBannerService {
         .toList(growable: false);
   }
 
-  /// بث التحديثات — فلترة محلية (مثل المنتجات) لأن Realtime قد لا يكون
-  /// مفعّلاً على جدول banners أو لا يُرسل اللقطة الأولى فور الاشتراك.
+  /// بث التحديثات — فلترة server-side + محلية (is_active للنشط).
   static Stream<List<PromoBannerModel>> watchActiveBanners({
     required String restaurantId,
   }) {
-    final normalized = restaurantId.trim().toLowerCase();
+    final normalized = _normalizeRestaurantId(restaurantId);
     return _resilientBannersStream(
-      streamTag: 'watchActiveBanners(restaurantId=$normalized)',
-      sourceFactory: () => _client
-          .from(tableName)
-          .stream(primaryKey: const ['id'])
-          .map((rows) => _filterActiveForRestaurant(rows, normalized)),
+      streamTag:
+          'watchActiveBanners(restaurantId=$normalized,'
+          'serverFilter=${bannersServerFilterLabel(restaurantId)})',
+      sourceFactory: () => _bannersRowsStream(
+        normalized,
+        streamName: 'watchActiveBanners',
+      ).map((rows) => _filterActiveForRestaurant(rows, restaurantId)),
     );
   }
 
   static Stream<List<PromoBannerModel>> watchAllBanners({
     required String restaurantId,
   }) {
-    final normalized = restaurantId.trim().toLowerCase();
+    final normalized = _normalizeRestaurantId(restaurantId);
     return _resilientBannersStream(
-      streamTag: 'watchAllBanners(restaurantId=$normalized)',
-      sourceFactory: () => _client.from(tableName).stream(primaryKey: const ['id']).map(
+      streamTag:
+          'watchAllBanners(restaurantId=$normalized,'
+          'serverFilter=${bannersServerFilterLabel(restaurantId)})',
+      sourceFactory: () => _bannersRowsStream(
+        normalized,
+        streamName: 'watchAllBanners',
+      ).map(
         (rows) {
           return _parseRows(rows)
               .where(
@@ -214,11 +247,70 @@ abstract final class SupabaseBannerService {
     return PromoBannerModel.fromSupabase(Map<String, dynamic>.from(row));
   }
 
-  static Future<void> updateBanner(PromoBannerModel banner) async {
-    await _client
-        .from(tableName)
-        .update(banner.toUpdateMap())
-        .eq('id', banner.id);
+  static Future<PromoBannerModel> updateBanner(PromoBannerModel banner) async {
+    final normalizedId = banner.id.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError('معرّف البانر فارغ');
+    }
+
+    try {
+      final row = await _client
+          .from(tableName)
+          .update(banner.toUpdateMap())
+          .eq('id', normalizedId)
+          .select()
+          .single();
+
+      final saved = PromoBannerModel.fromSupabase(
+        Map<String, dynamic>.from(row),
+      );
+
+      debugPrint(
+        '[SupabaseBannerService] updateBanner id=$normalizedId '
+        'image_url=${saved.imageUrl}',
+      );
+      return saved;
+    } on PostgrestException catch (e, stack) {
+      debugPrint(
+        '[SupabaseBannerService] updateBanner فشل: '
+        'code=${e.code} message=${e.message}\n$stack',
+      );
+      reportSupabaseError(e, stack, operation: 'updateBanner');
+      rethrow;
+    }
+  }
+
+  static Future<void> updateBannerSortOrders(
+    List<PromoBannerModel> ordered,
+  ) async {
+    for (var index = 0; index < ordered.length; index++) {
+      final banner = ordered[index];
+      final normalizedId = banner.id.trim();
+      if (normalizedId.isEmpty) {
+        throw ArgumentError('معرّف البانر فارغ');
+      }
+
+      final rows = await _client
+          .from(tableName)
+          .update({'sort_order': index})
+          .eq('id', normalizedId)
+          .select('id, sort_order');
+
+      final updated = List<Map<String, dynamic>>.from(rows as List);
+      if (updated.isEmpty) {
+        throw StateError('لم يُحدَّث ترتيب البانر id=$normalizedId');
+      }
+
+      final savedOrder = _readSortOrder(updated.first['sort_order']);
+      if (savedOrder != index) {
+        throw StateError('لم يُحفظ ترتيب البانر id=$normalizedId');
+      }
+    }
+
+    debugPrint(
+      '[SupabaseBannerService] updateBannerSortOrders: '
+      'تم حفظ ${ordered.length} بانر',
+    );
   }
 
   static Future<List<PromoBannerModel>> fetchAllBanners({
@@ -249,6 +341,11 @@ abstract final class SupabaseBannerService {
       if (normalized == 'false' || normalized == '0') return false;
     }
     return false;
+  }
+
+  static int _readSortOrder(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   static Future<void> setBannerActive({

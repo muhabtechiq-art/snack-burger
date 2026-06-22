@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,8 @@ import '../../models/promo_banner_model.dart';
 import '../../services/banner_image_upload_service.dart';
 import '../../services/banner_repository.dart';
 import '../../state/active_restaurant_notifier.dart';
+import 'banner_form_dialog.dart';
+import 'banner_sort_order.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
 import '../shell/admin_panel_widgets.dart';
@@ -27,6 +30,9 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
 
   String? _busyBannerId;
   bool _addingBanner = false;
+  bool _savingSortOrder = false;
+  List<PromoBannerModel>? _orderedBanners;
+  List<PromoBannerModel>? _sortOrderRollback;
   Stream<List<PromoBannerModel>>? _bannersStream;
   String? _streamRestaurantId;
 
@@ -189,56 +195,105 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
     return 'تعذّر تحديث حالة البانر — حاول مرة أخرى';
   }
 
+  String _editBannerErrorMessage(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('rls') || raw.contains('لم يُحدَّث أي صف')) {
+      return 'صلاحيات Supabase تمنع التحديث — راجع سياسات جدول banners';
+    }
+    if (raw.contains('permission') || raw.contains('42501')) {
+      return 'لا توجد صلاحية لتعديل البانر في Supabase';
+    }
+    if (raw.contains('network') || raw.contains('socket')) {
+      return 'تعذّر الاتصال — تحقق من الإنترنت وحاول مرة أخرى';
+    }
+    if (raw.contains('صورة') || raw.contains('image') || raw.contains('storage')) {
+      return 'تعذّر رفع الصورة الجديدة — حاول مرة أخرى';
+    }
+    return 'تعذّر تعديل البانر — حاول مرة أخرى';
+  }
+
+  Future<void> _editBanner(PromoBannerModel banner) async {
+    if (_busyBannerId != null || _addingBanner || _savingSortOrder) return;
+
+    final result = await showBannerFormDialog(
+      context: context,
+      uploadService: _uploadService,
+      banner: banner,
+    );
+    if (result == null || !mounted) return;
+
+    setState(() => _busyBannerId = banner.id);
+    try {
+      await _repository.updateBanner(
+        banner: banner,
+        title: result.title,
+        isActive: result.isActive,
+        sortOrder: banner.sortOrder,
+        imageChanged: result.imageChanged,
+        pickedImageBytes: result.newImageBytes,
+      );
+
+      if (!mounted) return;
+
+      setState(() => _confirmedActive[banner.id] = result.isActive);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم تعديل البانر'),
+          backgroundColor: AdminPanelColors.charcoal,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_editBannerErrorMessage(e)),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busyBannerId = null);
+      } else {
+        _busyBannerId = null;
+      }
+    }
+  }
+
   Future<void> _addBanner({
     required String restaurantId,
     required String slug,
+    required int nextSortOrder,
   }) async {
     if (_addingBanner) return;
 
     final picked = await _uploadService.pickBannerImageFromGallery();
     if (picked == null || !mounted) return;
 
-    final titleController = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final result = await showBannerFormDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('بانر جديد'),
-        content: TextField(
-          controller: titleController,
-          decoration: const InputDecoration(
-            labelText: 'عنوان البانر (اختياري)',
-            hintText: 'مثال: عرض نهاية الأسبوع',
-          ),
-          textInputAction: TextInputAction.done,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('رفع'),
-          ),
-        ],
-      ),
+      uploadService: _uploadService,
+      initialImage: picked,
+      initialSortOrder: nextSortOrder,
     );
-
-    if (confirmed != true || !mounted) return;
+    if (result == null || !mounted) return;
 
     setState(() => _addingBanner = true);
     try {
-      final bytes = await _uploadService.readAndCompress(picked);
-      if (bytes == null || bytes.isEmpty) {
+      final bytes = result.newImageBytes;
+      final imageFile = result.newImageFile;
+      if (bytes == null || bytes.isEmpty || imageFile == null) {
         throw StateError('تعذّر قراءة أو ضغط الصورة');
       }
 
       await _repository.createBanner(
         restaurantId: restaurantId,
         slug: slug,
-        title: titleController.text,
-        pickedImageFile: picked,
+        title: result.title,
+        pickedImageFile: imageFile,
         pickedImageBytes: bytes,
+        isActive: result.isActive,
+        sortOrder: result.sortOrder,
       );
 
       if (!mounted) return;
@@ -251,11 +306,71 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
         SnackBar(content: Text('تعذّر إضافة البانر: $e')),
       );
     } finally {
-      titleController.dispose();
       if (mounted) {
         setState(() => _addingBanner = false);
       } else {
         _addingBanner = false;
+      }
+    }
+  }
+
+  void _syncOrderedBanners(List<PromoBannerModel> fromStream) {
+    if (_savingSortOrder) return;
+    _orderedBanners = List<PromoBannerModel>.from(fromStream);
+  }
+
+  Future<void> _onReorderBanners(
+    int oldIndex,
+    int newIndex, {
+    bool newIndexPreAdjusted = false,
+  }) async {
+    final current = _orderedBanners;
+    if (current == null || current.isEmpty) return;
+    if (_savingSortOrder || _busyBannerId != null || _addingBanner) return;
+
+    final reordered = reorderBannersList(
+      current,
+      oldIndex,
+      newIndex,
+      newIndexPreAdjusted: newIndexPreAdjusted,
+    );
+    if (listEquals(
+      reordered.map((banner) => banner.id).toList(growable: false),
+      current.map((banner) => banner.id).toList(growable: false),
+    )) {
+      return;
+    }
+
+    _sortOrderRollback = List<PromoBannerModel>.from(current);
+    setState(() {
+      _orderedBanners = reordered;
+      _savingSortOrder = true;
+    });
+
+    try {
+      await _repository.updateBannerSortOrders(reordered);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم حفظ ترتيب البانرات'),
+          backgroundColor: AdminPanelColors.charcoal,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _orderedBanners = _sortOrderRollback);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('تعذّر حفظ الترتيب — تمت إعادة القائمة'),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      _sortOrderRollback = null;
+      if (mounted) {
+        setState(() => _savingSortOrder = false);
+      } else {
+        _savingSortOrder = false;
       }
     }
   }
@@ -266,16 +381,18 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
       slug: widget.slug,
       title: 'بانرات المنيو',
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addingBanner
+        onPressed: _addingBanner || _savingSortOrder
             ? null
             : () {
                 final restaurant =
                     context.read<ActiveRestaurantNotifier>().restaurant;
                 if (restaurant == null) return;
+                final nextSortOrder = _orderedBanners?.length ?? 0;
                 unawaited(
                   _addBanner(
                     restaurantId: restaurant.id,
                     slug: restaurant.slug,
+                    nextSortOrder: nextSortOrder,
                   ),
                 );
               },
@@ -346,117 +463,207 @@ class _BannersAdminScreenState extends State<BannersAdminScreen> {
                 );
               }
 
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                itemCount: banners.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final banner = banners[index];
-                  final isBusy = _busyBannerId == banner.id;
-                  final displayActive = _displayBannerActive(banner);
+              _syncOrderedBanners(banners);
+              final displayBanners = _orderedBanners ?? banners;
 
-                  return AdminSurfaceCard(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            banner.imageUrl,
-                            width: 88,
-                            height: 64,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Container(
-                              width: 88,
-                              height: 64,
-                              color: AdminPanelColors.cardLight,
-                              child: Icon(
-                                Icons.image_not_supported_outlined,
-                                color: AdminPanelColors.charcoal
-                                    .withValues(alpha: 0.45),
-                              ),
-                            ),
-                          ),
+              return Stack(
+                children: [
+                  ReorderableListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+                    itemCount: displayBanners.length,
+                    onReorderItem: (oldIndex, newIndex) {
+                      unawaited(
+                        _onReorderBanners(
+                          oldIndex,
+                          newIndex,
+                          newIndexPreAdjusted: true,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                      );
+                    },
+                    buildDefaultDragHandles: false,
+                    itemBuilder: (context, index) {
+                      final banner = displayBanners[index];
+                      final isBusy = _busyBannerId == banner.id;
+                      final displayActive = _displayBannerActive(banner);
+                      final reorderDisabled =
+                          _savingSortOrder || _busyBannerId != null || _addingBanner;
+
+                      return Padding(
+                        key: ValueKey(banner.id),
+                        padding: EdgeInsets.only(
+                          bottom: index == displayBanners.length - 1 ? 0 : 10,
+                        ),
+                        child: AdminSurfaceCard(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Text(
-                                banner.title.trim().isEmpty
-                                    ? 'بانر بدون عنوان'
-                                    : banner.title,
-                                style: const TextStyle(
-                                  color: AdminPanelColors.charcoal,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: displayActive
-                                      ? AdminPanelColors.gold
-                                          .withValues(alpha: 0.28)
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: IgnorePointer(
+                                  ignoring: reorderDisabled,
+                                  child: Icon(
+                                  Icons.drag_handle_rounded,
+                                  color: reorderDisabled
+                                      ? AdminPanelColors.charcoal
+                                          .withValues(alpha: 0.25)
                                       : AdminPanelColors.charcoal
-                                          .withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  displayActive
-                                      ? 'نشط — يظهر في المنيو'
-                                      : 'مخفي',
-                                  style: TextStyle(
-                                    color: displayActive
-                                        ? AdminPanelColors.charcoal
-                                        : AdminPanelColors.charcoal
-                                            .withValues(alpha: 0.55),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
+                                          .withValues(alpha: 0.55),
                                   ),
                                 ),
+                              ),
+                              const SizedBox(width: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  banner.imageUrl,
+                                  key: ValueKey(
+                                    '${banner.id}:${banner.imageUrl}',
+                                  ),
+                                  width: 88,
+                                  height: 64,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Container(
+                                    width: 88,
+                                    height: 64,
+                                    color: AdminPanelColors.cardLight,
+                                    child: Icon(
+                                      Icons.image_not_supported_outlined,
+                                      color: AdminPanelColors.charcoal
+                                          .withValues(alpha: 0.45),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      banner.title.trim().isEmpty
+                                          ? 'بانر بدون عنوان'
+                                          : banner.title,
+                                      style: const TextStyle(
+                                        color: AdminPanelColors.charcoal,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: displayActive
+                                            ? AdminPanelColors.gold
+                                                .withValues(alpha: 0.28)
+                                            : AdminPanelColors.charcoal
+                                                .withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        displayActive
+                                            ? 'نشط — يظهر في المنيو'
+                                            : 'مخفي',
+                                        style: TextStyle(
+                                          color: displayActive
+                                              ? AdminPanelColors.charcoal
+                                              : AdminPanelColors.charcoal
+                                                  .withValues(alpha: 0.55),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.edit_outlined,
+                                  color: isBusy ||
+                                          _addingBanner ||
+                                          _savingSortOrder
+                                      ? AdminPanelColors.charcoal
+                                          .withValues(alpha: 0.35)
+                                      : AdminPanelColors.gold,
+                                ),
+                                tooltip: 'تعديل',
+                                onPressed: isBusy ||
+                                        _addingBanner ||
+                                        _savingSortOrder
+                                    ? null
+                                    : () => unawaited(_editBanner(banner)),
+                              ),
+                              Switch.adaptive(
+                                value: displayActive,
+                                activeThumbColor: AdminPanelColors.gold,
+                                onChanged: isBusy || _savingSortOrder
+                                    ? null
+                                    : (value) => unawaited(
+                                          _toggleActive(banner, value),
+                                        ),
+                              ),
+                              IconButton(
+                                icon: isBusy
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.redAccent,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: Colors.red.shade400,
+                                      ),
+                                tooltip: 'حذف',
+                                onPressed: isBusy || _savingSortOrder
+                                    ? null
+                                    : () => unawaited(_confirmDelete(banner)),
                               ),
                             ],
                           ),
                         ),
-                        Switch.adaptive(
-                          value: displayActive,
-                          activeThumbColor: AdminPanelColors.gold,
-                          onChanged: isBusy
-                              ? null
-                              : (value) => unawaited(
-                                    _toggleActive(banner, value),
-                                  ),
-                        ),
-                        IconButton(
-                          icon: isBusy
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
+                      );
+                    },
+                  ),
+                  if (_savingSortOrder)
+                    const Positioned(
+                      top: 12,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Card(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.redAccent,
+                                    color: AdminPanelColors.gold,
                                   ),
-                                )
-                              : Icon(
-                                  Icons.delete_outline_rounded,
-                                  color: Colors.red.shade400,
                                 ),
-                          tooltip: 'حذف',
-                          onPressed: isBusy
-                              ? null
-                              : () => unawaited(_confirmDelete(banner)),
+                                SizedBox(width: 10),
+                                Text('جاري حفظ الترتيب…'),
+                              ],
+                            ),
+                          ),
                         ),
-                      ],
+                      ),
                     ),
-                  );
-                },
+                ],
               );
             },
           );

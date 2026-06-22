@@ -29,6 +29,7 @@ final class OrderRealtimeNotificationService {
 
   RealtimeChannel? _channel;
   String? _activeSlug;
+  String? _activeRestaurantUuid;
   bool _initialized = false;
   bool _listening = false;
 
@@ -72,34 +73,86 @@ final class OrderRealtimeNotificationService {
   }
 
   /// يبدأ الاستماع لـ INSERT على جدول `orders` للمطعم المحدد.
-  Future<void> start({String slug = RestaurantIds.snackBurgerSlug}) async {
+  ///
+  /// Server-side: `slug=eq.<activeSlug>` عبر [PostgresChangeFilter].
+  /// Client-side: [SupabaseOrderService.orderMatchesSlug] كطبقة حماية ثانية.
+  Future<void> start({
+    String slug = RestaurantIds.snackBurgerSlug,
+    String? restaurantUuid,
+  }) async {
     if (!handlesAlerts) return;
     if (!_initialized) await initialize();
 
     final normalizedSlug = slug.trim().toLowerCase();
-    if (_listening && _activeSlug == normalizedSlug) return;
+    if (normalizedSlug.isEmpty) {
+      debugPrint(
+        '[OrderRealtimeNotificationService] start skipped — empty slug',
+      );
+      await stop();
+      return;
+    }
+
+    final normalizedUuid = restaurantUuid?.trim().toLowerCase();
+    final resolvedUuid =
+        normalizedUuid != null && normalizedUuid.isNotEmpty
+            ? normalizedUuid
+            : null;
+    if (_listening &&
+        _activeSlug == normalizedSlug &&
+        _activeRestaurantUuid == resolvedUuid) {
+      return;
+    }
 
     await stop();
 
     _activeSlug = normalizedSlug;
+    _activeRestaurantUuid = resolvedUuid;
+
+    final slugFilter = buildSlugInsertFilter(normalizedSlug);
     _channel = Supabase.instance.client
         .channel('$_realtimeChannelName:$normalizedSlug')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: SupabaseOrderService.tableName,
+          filter: slugFilter,
           callback: _onOrderInserted,
         )
         .subscribe((status, [error]) {
       debugPrint(
         '[OrderRealtimeNotificationService] channel status=$status '
-        'slug=$normalizedSlug error=$error',
+        'slug=$normalizedSlug filter=slug=eq.$normalizedSlug error=$error',
       );
+      if (error != null) {
+        debugPrint(
+          '[OrderRealtimeNotificationService] Realtime filter may be unsupported '
+          '— client-side OrderTenantMatch guard remains active',
+        );
+      }
     });
 
     _listening = true;
     debugPrint(
-      '[OrderRealtimeNotificationService] listening INSERT slug=$normalizedSlug',
+      '[OrderRealtimeNotificationService] listening INSERT '
+      'slug=$normalizedSlug serverFilter=slug=eq.$normalizedSlug',
+    );
+  }
+
+  /// فلتر Realtime على عمود `slug` — INSERT للمطعم الحالي فقط.
+  @visibleForTesting
+  static PostgresChangeFilter buildSlugInsertFilter(String normalizedSlug) {
+    final slug = normalizedSlug.trim().toLowerCase();
+    if (slug.isEmpty) {
+      throw ArgumentError.value(
+        normalizedSlug,
+        'normalizedSlug',
+        'slug required for orders realtime filter',
+      );
+    }
+    return PostgresChangeFilter(
+      type: PostgresChangeFilterType.eq,
+      column: 'slug',
+      value: slug,
     );
   }
 
@@ -107,6 +160,7 @@ final class OrderRealtimeNotificationService {
     final channel = _channel;
     _channel = null;
     _activeSlug = null;
+    _activeRestaurantUuid = null;
     _listening = false;
 
     if (channel != null) {
@@ -140,7 +194,13 @@ final class OrderRealtimeNotificationService {
     }
 
     final slug = _activeSlug ?? RestaurantIds.snackBurgerSlug;
-    if (!SupabaseOrderService.orderMatchesSlug(order, slug)) return;
+    if (!SupabaseOrderService.orderMatchesSlug(
+      order,
+      slug,
+      restaurantUuid: _activeRestaurantUuid,
+    )) {
+      return;
+    }
 
     _notifiedOrderIds.add(order.id);
     unawaited(_showNewOrderNotification(order));

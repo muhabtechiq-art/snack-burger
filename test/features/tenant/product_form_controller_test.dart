@@ -32,6 +32,16 @@ void main() {
   late MockAdminProductRepository mockRepository;
   late MockImagePickUploadService mockImageService;
 
+  setUpAll(() {
+    registerFallbackValue(
+      XFile.fromData(
+        Uint8List.fromList([0]),
+        name: 'fallback.png',
+        mimeType: 'image/png',
+      ),
+    );
+  });
+
   setUp(() {
     mockRepository = MockAdminProductRepository();
     mockImageService = MockImagePickUploadService();
@@ -140,6 +150,48 @@ void main() {
       expect(controller!.pickedImageFile, isNull);
       expect(controller!.webImage, isNull);
       expect(controller!.existingImageUrl, isNull);
+    });
+
+    test('pickFromGallery clears picking state when user cancels', () async {
+      when(() => mockImageService.pickProductImageFromGallery())
+          .thenAnswer((_) async => null);
+
+      controller = ProductFormController(
+        productRepository: mockRepository,
+        imageService: mockImageService,
+      );
+
+      await controller!.pickFromGallery();
+
+      expect(controller!.pickingImage, isFalse);
+      expect(controller!.pickedImageFile, isNull);
+      expect(controller!.webImage, isNull);
+      expect(controller!.errorMessage, isNull);
+      verify(() => mockImageService.pickProductImageFromGallery()).called(1);
+      verifyNever(() => mockImageService.readFileBytes(any()));
+    });
+
+    test('pickFromGallery leaves picking false after successful pick', () async {
+      final bytes = Uint8List.fromList([1, 2, 3, 4]);
+      final file = XFile.fromData(bytes, name: 'photo.png', mimeType: 'image/png');
+
+      when(() => mockImageService.pickProductImageFromGallery())
+          .thenAnswer((_) async => file);
+      when(() => mockImageService.readFileBytes(any())).thenAnswer((_) async => bytes);
+
+      controller = ProductFormController(
+        productRepository: mockRepository,
+        imageService: mockImageService,
+      );
+
+      await controller!.pickFromGallery();
+
+      expect(controller!.pickingImage, isFalse);
+      expect(controller!.pickedImageFile, file);
+      expect(controller!.webImage, bytes);
+      expect(controller!.errorMessage, isNull);
+      verify(() => mockImageService.pickProductImageFromGallery()).called(1);
+      verify(() => mockImageService.readFileBytes(any())).called(1);
     });
   });
 

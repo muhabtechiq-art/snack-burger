@@ -24,11 +24,13 @@ class CustomerOrderRepository {
   Stream<List<DeliveryOrder>> watchOrdersByPhone({
     required String slug,
     required String phoneNumber,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return SupabaseOrderService.watchOrdersByPhone(
       slug: slug,
       phoneNumber: phoneNumber,
+      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
     );
   }

@@ -2,6 +2,7 @@ import '../core/config/location_feature_flags.dart';
 import '../core/config/restaurant_ids.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../core/utils/model_parse_validation.dart';
+import '../core/utils/order_tenant_match.dart';
 import 'delivery_order_status.dart';
 import 'order_model.dart';
 import 'product_model.dart' show parseModelDate;
@@ -93,6 +94,18 @@ class DeliveryOrder {
   bool get isDelivering => status == DeliveryOrderStatus.delivering;
 
   bool get isDelivered => status == DeliveryOrderStatus.delivered;
+
+  /// هل ينتمي الطلب للمطعم النشط (slug و/أو restaurant UUID)?
+  bool matchesActiveTenant({
+    required String activeSlug,
+    String? activeRestaurantUuid,
+  }) {
+    return OrderTenantMatch.matches(
+      this,
+      activeSlug: activeSlug,
+      activeRestaurantUuid: activeRestaurantUuid,
+    );
+  }
 
   factory DeliveryOrder.fromSupabase(
     Map<String, dynamic> row, {

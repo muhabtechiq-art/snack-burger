@@ -32,10 +32,21 @@ abstract final class SupabaseRestaurantService {
         return null;
       }
 
-      debugPrint(
-        '[SupabaseRestaurantService] fetchBySlug($normalized): 1 سجل',
+      final restaurant = RestaurantModel.fromMap(
+        Map<String, dynamic>.from(row),
       );
-      return RestaurantModel.fromMap(Map<String, dynamic>.from(row));
+      if (restaurant.restaurantUuid == null) {
+        debugPrint(
+          '[SupabaseRestaurantService] fetchBySlug($normalized): '
+          'restaurant_uuid is null — slug/id still usable',
+        );
+      } else {
+        debugPrint(
+          '[SupabaseRestaurantService] fetchBySlug($normalized): '
+          'restaurant_uuid=${restaurant.restaurantUuid}',
+        );
+      }
+      return restaurant;
     } on PostgrestException catch (e, stack) {
       debugPrint(
         '[SupabaseRestaurantService] fetchBySlug($normalized) فشل: '

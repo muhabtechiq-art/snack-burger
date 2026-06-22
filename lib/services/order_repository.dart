@@ -36,8 +36,14 @@ class OrderRepository {
   }
 
   /// بث الطلبات المعلقة (`pending`) من Supabase.
-  Stream<List<DeliveryOrder>> watchPendingOrders({required String slug}) {
-    return SupabaseOrderService.watchPendingOrders(slug: slug);
+  Stream<List<DeliveryOrder>> watchPendingOrders({
+    required String slug,
+    String? restaurantUuid,
+  }) {
+    return SupabaseOrderService.watchPendingOrders(
+      slug: slug,
+      restaurantUuid: restaurantUuid,
+    );
   }
 
   /// تحديث حالة الطلب في Supabase.

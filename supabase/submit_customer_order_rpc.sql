@@ -1,6 +1,9 @@
 -- RPC إنشاء طلب زبون — يربط الطلب بيوم العمل المفتوح ذرياً
 -- نفّذ يدوياً في Supabase Dashboard → SQL Editor (لا يُنفَّذ من التطبيق)
 -- آمن للتشغيل المتكرر — لا يحذف policies ولا بيانات
+--
+-- Phase 1: يحوّل slug → restaurants.restaurant_uuid ويكتبه في orders.restaurant_id
+-- business_days يُبحث عنه عبر restaurants.id (text) — بدون تغيير منطق يوم العمل
 
 DROP FUNCTION IF EXISTS public.submit_customer_order(
   text,
@@ -35,15 +38,15 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_restaurant_id text;
   v_slug text;
+  v_restaurant_text_id text;
+  v_restaurant_uuid uuid;
   v_open_day_id uuid;
   v_day_order_number integer;
 BEGIN
-  v_restaurant_id := lower(trim(p_restaurant_id));
   v_slug := lower(trim(p_slug));
 
-  IF v_restaurant_id = '' OR v_slug = '' THEN
+  IF v_slug = '' THEN
     RAISE EXCEPTION 'invalid_restaurant_scope'
       USING ERRCODE = '22023';
   END IF;
@@ -65,11 +68,27 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  -- قفل صف يوم العمل المفت open — يُسلسل الطلبات المتزامنة على نفس اليوم
+  SELECT r.id, r.restaurant_uuid
+  INTO v_restaurant_text_id, v_restaurant_uuid
+  FROM public.restaurants r
+  WHERE lower(btrim(r.slug)) = v_slug
+  LIMIT 1;
+
+  IF v_restaurant_text_id IS NULL THEN
+    RAISE EXCEPTION 'restaurant_not_found for slug: %', v_slug
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  IF v_restaurant_uuid IS NULL THEN
+    RAISE EXCEPTION 'restaurant_uuid_not_found for slug: %', v_slug
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  -- قفل صف يوم العمل المفتوح — يُسلسل الطلبات المتزامنة على نفس اليوم
   SELECT bd.id
   INTO v_open_day_id
   FROM public.business_days bd
-  WHERE bd.restaurant_id = v_restaurant_id
+  WHERE bd.restaurant_id = v_restaurant_text_id
     AND bd.status = 'open'
   ORDER BY bd.opened_at DESC
   LIMIT 1
@@ -94,6 +113,7 @@ BEGIN
     order_items,
     status,
     slug,
+    restaurant_id,
     business_day_id,
     business_day_order_number,
     location_coordinates
@@ -106,6 +126,7 @@ BEGIN
     p_order_items,
     'pending',
     v_slug,
+    v_restaurant_uuid,
     v_open_day_id,
     v_day_order_number,
     NULLIF(trim(p_location_coordinates), '')
@@ -122,7 +143,7 @@ $$;
 COMMENT ON FUNCTION public.submit_customer_order(
   text, text, text, text, text, numeric, jsonb, text
 ) IS
-  'إنشاء طلب pending مربوط بيوم العمل المفتوح مع رقم يومي — SECURITY DEFINER';
+  'إنشاء طلب pending — slug من المدخل، restaurant_id = restaurants.restaurant_uuid، business_day عبر restaurants.id — SECURITY DEFINER';
 
 REVOKE ALL ON FUNCTION public.submit_customer_order(
   text, text, text, text, text, numeric, jsonb, text
@@ -133,3 +154,17 @@ GRANT EXECUTE ON FUNCTION public.submit_customer_order(
 ) TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+-- =============================================================================
+-- اختبار بعد التنفيذ — آخر 5 طلبات
+-- =============================================================================
+SELECT
+  id,
+  slug,
+  restaurant_id,
+  business_day_id,
+  status,
+  created_at
+FROM public.orders
+ORDER BY created_at DESC NULLS LAST, id DESC
+LIMIT 5;

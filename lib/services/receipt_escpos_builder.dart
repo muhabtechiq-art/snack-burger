@@ -80,50 +80,99 @@ abstract final class ReceiptEscPosBuilder {
   }
 
   static Future<List<int>> buildOrderReceiptBytes(DeliveryOrder order) async {
+    return <int>[
+      ...await buildCashierReceiptBytes(order),
+      ...await buildKitchenReceiptBytes(order),
+    ];
+  }
+
+  /// بايتات فاتورة الكاشير فقط — ESC/POS أو raster حسب [PrinterConfig.useRasterReceipt].
+  static Future<List<int>> buildCashierReceiptBytes(DeliveryOrder order) async {
     if (PrinterConfig.useRasterReceipt) {
-      return buildOrderReceiptRasterBytes(order);
+      return buildCashierReceiptRasterBytes(order);
     }
-    return buildOrderReceiptTextBytes(order);
+    return buildCashierReceiptTextBytes(order);
+  }
+
+  /// بايتات بون المطبخ فقط — ESC/POS أو raster حسب [PrinterConfig.useRasterReceipt].
+  static Future<List<int>> buildKitchenReceiptBytes(DeliveryOrder order) async {
+    if (PrinterConfig.useRasterReceipt) {
+      return buildKitchenReceiptRasterBytes(order);
+    }
+    return buildKitchenReceiptTextBytes(order);
   }
 
   static Future<List<int>> buildOrderReceiptTextBytes(
+    DeliveryOrder order,
+  ) async {
+    return <int>[
+      ...await buildCashierReceiptTextBytes(order),
+      ...await buildKitchenReceiptTextBytes(order),
+    ];
+  }
+
+  static Future<List<int>> buildCashierReceiptTextBytes(
     DeliveryOrder order,
   ) async {
     final ctx = await _loadPrintContext();
     final generator = Generator(PaperSize.mm80, ctx.profile);
     const codePageId = PrinterConfig.arabicCodePageId;
 
-    final bytes = <int>[];
-    bytes
-      ..addAll(_beginReceipt(generator, codePageId))
-      ..addAll(await buildCashierTicket(generator, order))
-      ..addAll(generator.feed(2))
-      ..addAll(generator.cut())
-      ..addAll(_beginReceipt(generator, codePageId))
-      ..addAll(await buildKitchenTicket(generator, order))
-      ..addAll(generator.feed(2))
-      ..addAll(generator.cut());
+    return <int>[
+      ..._beginReceipt(generator, codePageId),
+      ...await buildCashierTicket(generator, order),
+      ...generator.feed(2),
+      ...generator.cut(),
+    ];
+  }
 
-    return bytes;
+  static Future<List<int>> buildKitchenReceiptTextBytes(
+    DeliveryOrder order,
+  ) async {
+    final ctx = await _loadPrintContext();
+    final generator = Generator(PaperSize.mm80, ctx.profile);
+    const codePageId = PrinterConfig.arabicCodePageId;
+
+    return <int>[
+      ..._beginReceipt(generator, codePageId),
+      ...await buildKitchenTicket(generator, order),
+      ...generator.feed(2),
+      ...generator.cut(),
+    ];
   }
 
   static Future<List<int>> buildOrderReceiptRasterBytes(
     DeliveryOrder order,
   ) async {
-    final generator = await _newGenerator();
-    final cashier = await ReceiptRasterBuilder.buildCashierImage(order);
-    final kitchen = await ReceiptRasterBuilder.buildKitchenImage(order);
-
-    final bytes = <int>[
-      ..._rasterPageBytes(generator, cashier),
-      ..._rasterPageBytes(generator, kitchen),
-    ];
+    final cashierBytes = await buildCashierReceiptRasterBytes(order);
+    final kitchenBytes = await buildKitchenReceiptRasterBytes(order);
+    final bytes = <int>[...cashierBytes, ...kitchenBytes];
 
     _log(
-      'raster order ${cashier.width}x${cashier.height}+'
-      '${kitchen.width}x${kitchen.height} '
-      '→ ${bytes.length} bytes (~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
+      'raster order → ${bytes.length} bytes '
+      '(cashier ${cashierBytes.length} + kitchen ${kitchenBytes.length}, '
+      '~${(bytes.length / 1024).toStringAsFixed(1)} KB)',
     );
+    return bytes;
+  }
+
+  static Future<List<int>> buildCashierReceiptRasterBytes(
+    DeliveryOrder order,
+  ) async {
+    final generator = await _newGenerator();
+    final cashier = await ReceiptRasterBuilder.buildCashierImage(order);
+    final bytes = _rasterPageBytes(generator, cashier);
+    _logRaster('raster cashier', cashier, bytes);
+    return bytes;
+  }
+
+  static Future<List<int>> buildKitchenReceiptRasterBytes(
+    DeliveryOrder order,
+  ) async {
+    final generator = await _newGenerator();
+    final kitchen = await ReceiptRasterBuilder.buildKitchenImage(order);
+    final bytes = _rasterPageBytes(generator, kitchen);
+    _logRaster('raster kitchen', kitchen, bytes);
     return bytes;
   }
 

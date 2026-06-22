@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/theme/tenant_palette.dart';
 import '../core/utils/model_parse_validation.dart';
 
@@ -7,6 +9,7 @@ class RestaurantModel {
     required this.id,
     required this.slug,
     required this.name,
+    this.restaurantUuid,
     this.logoUrl,
     this.bannerUrl,
     required this.primaryColorHex,
@@ -16,8 +19,15 @@ class RestaurantModel {
     this.isActive = true,
   });
 
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
   /// معرف المطعم في Supabase.
   final String id;
+
+  /// UUID المطعم — عمود `restaurants.restaurant_uuid` (nullable حتى Phase 2.3+).
+  final String? restaurantUuid;
 
   /// المعرف في المسار، مثل `snack_burger` في `/#/snack_burger`.
   final String slug;
@@ -52,6 +62,7 @@ class RestaurantModel {
       'whatsappNumber': whatsappNumber,
       'orderRoutingMode': orderRoutingMode,
       'isActive': isActive,
+      if (restaurantUuid != null) 'restaurant_uuid': restaurantUuid,
     };
   }
 
@@ -62,6 +73,7 @@ class RestaurantModel {
       id: map['id']?.toString() ?? '',
       slug: slug,
       name: map['name'] as String? ?? '',
+      restaurantUuid: _readRestaurantUuid(map),
       logoUrl: readStringField(map, [
         'logoUrl',
         'logo_url',
@@ -131,10 +143,26 @@ class RestaurantModel {
     );
   }
 
+  static String? _readRestaurantUuid(Map<String, dynamic> map) {
+    final raw = readStringField(map, ['restaurant_uuid', 'restaurantUuid']);
+    if (raw == null) return null;
+
+    final normalized = raw.toLowerCase();
+    if (_uuidPattern.hasMatch(normalized)) {
+      return normalized;
+    }
+
+    debugPrint(
+      '[RestaurantModel] invalid restaurant_uuid for id=${map['id']}: $raw',
+    );
+    return null;
+  }
+
   RestaurantModel copyWith({
     String? id,
     String? slug,
     String? name,
+    String? restaurantUuid,
     String? logoUrl,
     String? bannerUrl,
     String? primaryColorHex,
@@ -147,6 +175,7 @@ class RestaurantModel {
       id: id ?? this.id,
       slug: slug ?? this.slug,
       name: name ?? this.name,
+      restaurantUuid: restaurantUuid ?? this.restaurantUuid,
       logoUrl: logoUrl ?? this.logoUrl,
       bannerUrl: bannerUrl ?? this.bannerUrl,
       primaryColorHex: primaryColorHex ?? this.primaryColorHex,

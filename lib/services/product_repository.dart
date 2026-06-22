@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/utils/product_id_generator.dart';
@@ -8,6 +7,13 @@ import '../models/product_variants_cleanup_report.dart';
 import 'image_pick_upload_service.dart';
 import 'supabase_product_service.dart';
 
+/// مصدر doc id للمطعم عند [ProductRepository.resolveRestaurantDocId].
+enum RestaurantDocIdSource {
+  restaurantId,
+  slug,
+  legacyFallback,
+}
+
 /// واجهة مستودع المنتجات — تفوّض إلى Supabase.
 class ProductRepository {
   ProductRepository({ImagePickUploadService? imageUploadService})
@@ -15,15 +21,60 @@ class ProductRepository {
 
   final ImagePickUploadService _imageUploadService;
 
+  /// يُحدّد doc id والمصدر — للاختبار والتشخيص.
+  @visibleForTesting
+  static ({String docId, RestaurantDocIdSource source}) resolveRestaurantDocIdWithSource({
+    required String restaurantId,
+    required String slug,
+  }) {
+    final normalizedRestaurantId = restaurantId.trim().toLowerCase();
+    if (normalizedRestaurantId.isNotEmpty) {
+      return (
+        docId: normalizedRestaurantId,
+        source: RestaurantDocIdSource.restaurantId,
+      );
+    }
+
+    final normalizedSlug = slug.trim().toLowerCase();
+    if (normalizedSlug.isNotEmpty) {
+      return (
+        docId: normalizedSlug,
+        source: RestaurantDocIdSource.slug,
+      );
+    }
+
+    return (
+      docId: SupabaseProductService.defaultRestaurantId,
+      source: RestaurantDocIdSource.legacyFallback,
+    );
+  }
+
+  /// تسمية المصدر للاختبار والسجلات.
+  @visibleForTesting
+  static String restaurantDocIdSourceLabel(RestaurantDocIdSource source) {
+    return switch (source) {
+      RestaurantDocIdSource.restaurantId => 'restaurantId',
+      RestaurantDocIdSource.slug => 'slug',
+      RestaurantDocIdSource.legacyFallback => 'legacyFallback',
+    };
+  }
+
   static String resolveRestaurantDocId({
     required String restaurantId,
     required String slug,
   }) {
-    for (final raw in [restaurantId, slug, SupabaseProductService.defaultRestaurantId]) {
-      final trimmed = raw.trim();
-      if (trimmed.isNotEmpty) return trimmed.toLowerCase();
+    final resolution = resolveRestaurantDocIdWithSource(
+      restaurantId: restaurantId,
+      slug: slug,
+    );
+    if (resolution.source == RestaurantDocIdSource.legacyFallback) {
+      debugPrint(
+        '[ProductRepository] WARNING legacy tenant fallback: restaurantId and '
+        'slug both empty — using ${SupabaseProductService.defaultRestaurantId} '
+        '(temporary; pass explicit tenant scope)',
+      );
     }
-    return SupabaseProductService.defaultRestaurantId;
+    return resolution.docId;
   }
 
   String _docId({
@@ -85,7 +136,10 @@ class ProductRepository {
     required String slug,
     required String productId,
   }) {
-    return SupabaseProductService.fetchProductById(productId);
+    return SupabaseProductService.fetchProductById(
+      productId,
+      restaurantId: _docId(restaurantId: restaurantId, slug: slug),
+    );
   }
 
   /// يرفع صورة المنتج إلى Supabase Storage ويعيد الرابط العام.
@@ -127,6 +181,7 @@ class ProductRepository {
     return SupabaseProductService.saveProduct(
       product: payload,
       imageUrl: imageUrl,
+      tenantRestaurantId: docId,
     );
   }
 

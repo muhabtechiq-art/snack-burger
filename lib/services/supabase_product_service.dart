@@ -13,6 +13,13 @@ import '../models/product_model.dart';
 import '../models/product_variants_cleanup_report.dart';
 import 'supabase_error_reporter.dart';
 
+/// مصدر `restaurant_id` عند [SupabaseProductService.saveProduct].
+enum ProductSaveRestaurantIdSource {
+  productRestaurantId,
+  callerTenant,
+  legacyFallback,
+}
+
 /// منتجات المنيو — جدول `products` + `product_addons` في Supabase.
 abstract final class SupabaseProductService {
   SupabaseProductService._();
@@ -93,59 +100,66 @@ abstract final class SupabaseProductService {
     return null;
   }
 
-  /// يجلب صفوف الأحجام — inFilter ثم fallback لجلب الكل ومطابقة محلية.
+  /// هل يُسمح باستعلام `product_variants` لـ [productIds] (بدون full-table fallback).
+  @visibleForTesting
+  static bool hasVariantTableQueryTargets(List<String> productIds) {
+    if (productIds.isEmpty) return false;
+    return _serializedProductIds(productIds).isNotEmpty;
+  }
+
+  /// يجلب صفوف الأحجام — `inFilter(product_id)` فقط؛ بدون جلب الجدول كاملاً.
   static Future<List<dynamic>> _fetchVariantRowsForProductIds(
     List<String> productIds,
   ) async {
+    if (productIds.isEmpty) {
+      return const [];
+    }
+
     final serialized = _serializedProductIds(productIds);
+    if (serialized.isEmpty) {
+      debugPrint(
+        '[SupabaseProductService] WARNING product_variants: no serializable '
+        'product_ids (${productIds.length} raw) — skipping table fetch; '
+        'jsonb variants on products row remain in use',
+      );
+      return const [];
+    }
+
     debugPrint(
       '[SupabaseProductService] inFilter product_ids=$serialized raw=$productIds',
     );
 
-    final filtered = await _client
-        .from(variantsTableName)
-        .select()
-        .inFilter('product_id', serialized);
+    try {
+      final filtered = await _client
+          .from(variantsTableName)
+          .select()
+          .inFilter('product_id', serialized);
 
-    final filteredRows = filtered as List;
-    if (filteredRows.isNotEmpty) {
-      return filteredRows;
-    }
-
-    debugPrint(
-      '[SupabaseProductService] inFilter=0 — جلب كل product_variants '
-      'للمطابقة المحلية',
-    );
-
-    final allRows = await _client.from(variantsTableName).select();
-    final all = allRows as List;
-    debugPrint(
-      '[SupabaseProductService] إجمالي product_variants في الجدول=${all.length}',
-    );
-
-    for (final entry in all.take(5)) {
-      if (entry is! Map) continue;
-      final map = Map<String, dynamic>.from(entry);
-      debugPrint(
-        '  صف variant: product_id=${map['product_id']} '
-        'name=${map['name'] ?? map['label'] ?? map['size']} '
-        'keys=${map.keys.toList()}',
-      );
-    }
-
-    if (all.isEmpty) return const [];
-
-    final wanted = productIds.map(_productIdKey).toSet();
-    return all.where((entry) {
-      if (entry is! Map) return false;
-      final map = Map<String, dynamic>.from(entry);
-      final pid = _readVariantProductId(map);
-      if (pid.isEmpty) return false;
-      for (final id in wanted) {
-        if (_productIdsMatch(pid, id)) return true;
+      final filteredRows = filtered as List;
+      if (filteredRows.isEmpty) {
+        debugPrint(
+          '[SupabaseProductService] WARNING product_variants: inFilter returned '
+          '0 rows for ${serialized.length} product_id(s) — full-table fallback '
+          'disabled; jsonb variants on products row remain in use',
+        );
+        return const [];
       }
-      return false;
-    }).toList(growable: false);
+      return filteredRows;
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[SupabaseProductService] WARNING product_variants: inFilter failed '
+        'code=${e.code} message=${e.message} — full-table fallback disabled; '
+        'jsonb variants on products row remain in use',
+      );
+      return const [];
+    } catch (e, stack) {
+      debugPrint(
+        '[SupabaseProductService] WARNING product_variants: inFilter failed '
+        '($e) — full-table fallback disabled; jsonb variants remain in use\n'
+        '$stack',
+      );
+      return const [];
+    }
   }
 
   static ({List<ProductVariant> variants, String source})
@@ -198,13 +212,29 @@ abstract final class SupabaseProductService {
     );
   }
 
+  static String _normalizeRestaurantId(String? restaurantId) =>
+      restaurantId?.trim().toLowerCase() ?? '';
+
+  /// وصف فلتر server-side لقراءة/بث المنتجات — للاختبار والسجلات.
+  @visibleForTesting
+  static String productsServerFilterLabel(String? restaurantId) {
+    final normalized = _normalizeRestaurantId(restaurantId);
+    if (normalized.isEmpty) return 'none';
+    return 'restaurant_id=eq.$normalized';
+  }
+
   static Future<List<ProductModel>> fetchProducts({
     String? restaurantId,
   }) async {
     try {
       return await NetworkTimeouts.run(() async {
-        debugPrint('[SupabaseProductService] جلب المنتجات من $tableName...');
-        final fetchResult = await _fetchProductRowsWithRelations();
+        debugPrint(
+          '[SupabaseProductService] جلب المنتجات من $tableName... '
+          'serverFilter=${productsServerFilterLabel(restaurantId)}',
+        );
+        final fetchResult = await _fetchProductRowsWithRelations(
+          restaurantId: restaurantId,
+        );
         final products = _parseAndFilter(fetchResult.rows, restaurantId);
         final enriched = await _enrichProductsWithRelations(
           products,
@@ -225,12 +255,25 @@ abstract final class SupabaseProductService {
 
   /// نتيجة جلب صفوف المنتجات — يُعلَم هل nested embed نجح.
   static Future<({List<Map<String, dynamic>> rows, bool relationsEmbedded})>
-      _fetchProductRowsWithRelations() async {
+      _fetchProductRowsWithRelations({String? restaurantId}) async {
+    final normalized = _normalizeRestaurantId(restaurantId);
+    if (normalized.isEmpty) {
+      debugPrint(
+        '[SupabaseProductService] fetchProducts: empty restaurantId — '
+        'server filter skipped; client _filterByRestaurant guard active',
+      );
+    }
+
     try {
-      final rows = await _client.from(tableName).select(_selectWithRelations);
+      var query = _client.from(tableName).select(_selectWithRelations);
+      if (normalized.isNotEmpty) {
+        query = query.eq('restaurant_id', normalized);
+      }
+      final rows = await query;
       debugPrint(
         '[SupabaseProductService] nested select: '
-        '${(rows as List).length} صف',
+        '${(rows as List).length} صف '
+        '(serverFilter=${productsServerFilterLabel(restaurantId)})',
       );
       return (
         rows: List<Map<String, dynamic>>.from(rows),
@@ -241,7 +284,11 @@ abstract final class SupabaseProductService {
         '[SupabaseProductService] nested select فشل — fallback select(*): '
         '${e.message}',
       );
-      final rows = await _client.from(tableName).select();
+      var query = _client.from(tableName).select();
+      if (normalized.isNotEmpty) {
+        query = query.eq('restaurant_id', normalized);
+      }
+      final rows = await query;
       return (
         rows: List<Map<String, dynamic>>.from(rows),
         relationsEmbedded: false,
@@ -254,20 +301,35 @@ abstract final class SupabaseProductService {
   }) {
     return _resilientProductsStream(
       restaurantId: restaurantId,
-      streamTag: 'watchProducts(restaurantId=$restaurantId)',
+      streamTag:
+          'watchProducts(restaurantId=$restaurantId,'
+          'serverFilter=${productsServerFilterLabel(restaurantId)})',
     );
+  }
+
+  /// Realtime rows stream لـ [watchProducts] — `restaurant_id=eq.<id>` إن أمكن.
+  static Stream<List<Map<String, dynamic>>> _productsRowsStream(
+    String normalizedRestaurantId,
+  ) {
+    final builder = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedRestaurantId.isEmpty) {
+      debugPrint(
+        '[SupabaseProductService] watchProducts: empty restaurantId — '
+        'server filter skipped; client _filterByRestaurant guard active',
+      );
+      return builder;
+    }
+    return builder.eq('restaurant_id', normalizedRestaurantId);
   }
 
   static Stream<List<ProductModel>> _productsSourceStream({
     required String? restaurantId,
   }) {
-    return _client
-        .from(tableName)
-        .stream(primaryKey: const ['id'])
-        .asyncMap((rows) async {
-          final products = _parseAndFilter(rows, restaurantId);
-          return _enrichProductsWithRelations(products);
-        });
+    final normalized = _normalizeRestaurantId(restaurantId);
+    return _productsRowsStream(normalized).asyncMap((rows) async {
+      final products = _parseAndFilter(rows, restaurantId);
+      return _enrichProductsWithRelations(products);
+    });
   }
 
   /// اشتراك Realtime مع إلغاء آمن وإعادة اتصال عند انقطاع WebSocket (مثلاً 1006).
@@ -368,14 +430,48 @@ abstract final class SupabaseProductService {
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 
-  static Future<ProductModel?> fetchProductById(String productId) async {
+  /// وصف فلتر server-side لـ [fetchProductById] — للاختبار والسجلات.
+  @visibleForTesting
+  static String fetchProductByIdServerFilterLabel(String? restaurantId) {
+    return productsServerFilterLabel(restaurantId);
+  }
+
+  /// تحقق client-side بعد الجلب — يُتخطّى عند restaurantId فارغ.
+  @visibleForTesting
+  static bool productBelongsToRestaurantScope(
+    ProductModel product,
+    String? restaurantId,
+  ) {
+    final normalized = _normalizeRestaurantId(restaurantId);
+    if (normalized.isEmpty) return true;
+    return product.restaurantId.trim().toLowerCase() == normalized;
+  }
+
+  static Future<ProductModel?> fetchProductById(
+    String productId, {
+    String? restaurantId,
+  }) async {
     if (productId.trim().isEmpty) return null;
 
+    final normalized = _normalizeRestaurantId(restaurantId);
+    if (normalized.isEmpty) {
+      debugPrint(
+        '[SupabaseProductService] fetchProductById: empty restaurantId — '
+        'server filter skipped; client tenant guard skipped',
+      );
+    } else {
+      debugPrint(
+        '[SupabaseProductService] fetchProductById($productId) '
+        'serverFilter=${fetchProductByIdServerFilterLabel(restaurantId)}',
+      );
+    }
+
     try {
-      final row = await _client
-          .from(tableName)
-          .select()
-          .eq('id', productId)
+      var query = _client.from(tableName).select().eq('id', productId.trim());
+      if (normalized.isNotEmpty) {
+        query = query.eq('restaurant_id', normalized);
+      }
+      final row = await query
           .maybeSingle()
           .timeout(
             const Duration(seconds: 20),
@@ -400,12 +496,29 @@ abstract final class SupabaseProductService {
         return null;
       }
 
+      if (!productBelongsToRestaurantScope(product, restaurantId)) {
+        debugPrint(
+          '[SupabaseProductService] WARNING fetchProductById($productId): '
+          'product restaurant_id=${product.restaurantId} outside scope '
+          '($normalized)',
+        );
+        return null;
+      }
+
       final enriched = await _enrichProductsWithRelations([product]);
       debugPrint(
         '[SupabaseProductService] fetchProductById($productId): '
         '${enriched.isEmpty ? 1 : enriched.length} منتج',
       );
-      return enriched.isEmpty ? product : enriched.first;
+      final resolved = enriched.isEmpty ? product : enriched.first;
+      if (!productBelongsToRestaurantScope(resolved, restaurantId)) {
+        debugPrint(
+          '[SupabaseProductService] WARNING fetchProductById($productId): '
+          'enriched product outside restaurant scope ($normalized)',
+        );
+        return null;
+      }
+      return resolved;
     } catch (e, stack) {
       debugPrint('[SupabaseProductService] fetchProductById فشل: $e\n$stack');
       reportSupabaseError(e, stack, operation: 'fetchProductById');
@@ -413,9 +526,74 @@ abstract final class SupabaseProductService {
     }
   }
 
+  /// يُحدّد restaurant_id للحفظ — للاختبار والتشخيص.
+  @visibleForTesting
+  static ({
+    String restaurantId,
+    ProductSaveRestaurantIdSource source,
+  }) resolveSaveProductRestaurantId({
+    required ProductModel product,
+    String? tenantRestaurantId,
+  }) {
+    final fromProduct = product.restaurantId.trim().toLowerCase();
+    if (fromProduct.isNotEmpty) {
+      return (
+        restaurantId: fromProduct,
+        source: ProductSaveRestaurantIdSource.productRestaurantId,
+      );
+    }
+
+    final fromCaller = tenantRestaurantId?.trim().toLowerCase() ?? '';
+    if (fromCaller.isNotEmpty) {
+      return (
+        restaurantId: fromCaller,
+        source: ProductSaveRestaurantIdSource.callerTenant,
+      );
+    }
+
+    return (
+      restaurantId: defaultRestaurantId,
+      source: ProductSaveRestaurantIdSource.legacyFallback,
+    );
+  }
+
+  @visibleForTesting
+  static String saveProductRestaurantIdSourceLabel(
+    ProductSaveRestaurantIdSource source,
+  ) {
+    return switch (source) {
+      ProductSaveRestaurantIdSource.productRestaurantId => 'productRestaurantId',
+      ProductSaveRestaurantIdSource.callerTenant => 'callerTenant',
+      ProductSaveRestaurantIdSource.legacyFallback => 'legacyFallback',
+    };
+  }
+
+  static void _logSaveProductRestaurantIdResolution(
+    ({String restaurantId, ProductSaveRestaurantIdSource source}) resolution,
+  ) {
+    switch (resolution.source) {
+      case ProductSaveRestaurantIdSource.productRestaurantId:
+        return;
+      case ProductSaveRestaurantIdSource.callerTenant:
+        debugPrint(
+          '[SupabaseProductService] WARNING saveProduct: product.restaurantId '
+          'empty — using caller tenant scope (${resolution.restaurantId})',
+        );
+        return;
+      case ProductSaveRestaurantIdSource.legacyFallback:
+        debugPrint(
+          '[SupabaseProductService] WARNING legacy tenant fallback on '
+          'saveProduct: product.restaurantId and caller tenant both empty — '
+          'using $defaultRestaurantId (temporary; pass explicit tenant scope)',
+        );
+        return;
+    }
+  }
+
   static Future<String> saveProduct({
     required ProductModel product,
     String? imageUrl,
+    String? tenantRestaurantId,
   }) async {
     final id = product.id.trim().isNotEmpty
         ? product.id.trim()
@@ -425,9 +603,20 @@ abstract final class SupabaseProductService {
       fallbackUrl: product.imageUrl,
     );
 
-    final restaurantId = product.restaurantId.trim().isNotEmpty
-        ? product.restaurantId.trim()
-        : defaultRestaurantId;
+    final tenantResolution = resolveSaveProductRestaurantId(
+      product: product,
+      tenantRestaurantId: tenantRestaurantId,
+    );
+    final restaurantId = tenantResolution.restaurantId;
+    _logSaveProductRestaurantIdResolution(tenantResolution);
+
+    if (restaurantId.isEmpty) {
+      throw ArgumentError.value(
+        restaurantId,
+        'restaurantId',
+        'saveProduct refused empty restaurant_id',
+      );
+    }
 
     await _assertNoDuplicateProduct(
       restaurantId: restaurantId,

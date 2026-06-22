@@ -10,6 +10,7 @@ import '../core/config/restaurant_ids.dart';
 import '../core/config/stability_phase1_flags.dart';
 import '../core/network/network_timeout.dart';
 import '../core/observability/app_telemetry.dart';
+import '../core/utils/order_tenant_match.dart';
 import '../core/utils/business_day_order_aggregation.dart';
 import '../core/utils/business_day_scope.dart';
 import '../core/utils/delivery_coordinates.dart';
@@ -46,6 +47,18 @@ abstract final class SupabaseOrderService {
       return null;
     }
     return trimmed.toLowerCase();
+  }
+
+  static bool _matchesOrderTenant(
+    DeliveryOrder order, {
+    required String activeSlug,
+    String? restaurantUuid,
+  }) {
+    return OrderTenantMatch.matches(
+      order,
+      activeSlug: activeSlug,
+      activeRestaurantUuid: restaurantUuid,
+    );
   }
 
   static String? _resolveLocationCoordinates({
@@ -234,6 +247,7 @@ abstract final class SupabaseOrderService {
   static Future<List<DeliveryOrder>> fetchPendingOrdersCreatedAfter({
     required String slug,
     required DateTime after,
+    String? restaurantUuid,
   }) async {
     final normalized = _normalizeSlug(slug);
     try {
@@ -249,7 +263,11 @@ abstract final class SupabaseOrderService {
           rows: List<Map<String, dynamic>>.from(rows),
           include: (order) =>
               order.status == DeliveryOrderStatus.pending &&
-              _orderMatchesSlug(order, normalized),
+              _matchesOrderTenant(
+                order,
+                activeSlug: normalized,
+                restaurantUuid: restaurantUuid,
+              ),
           compare: (a, b) => b.createdAt.compareTo(a.createdAt),
           logParseErrors: false,
           fallbackSlug: normalized,
@@ -336,29 +354,41 @@ abstract final class SupabaseOrderService {
   }
 
   /// بث الطلبات ذات الحالة `pending`.
+  ///
+  /// Server-side: `.stream().eq('slug', normalized)` — pending stream فقط.
+  /// Client-side: pending status + [OrderTenantMatch] كطبقة ثانية.
   static Stream<List<DeliveryOrder>> watchPendingOrders({
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchPendingOrders(slug: slug);
+      return _legacyWatchPendingOrders(
+        slug: slug,
+        restaurantUuid: restaurantUuid,
+      );
     }
     final normalized = _normalizeSlug(slug);
 
-    // بث كل التغييرات ثم فلترة pending محلياً — يزيل الطلب فور تحديث الحالة إلى accepted.
+    // بث التغييرات للمطعم (slug filter) ثم فلترة pending محلياً — يزيل الطلب فور accepted.
     return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
+      sourceFactory: () => _pendingOrdersRowsStream(normalized),
       transform: (rows) => _mapRowsToOrders(
         rows: rows,
         include: (order) =>
             order.status == DeliveryOrderStatus.pending &&
-            _orderMatchesSlug(order, normalized),
+            _matchesOrderTenant(
+              order,
+              activeSlug: normalized,
+              restaurantUuid: restaurantUuid,
+            ),
         compare: (a, b) => a.createdAt.compareTo(b.createdAt),
         logParseErrors: true,
         fallbackSlug: normalized,
       ),
-      streamTag: 'watchPendingOrders(slug=$normalized)',
+      streamTag:
+          'watchPendingOrders(slug=$normalized,'
+          'serverFilter=${pendingOrdersStreamServerFilterLabel(slug)})',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
@@ -393,9 +423,14 @@ abstract final class SupabaseOrderService {
   }
 
   /// بث طلبات الزبون حسب رقم الهاتف والمطعم (جدول `orders`).
+  ///
+  /// Server-side: `.stream().eq('slug', normalized)` — phone stream فقط
+  /// (فلتر واحد؛ نافذة الوقت client-side).
+  /// Client-side: phone match + [OrderTenantMatch] + customer visibility rules.
   static Stream<List<DeliveryOrder>> watchOrdersByPhone({
     required String slug,
     required String phoneNumber,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     final normalizedSlug = _normalizeSlug(slug);
@@ -408,43 +443,59 @@ abstract final class SupabaseOrderService {
       return _legacyWatchOrdersByPhone(
         slug: normalizedSlug,
         phoneNumber: normalizedPhone,
+        restaurantUuid: restaurantUuid,
       );
     }
 
     return _resilientOrdersStream(
-      sourceFactory: () => _watchRecentOrderRows(),
+      sourceFactory: () => _ordersByPhoneRowsStream(normalizedSlug),
       transform: (rows) => _filterOrdersByPhoneAndSlug(
         rows: rows,
         normalizedSlug: normalizedSlug,
         normalizedPhone: normalizedPhone,
+        restaurantUuid: restaurantUuid,
       ),
-      streamTag: 'watchOrdersByPhone(slug=$normalizedSlug)',
+      streamTag:
+          'watchOrdersByPhone(slug=$normalizedSlug,'
+          'serverFilter=${ordersByPhoneStreamServerFilterLabel(slug)})',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
 
   /// بث كل الطلبات النشطة (غير المُسلّمة/الملغية) مع فلترة المطعم.
+  ///
+  /// Server-side: `.stream().eq('slug', normalized)` — active stream فقط.
+  /// Client-side: active statuses + [OrderTenantMatch] كطبقة ثانية.
   static Stream<List<DeliveryOrder>> watchActiveOrders({
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchActiveOrders(slug: slug);
+      return _legacyWatchActiveOrders(
+        slug: slug,
+        restaurantUuid: restaurantUuid,
+      );
     }
     final normalized = _normalizeSlug(slug);
 
     return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
+      sourceFactory: () => _activeOrdersRowsStream(normalized),
       transform: (rows) => _mapRowsToOrders(
         rows: rows,
         include: (order) =>
             _activeOrderStatuses.contains(order.status) &&
-            _orderMatchesSlug(order, normalized),
+            _matchesOrderTenant(
+              order,
+              activeSlug: normalized,
+              restaurantUuid: restaurantUuid,
+            ),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
         fallbackSlug: normalized,
       ),
-      streamTag: 'watchActiveOrders(slug=$normalized)',
+      streamTag:
+          'watchActiveOrders(slug=$normalized,'
+          'serverFilter=${activeOrdersStreamServerFilterLabel(slug)})',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
@@ -481,9 +532,16 @@ abstract final class SupabaseOrderService {
   /// لوحة الإدارة: معلّق كما هو؛ مرفوض من اليوم المحلي فقط.
   static bool _includeKitchenDashboardOrder(
     DeliveryOrder order,
-    String normalizedSlug,
-  ) {
-    if (!_orderMatchesSlug(order, normalizedSlug)) return false;
+    String normalizedSlug, {
+    String? restaurantUuid,
+  }) {
+    if (!_matchesOrderTenant(
+      order,
+      activeSlug: normalizedSlug,
+      restaurantUuid: restaurantUuid,
+    )) {
+      return false;
+    }
     if (order.isPending) return true;
     if (order.isRejected) {
       return RejectedOrdersConfig.isRejectedVisibleForCurrentBusinessDay(order);
@@ -530,25 +588,37 @@ abstract final class SupabaseOrderService {
   }
 
   /// بث طلبات المطبخ: معلّقة + مرفوضة (لتبويبي لوحة الإدارة).
+  ///
+  /// Server-side: `.stream().eq('slug', normalized)` — kitchen dashboard stream فقط.
+  /// Client-side: kitchen include rules + [OrderTenantMatch] كطبقة ثانية.
   static Stream<List<DeliveryOrder>> watchKitchenDashboardOrders({
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchKitchenDashboardOrders(slug: slug);
+      return _legacyWatchKitchenDashboardOrders(
+        slug: slug,
+        restaurantUuid: restaurantUuid,
+      );
     }
     final normalized = _normalizeSlug(slug);
 
     return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
+      sourceFactory: () => _kitchenDashboardOrdersRowsStream(normalized),
       transform: (rows) => _mapRowsToOrders(
         rows: rows,
-        include: (order) => _includeKitchenDashboardOrder(order, normalized),
+        include: (order) => _includeKitchenDashboardOrder(
+          order,
+          normalized,
+          restaurantUuid: restaurantUuid,
+        ),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
         fallbackSlug: normalized,
       ),
-      streamTag: 'watchKitchenDashboardOrders(slug=$normalized)',
+      streamTag:
+          'watchKitchenDashboardOrders(slug=$normalized,'
+          'serverFilter=${kitchenDashboardOrdersStreamServerFilterLabel(slug)})',
       onHealthChanged: _streamHealthCallback(onHealthChanged),
     );
   }
@@ -763,6 +833,75 @@ abstract final class SupabaseOrderService {
 
   static String _normalizeSlug(String slug) => slug.trim().toLowerCase();
 
+  /// Realtime rows stream لـ [watchPendingOrders] — `slug=eq.<slug>` إن أمكن.
+  static Stream<List<Map<String, dynamic>>> _pendingOrdersRowsStream(
+    String normalizedSlug,
+  ) {
+    final builder = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedSlug.isEmpty) {
+      debugPrint(
+        '[SupabaseOrderService] watchPendingOrders: empty slug — '
+        'server filter skipped; client OrderTenantMatch guard active',
+      );
+      return builder;
+    }
+    return builder.eq('slug', normalizedSlug);
+  }
+
+  /// وصف فلتر Realtime server-side لـ pending — للاختبار والسجلات.
+  @visibleForTesting
+  static String pendingOrdersStreamServerFilterLabel(String slug) {
+    final normalized = _normalizeSlug(slug);
+    if (normalized.isEmpty) return 'none';
+    return 'slug=eq.$normalized';
+  }
+
+  /// Realtime rows stream لـ [watchActiveOrders] — `slug=eq.<slug>` إن أمكن.
+  static Stream<List<Map<String, dynamic>>> _activeOrdersRowsStream(
+    String normalizedSlug,
+  ) {
+    final builder = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedSlug.isEmpty) {
+      debugPrint(
+        '[SupabaseOrderService] watchActiveOrders: empty slug — '
+        'server filter skipped; client OrderTenantMatch guard active',
+      );
+      return builder;
+    }
+    return builder.eq('slug', normalizedSlug);
+  }
+
+  /// وصف فلتر Realtime server-side لـ active — للاختبار والسجلات.
+  @visibleForTesting
+  static String activeOrdersStreamServerFilterLabel(String slug) {
+    final normalized = _normalizeSlug(slug);
+    if (normalized.isEmpty) return 'none';
+    return 'slug=eq.$normalized';
+  }
+
+  /// Realtime rows stream لـ [watchKitchenDashboardOrders] — `slug=eq.<slug>` إن أمكن.
+  static Stream<List<Map<String, dynamic>>> _kitchenDashboardOrdersRowsStream(
+    String normalizedSlug,
+  ) {
+    final builder = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedSlug.isEmpty) {
+      debugPrint(
+        '[SupabaseOrderService] watchKitchenDashboardOrders: empty slug — '
+        'server filter skipped; client OrderTenantMatch guard active',
+      );
+      return builder;
+    }
+    return builder.eq('slug', normalizedSlug);
+  }
+
+  /// وصف فلتر Realtime server-side لـ kitchen dashboard — للاختبار والسجلات.
+  @visibleForTesting
+  static String kitchenDashboardOrdersStreamServerFilterLabel(String slug) {
+    final normalized = _normalizeSlug(slug);
+    if (normalized.isEmpty) return 'none';
+    return 'slug=eq.$normalized';
+  }
+
   /// أقدم وقت إنشاء يُجلب في بث «طلباتي» (UTC ISO8601).
   static String _customerOrdersCreatedAfterIso() {
     return DateTime.now()
@@ -771,11 +910,30 @@ abstract final class SupabaseOrderService {
         .toIso8601String();
   }
 
-  static Stream<List<Map<String, dynamic>>> _watchRecentOrderRows() {
-    return _client
-        .from(tableName)
-        .stream(primaryKey: const ['id'])
-        .gte('created_at', _customerOrdersCreatedAfterIso());
+  /// Realtime rows stream لـ [watchOrdersByPhone].
+  ///
+  /// Supabase `.stream()` يقبل فلتر server-side واحد فقط؛ نُفضّل `slug=eq`.
+  /// نافذة 6 ساعات تبقى client-side عبر [_includeCustomerPhoneOrder].
+  static Stream<List<Map<String, dynamic>>> _ordersByPhoneRowsStream(
+    String normalizedSlug,
+  ) {
+    final base = _client.from(tableName).stream(primaryKey: const ['id']);
+    if (normalizedSlug.isEmpty) {
+      debugPrint(
+        '[SupabaseOrderService] watchOrdersByPhone: empty slug — '
+        'server filter skipped; client OrderTenantMatch guard active',
+      );
+      return base.gte('created_at', _customerOrdersCreatedAfterIso());
+    }
+    return base.eq('slug', normalizedSlug);
+  }
+
+  /// وصف فلتر Realtime server-side لـ phone orders — للاختبار والسجلات.
+  @visibleForTesting
+  static String ordersByPhoneStreamServerFilterLabel(String slug) {
+    final normalized = _normalizeSlug(slug);
+    if (normalized.isEmpty) return 'none';
+    return 'slug=eq.$normalized';
   }
 
   /// يحوّل صف Supabase إلى [DeliveryOrder] مع تخطّي الصفوف التالفة.
@@ -839,29 +997,37 @@ abstract final class SupabaseOrderService {
     return orders;
   }
 
-  /// هل ينتمي الطلب إلى المطعم المحدد بالـ slug؟
-  static bool orderMatchesSlug(DeliveryOrder order, String slug) {
-    return _orderMatchesSlug(order, _normalizeSlug(slug));
-  }
-
-  static bool _orderMatchesSlug(DeliveryOrder order, String normalizedSlug) {
-    final orderSlug = order.slug.trim().toLowerCase();
-    final orderRestaurant = order.restaurantId.trim().toLowerCase();
-    if (orderSlug.isEmpty && orderRestaurant.isEmpty) return true;
-    return orderSlug == normalizedSlug || orderRestaurant == normalizedSlug;
+  /// هل ينتمي الطلب إلى المطعم النشط (slug و/أو restaurant UUID)?
+  static bool orderMatchesSlug(
+    DeliveryOrder order,
+    String slug, {
+    String? restaurantUuid,
+  }) {
+    return OrderTenantMatch.matches(
+      order,
+      activeSlug: slug,
+      activeRestaurantUuid: restaurantUuid,
+    );
   }
 
   static List<DeliveryOrder> _filterOrdersByPhoneAndSlug({
     required List<Map<String, dynamic>> rows,
     required String normalizedSlug,
     required String normalizedPhone,
+    String? restaurantUuid,
   }) {
     return _mapRowsToOrders(
       rows: rows,
       include: (order) {
         final orderPhone = IraqiPhoneValidator.normalize(order.customerPhone);
         if (orderPhone != normalizedPhone) return false;
-        if (!_orderMatchesSlug(order, normalizedSlug)) return false;
+        if (!_matchesOrderTenant(
+          order,
+          activeSlug: normalizedSlug,
+          restaurantUuid: restaurantUuid,
+        )) {
+          return false;
+        }
         return _includeCustomerPhoneOrder(order);
       },
       compare: (a, b) => b.createdAt.compareTo(a.createdAt),
@@ -1017,17 +1183,22 @@ abstract final class SupabaseOrderService {
     );
   }
 
-  /// Legacy path kept as strict rollback target.
+  /// Legacy path kept as strict rollback target — نفس فلتر slug server-side.
   static Stream<List<DeliveryOrder>> _legacyWatchPendingOrders({
     required String slug,
+    String? restaurantUuid,
   }) {
     final normalized = _normalizeSlug(slug);
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+    return _pendingOrdersRowsStream(normalized).map(
       (rows) => _mapRowsToOrders(
         rows: rows,
         include: (order) =>
             order.status == DeliveryOrderStatus.pending &&
-            _orderMatchesSlug(order, normalized),
+            _matchesOrderTenant(
+              order,
+              activeSlug: normalized,
+              restaurantUuid: restaurantUuid,
+            ),
         compare: (a, b) => a.createdAt.compareTo(b.createdAt),
         fallbackSlug: normalized,
       ),
@@ -1036,14 +1207,19 @@ abstract final class SupabaseOrderService {
 
   static Stream<List<DeliveryOrder>> _legacyWatchActiveOrders({
     required String slug,
+    String? restaurantUuid,
   }) {
     final normalized = _normalizeSlug(slug);
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+    return _activeOrdersRowsStream(normalized).map(
       (rows) => _mapRowsToOrders(
         rows: rows,
         include: (order) =>
             _activeOrderStatuses.contains(order.status) &&
-            _orderMatchesSlug(order, normalized),
+            _matchesOrderTenant(
+              order,
+              activeSlug: normalized,
+              restaurantUuid: restaurantUuid,
+            ),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
         fallbackSlug: normalized,
       ),
@@ -1052,12 +1228,17 @@ abstract final class SupabaseOrderService {
 
   static Stream<List<DeliveryOrder>> _legacyWatchKitchenDashboardOrders({
     required String slug,
+    String? restaurantUuid,
   }) {
     final normalized = _normalizeSlug(slug);
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
+    return _kitchenDashboardOrdersRowsStream(normalized).map(
       (rows) => _mapRowsToOrders(
         rows: rows,
-        include: (order) => _includeKitchenDashboardOrder(order, normalized),
+        include: (order) => _includeKitchenDashboardOrder(
+          order,
+          normalized,
+          restaurantUuid: restaurantUuid,
+        ),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
         fallbackSlug: normalized,
       ),
@@ -1067,12 +1248,14 @@ abstract final class SupabaseOrderService {
   static Stream<List<DeliveryOrder>> _legacyWatchOrdersByPhone({
     required String slug,
     required String phoneNumber,
+    String? restaurantUuid,
   }) {
-    return _watchRecentOrderRows().map(
+    return _ordersByPhoneRowsStream(slug).map(
       (rows) => _filterOrdersByPhoneAndSlug(
         rows: rows,
         normalizedSlug: slug,
         normalizedPhone: phoneNumber,
+        restaurantUuid: restaurantUuid,
       ),
     );
   }

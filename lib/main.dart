@@ -73,7 +73,10 @@ Future<void> main() async {
   final businessDayNotifier = BusinessDayNotifier();
   final authNotifier = AuthNotifier();
   await authNotifier.waitUntilReady();
-  await _startOrderRealtimeNotificationsIfAdmin(authNotifier);
+  await _startOrderRealtimeNotificationsIfAdmin(
+    authNotifier,
+    tenantNotifier,
+  );
 
   final router = createAppRouter(authNotifier);
 
@@ -111,6 +114,7 @@ Future<void> main() async {
 
 Future<void> _startOrderRealtimeNotificationsIfAdmin(
   AuthNotifier authNotifier,
+  ActiveRestaurantNotifier tenantNotifier,
 ) async {
   if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
 
@@ -119,13 +123,25 @@ Future<void> _startOrderRealtimeNotificationsIfAdmin(
 
   Future<void> sync() async {
     if (authNotifier.isAdminAuthorized) {
-      await service.start(slug: RestaurantIds.snackBurgerSlug);
+      final slug = RestaurantIds.snackBurgerSlug;
+      if (tenantNotifier.restaurant == null ||
+          tenantNotifier.restaurant!.slug != slug) {
+        await tenantNotifier.resolveSlug(slug);
+      }
+      final restaurant = tenantNotifier.restaurant;
+      await service.start(
+        slug: restaurant?.slug ?? slug,
+        restaurantUuid: restaurant?.restaurantUuid,
+      );
     } else {
       await service.stop();
     }
   }
 
   authNotifier.addListener(() {
+    unawaited(sync());
+  });
+  tenantNotifier.addListener(() {
     unawaited(sync());
   });
   await sync();

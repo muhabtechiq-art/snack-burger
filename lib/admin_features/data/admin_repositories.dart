@@ -42,14 +42,17 @@ class AdminOrderRepository {
   Stream<List<DeliveryOrder>> _watchScopedOrderStream({
     required String restaurantId,
     required String slug,
+    String? restaurantUuid,
     required Stream<List<DeliveryOrder>> Function({
       required String slug,
+      String? restaurantUuid,
       ValueChanged<StreamHealth>? onHealthChanged,
     }) watch,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return watch(
       slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
+      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
     );
   }
@@ -87,11 +90,13 @@ class AdminOrderRepository {
   Stream<List<DeliveryOrder>> watchPendingOrders({
     required String restaurantId,
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
+      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
       watch: SupabaseOrderService.watchPendingOrders,
     );
@@ -101,21 +106,25 @@ class AdminOrderRepository {
     required String restaurantId,
     required String slug,
     required DateTime after,
+    String? restaurantUuid,
   }) {
     return SupabaseOrderService.fetchPendingOrdersCreatedAfter(
       slug: _scopedSlug(restaurantId: restaurantId, slug: slug),
       after: after,
+      restaurantUuid: restaurantUuid,
     );
   }
 
   Stream<List<DeliveryOrder>> watchActiveOrders({
     required String restaurantId,
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
+      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
       watch: SupabaseOrderService.watchActiveOrders,
     );
@@ -124,11 +133,13 @@ class AdminOrderRepository {
   Stream<List<DeliveryOrder>> watchKitchenDashboardOrders({
     required String restaurantId,
     required String slug,
+    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return _watchScopedOrderStream(
       restaurantId: restaurantId,
       slug: slug,
+      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
       watch: SupabaseOrderService.watchKitchenDashboardOrders,
     );
