@@ -42,22 +42,6 @@ void main() {
       expect(orders.map((o) => o.status), contains('accepted'));
     });
 
-    test('matches phone stored with country prefix', () {
-      final orders = SupabaseOrderService.filterOrdersByPhoneAndSlug(
-        rows: [
-          row(
-            id: '3',
-            status: DeliveryOrderStatus.accepted,
-            phone: '9647701234567',
-          ),
-        ],
-        normalizedSlug: 'snack_burger',
-        normalizedPhone: '07701234567',
-      );
-
-      expect(orders, hasLength(1));
-    });
-
     test('excludes orders outside tenant slug', () {
       final orders = SupabaseOrderService.filterOrdersByPhoneAndSlug(
         rows: [

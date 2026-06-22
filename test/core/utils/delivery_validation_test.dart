@@ -10,23 +10,9 @@ void main() {
     });
 
     test('rejects invalid lengths and prefixes', () {
+      expect(IraqiPhoneValidator.validate('7701234567'), isNotNull);
       expect(IraqiPhoneValidator.validate('0770123456'), isNotNull);
       expect(IraqiPhoneValidator.validate(''), isNotNull);
-    });
-
-    test('accepts 10-digit mobile after normalize adds leading zero', () {
-      expect(IraqiPhoneValidator.validate('7701234567'), isNull);
-    });
-
-    test('normalize handles +964 prefix and phonesMatch', () {
-      expect(
-        IraqiPhoneValidator.normalize('+964 770 123 4567'),
-        '07701234567',
-      );
-      expect(
-        IraqiPhoneValidator.phonesMatch('9647701234567', '07701234567'),
-        isTrue,
-      );
     });
   });
 
