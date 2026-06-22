@@ -205,9 +205,11 @@ class DeliveryOrder {
       customerName: (data['customer_name'] ?? data['customerName'] ?? '')
           as String? ??
           '',
-      customerPhone: (data['phone_number'] ?? data['customerPhone'] ?? '')
-          as String? ??
-          '',
+      customerPhone: _readString(
+        data['phone_number'] ??
+            data['customer_phone'] ??
+            data['customerPhone'],
+      ),
       address: data['address'] as String? ?? '',
       locationCoordinates: locationCoordinates,
       latitude: latitude,
@@ -239,7 +241,7 @@ class DeliveryOrder {
       data,
       const {
         'customer_name': ['customer_name', 'customerName'],
-        'phone_number': ['phone_number', 'customerPhone'],
+        'phone_number': ['phone_number', 'customer_phone', 'customerPhone'],
         'address': ['address'],
         'status': ['status'],
         'created_at': ['created_at', 'createdAt'],

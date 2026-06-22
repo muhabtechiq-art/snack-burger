@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/config/customer_my_orders_config.dart';
+import '../../core/utils/iraqi_phone_validator.dart';
 import '../../core/theme/tenant_palette.dart';
 import '../../services/supabase_order_service.dart';
 import '../../models/delivery_order_model.dart';
@@ -93,18 +94,20 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     if (mounted) {
       await context.read<ActiveRestaurantNotifier>().resolveSlug(widget.slug);
     }
-    final phone = await CustomerOrderSession.getCustomerPhone(widget.slug);
+    final rawPhone = await CustomerOrderSession.getCustomerPhone(widget.slug);
+    final phone =
+        rawPhone == null ? null : IraqiPhoneValidator.normalize(rawPhone);
     if (!mounted) return;
     setState(() {
       _phone = phone;
       _sessionLoaded = true;
     });
     if (phone != null && phone.isNotEmpty) {
-      _subscribeToOrders(phone);
+      await _subscribeToOrders(phone);
     }
   }
 
-  void _subscribeToOrders(String phone) {
+  Future<void> _subscribeToOrders(String phone) async {
     unawaited(_ordersSubscription?.cancel());
     _streamError = null;
     _waitingFirstEvent = true;
@@ -112,6 +115,12 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
 
     final restaurantUuid =
         context.read<ActiveRestaurantNotifier>().restaurant?.restaurantUuid;
+
+    await _repository.logMyOrdersOpenDiagnostics(
+      slug: widget.slug,
+      phoneNumber: phone,
+      restaurantUuid: restaurantUuid,
+    );
 
     _ordersSubscription = _repository
         .watchOrdersByPhone(
@@ -145,7 +154,7 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
       await _loadSession();
       return;
     }
-    _subscribeToOrders(phone);
+    await _subscribeToOrders(phone);
   }
 
   String _statusLabel(String status) {
@@ -156,12 +165,18 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
         return 'مقبول';
       case DeliveryOrderStatus.preparing:
         return 'قيد التحضير';
+      case DeliveryOrderStatus.ready:
+        return 'جاهز';
       case DeliveryOrderStatus.delivering:
         return 'قيد التوصيل';
       case DeliveryOrderStatus.delivered:
         return 'تم التسليم';
+      case DeliveryOrderStatus.completed:
+        return 'مكتمل';
       case DeliveryOrderStatus.rejected:
         return 'مرفوض';
+      case DeliveryOrderStatus.cancelled:
+        return 'ملغي';
       default:
         return status;
     }

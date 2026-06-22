@@ -14,4 +14,7 @@ abstract final class CustomerMyOrdersConfig {
     final created = createdAt.toUtc();
     return !created.isBefore(now.subtract(visibleOrdersWindow));
   }
+
+  /// أقصى عدد صفوف يُجلب من Supabase قبل الفلترة المحلية.
+  static const int fetchRowCap = 80;
 }

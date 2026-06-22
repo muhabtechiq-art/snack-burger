@@ -35,6 +35,30 @@ class CustomerOrderRepository {
     );
   }
 
+  Future<List<DeliveryOrder>> fetchOrdersByPhone({
+    required String slug,
+    required String phoneNumber,
+    String? restaurantUuid,
+  }) {
+    return SupabaseOrderService.fetchOrdersByPhone(
+      slug: slug,
+      phoneNumber: phoneNumber,
+      restaurantUuid: restaurantUuid,
+    );
+  }
+
+  Future<void> logMyOrdersOpenDiagnostics({
+    required String slug,
+    required String phoneNumber,
+    String? restaurantUuid,
+  }) {
+    return SupabaseOrderService.logMyOrdersOpenDiagnostics(
+      slug: slug,
+      phoneNumber: phoneNumber,
+      restaurantUuid: restaurantUuid,
+    );
+  }
+
   Future<void> _persistSavedHomeIfRequested({
     required String restaurantId,
     required String customerPhone,
