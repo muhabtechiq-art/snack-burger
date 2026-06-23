@@ -34,28 +34,25 @@ void main() {
           row(id: '2', status: DeliveryOrderStatus.pending),
         ],
         normalizedSlug: 'snack_burger',
-        normalizedPhone: '07701234567',
-        restaurantUuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
       );
 
       expect(orders, hasLength(2));
       expect(orders.map((o) => o.status), contains('accepted'));
     });
 
-    test('excludes orders outside tenant slug', () {
+    test('includes accepted even when restaurant_id UUID differs', () {
       final orders = SupabaseOrderService.filterOrdersByPhoneAndSlug(
         rows: [
           row(
             id: '4',
             status: DeliveryOrderStatus.accepted,
-            slug: 'other_restaurant',
+            restaurantId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
           ),
         ],
         normalizedSlug: 'snack_burger',
-        normalizedPhone: '07701234567',
       );
 
-      expect(orders, isEmpty);
+      expect(orders, hasLength(1));
     });
 
     test('excludes orders older than customer visibility window', () {
@@ -69,7 +66,6 @@ void main() {
           ),
         ],
         normalizedSlug: 'snack_burger',
-        normalizedPhone: '07701234567',
       );
 
       expect(orders, isEmpty);
@@ -82,7 +78,6 @@ void main() {
           row(id: '7', status: DeliveryOrderStatus.completed),
         ],
         normalizedSlug: 'snack_burger',
-        normalizedPhone: '07701234567',
       );
 
       expect(orders, hasLength(2));

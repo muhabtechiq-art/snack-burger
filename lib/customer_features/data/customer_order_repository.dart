@@ -24,13 +24,11 @@ class CustomerOrderRepository {
   Stream<List<DeliveryOrder>> watchOrdersByPhone({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return SupabaseOrderService.watchOrdersByPhone(
       slug: slug,
       phoneNumber: phoneNumber,
-      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
     );
   }
@@ -38,24 +36,20 @@ class CustomerOrderRepository {
   Future<List<DeliveryOrder>> fetchOrdersByPhone({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
   }) {
     return SupabaseOrderService.fetchOrdersByPhone(
       slug: slug,
       phoneNumber: phoneNumber,
-      restaurantUuid: restaurantUuid,
     );
   }
 
   Future<void> logMyOrdersOpenDiagnostics({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
   }) {
     return SupabaseOrderService.logMyOrdersOpenDiagnostics(
       slug: slug,
       phoneNumber: phoneNumber,
-      restaurantUuid: restaurantUuid,
     );
   }
 

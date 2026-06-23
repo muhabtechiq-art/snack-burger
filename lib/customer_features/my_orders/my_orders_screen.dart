@@ -7,8 +7,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/auth/customer_wrapper.dart';
 import '../../core/config/customer_my_orders_config.dart';
-import '../../core/utils/iraqi_phone_validator.dart';
 import '../../core/theme/tenant_palette.dart';
+import '../../core/utils/restaurant_slug_utils.dart';
 import '../../services/supabase_order_service.dart';
 import '../../models/delivery_order_model.dart';
 import '../../models/delivery_order_status.dart';
@@ -90,43 +90,69 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     super.dispose();
   }
 
+  /// slug: من مسار GoRouter `/:slug/my-order` → [MyOrdersScreen.slug]
+  /// (يُطبَّع عبر [normalizeRestaurantSlug]).
+  /// phone: من [CustomerOrderSession.getCustomerPhone] (SharedPreferences
+  /// `customer_phone_<slug>`) — يُحفظ عند إرسال الطلب من المنيو.
   Future<void> _loadSession() async {
     if (mounted) {
       await context.read<ActiveRestaurantNotifier>().resolveSlug(widget.slug);
     }
-    final rawPhone = await CustomerOrderSession.getCustomerPhone(widget.slug);
-    final phone =
-        rawPhone == null ? null : IraqiPhoneValidator.normalize(rawPhone);
+    final routeSlug = widget.slug;
+    final normalizedSlug = normalizeRestaurantSlug(routeSlug);
+    await CustomerOrderSession.logStoredPhoneDiagnostic(normalizedSlug);
+    final rawPhone = await CustomerOrderSession.getCustomerPhone(normalizedSlug);
+    final phone = rawPhone?.trim();
+    // ignore: avoid_print
+    print(
+      '[MY_ORDERS_SCREEN_INPUT] routeSlug=$routeSlug '
+      'normalizedSlug=$normalizedSlug phone=$phone',
+    );
     if (!mounted) return;
     setState(() {
       _phone = phone;
       _sessionLoaded = true;
     });
     if (phone != null && phone.isNotEmpty) {
-      await _subscribeToOrders(phone);
+      await _subscribeToOrders(phone, normalizedSlug: normalizedSlug);
     }
   }
 
-  Future<void> _subscribeToOrders(String phone) async {
+  Future<void> _subscribeToOrders(
+    String phone, {
+    required String normalizedSlug,
+  }) async {
     unawaited(_ordersSubscription?.cancel());
     _streamError = null;
     _waitingFirstEvent = true;
     if (mounted) setState(() {});
 
-    final restaurantUuid =
-        context.read<ActiveRestaurantNotifier>().restaurant?.restaurantUuid;
-
-    await _repository.logMyOrdersOpenDiagnostics(
-      slug: widget.slug,
-      phoneNumber: phone,
-      restaurantUuid: restaurantUuid,
-    );
+    try {
+      final orders = await _repository.fetchOrdersByPhone(
+        slug: normalizedSlug,
+        phoneNumber: phone,
+      );
+      if (mounted) {
+        setState(() {
+          _orders = orders;
+          _waitingFirstEvent = false;
+          _streamError = null;
+        });
+      }
+    } catch (error, stack) {
+      debugPrint('MyOrdersScreen initial fetch: $error\n$stack');
+      if (mounted) {
+        setState(() {
+          _streamError = error;
+          _waitingFirstEvent = false;
+        });
+      }
+    }
 
     _ordersSubscription = _repository
         .watchOrdersByPhone(
-          slug: widget.slug,
+          slug: normalizedSlug,
           phoneNumber: phone,
-          restaurantUuid: restaurantUuid,
         )
         .listen(
       (orders) {
@@ -154,7 +180,10 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
       await _loadSession();
       return;
     }
-    await _subscribeToOrders(phone);
+    await _subscribeToOrders(
+      phone,
+      normalizedSlug: normalizeRestaurantSlug(widget.slug),
+    );
   }
 
   String _statusLabel(String status) {
@@ -225,7 +254,7 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     if (_phone == null || _phone!.isEmpty) {
       return _EmptyMyOrdersState(
         palette: palette,
-        message: 'لا يوجد رقم هاتف محفوظ.\nأرسل طلباً من المنيو لحفظ رقمك.',
+        message: 'لا يوجد رقم هاتف محفوظ لهذا الزبون',
         onBackToMenu: () => context.pop(),
       );
     }
@@ -244,12 +273,9 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     }
 
     if (_orders.isEmpty) {
-      final hours = CustomerMyOrdersConfig.visibleOrdersWindow.inHours;
       return _EmptyMyOrdersState(
         palette: palette,
-        message:
-            'لا توجد طلبات خلال آخر $hours ساعة لهذا الرقم.\n'
-            'الطلبات الأقدم لا تظهر هنا.',
+        message: CustomerMyOrdersConfig.emptyOrdersMessage,
         onBackToMenu: () => context.pop(),
       );
     }

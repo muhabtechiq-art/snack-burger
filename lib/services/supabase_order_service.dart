@@ -11,10 +11,10 @@ import '../core/config/stability_phase1_flags.dart';
 import '../core/network/network_timeout.dart';
 import '../core/observability/app_telemetry.dart';
 import '../core/utils/order_tenant_match.dart';
+import '../core/utils/restaurant_slug_utils.dart';
 import '../core/utils/business_day_order_aggregation.dart';
 import '../core/utils/business_day_scope.dart';
 import '../core/utils/delivery_coordinates.dart';
-import '../core/utils/iraqi_phone_validator.dart';
 import '../core/utils/model_parse_validation.dart';
 import '../models/business_day_model.dart';
 import '../models/business_day_order_stats.dart';
@@ -126,7 +126,7 @@ abstract final class SupabaseOrderService {
     final resolvedRestaurantUuid =
         _resolveRestaurantUuid(restaurantId) ??
         _resolveRestaurantUuid(RestaurantIds.snackBurgerUuid ?? '');
-    final normalizedSlug = slug.trim().toLowerCase();
+    final normalizedSlug = normalizeRestaurantSlug(slug);
     final scopedRestaurantId = resolvedRestaurantUuid ??
         (restaurantId.trim().isNotEmpty
             ? restaurantId.trim().toLowerCase()
@@ -139,12 +139,8 @@ abstract final class SupabaseOrderService {
       longitude: longitude,
     );
 
+    debugPrint('[MyOrdersSave] phone_number=${customerPhone.trim()} slug=$normalizedSlug');
     debugPrint('[SubmitOrder] scopedRestaurantId=$scopedRestaurantId');
-    debugPrint('[SubmitOrder] normalizedSlug=$normalizedSlug');
-    debugPrint(
-      '[SubmitOrder] phone_number=${customerPhone.trim()} '
-      '(p_phone_number — نفس القيمة المخزّنة في orders.phone_number)',
-    );
     debugPrint(
       '[SupabaseOrderService] submitOrder RPC — '
       'restaurantUuid=${resolvedRestaurantUuid ?? 'null'}, '
@@ -426,54 +422,72 @@ abstract final class SupabaseOrderService {
     );
   }
 
-  /// بث طلبات الزبون حسب رقم الهاتف والمطعم (جدول `orders`).
-  ///
-  /// جلب أولي عبر [fetchOrdersByPhone] ثم تحديث عند أحداث Realtime + polling احتياطي.
-  /// Client-side: phone match + [OrderTenantMatch] + customer visibility rules.
+  /// بث طلبات الزبون — جلب أولي عبر [fetchOrdersByPhone] ثم تحديث عند Realtime.
   static Stream<List<DeliveryOrder>> watchOrdersByPhone({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     final normalizedSlug = _normalizeSlug(slug);
-    final normalizedPhone = IraqiPhoneValidator.normalize(phoneNumber);
+    final normalizedPhone = phoneNumber.trim();
     if (normalizedPhone.isEmpty) {
       return const Stream<List<DeliveryOrder>>.empty();
     }
 
+    debugPrint(
+      '[MyOrdersRead] watchOrdersByPhone phone_number=$normalizedPhone '
+      'slug=$normalizedSlug',
+    );
+
     return _watchOrdersByPhoneWithInitialFetch(
       normalizedSlug: normalizedSlug,
       normalizedPhone: normalizedPhone,
-      restaurantUuid: restaurantUuid,
       onHealthChanged: onHealthChanged,
     );
   }
 
-  /// جلب طلبات «طلباتي» — نفس مفاتيح الحفظ: `slug` + `phone_number`.
+  /// جلب طلبات «طلباتي» — Supabase: slug + phone_number (+ نافذة الوقت).
+  /// لا فلتر restaurant_id — نفس مفاتيح الحفظ فقط.
   static Future<List<DeliveryOrder>> fetchOrdersByPhone({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
   }) async {
     final normalizedSlug = _normalizeSlug(slug);
-    final normalizedPhone = IraqiPhoneValidator.normalize(phoneNumber);
+    final normalizedPhone = phoneNumber.trim();
     if (normalizedPhone.isEmpty) return [];
+
+    final since = DateTime.now()
+        .toUtc()
+        .subtract(CustomerMyOrdersConfig.visibleOrdersWindow);
+
+    // ignore: avoid_print
+    print(
+      '[MY_ORDERS_QUERY] slug=$normalizedSlug phone=$normalizedPhone '
+      'since=${since.toIso8601String()}',
+    );
+
+    debugPrint(
+      '[MyOrdersRead] fetchOrdersByPhone phone_number=$normalizedPhone '
+      'slug=$normalizedSlug since=${since.toIso8601String()}',
+    );
 
     try {
       return await NetworkTimeouts.run(() async {
-        debugPrint(
-          '[MyOrdersQuery] SELECT orders WHERE '
-          'slug=eq.$normalizedSlug AND phone_number=eq.$normalizedPhone '
-          'restaurantUuid=${restaurantUuid ?? 'null'}',
-        );
+        final queryLabel =
+            'SELECT * FROM orders WHERE slug=eq.$normalizedSlug '
+            'AND phone_number=eq.$normalizedPhone '
+            'AND created_at>=${since.toIso8601String()}';
+
+        debugPrint('[MyOrdersRead] query=$queryLabel');
 
         var query = _client.from(tableName).select();
 
         if (normalizedSlug.isNotEmpty) {
           query = query.eq('slug', normalizedSlug);
         }
-        query = query.eq('phone_number', normalizedPhone);
+        query = query
+            .eq('phone_number', normalizedPhone)
+            .gte('created_at', since.toIso8601String());
 
         final rows = List<Map<String, dynamic>>.from(
           await query
@@ -481,16 +495,22 @@ abstract final class SupabaseOrderService {
               .limit(CustomerMyOrdersConfig.fetchRowCap),
         );
 
-        debugPrint(
-          '[MyOrdersQuery] Supabase returned ${rows.length} raw row(s) '
-          'for slug=$normalizedSlug phone=$normalizedPhone',
-        );
+        // ignore: avoid_print
+        print('[MY_ORDERS_RESULT] count=${rows.length} rows=$rows');
+
+        if (rows.isEmpty) {
+          await _diagnoseMyOrdersZeroSupabaseRows(
+            normalizedSlug: normalizedSlug,
+            normalizedPhone: normalizedPhone,
+            since: since,
+          );
+        }
+
+        debugPrint('[MyOrdersRead] supabaseRowCount=${rows.length}');
 
         return filterOrdersByPhoneAndSlug(
           rows: rows,
           normalizedSlug: normalizedSlug,
-          normalizedPhone: normalizedPhone,
-          restaurantUuid: restaurantUuid,
           logFilterBreakdown: true,
         );
       });
@@ -506,50 +526,104 @@ abstract final class SupabaseOrderService {
     }
   }
 
+  /// تشخيص «طلباتي» عندما يعيد Supabase 0 صفوف قبل [filterOrdersByPhoneAndSlug].
+  static Future<void> _diagnoseMyOrdersZeroSupabaseRows({
+    required String normalizedSlug,
+    required String normalizedPhone,
+    required DateTime since,
+  }) async {
+    // ignore: avoid_print
+    print(
+      '[MyOrdersFilter] supabaseRows=0 — slug=$normalizedSlug '
+      'phone=$normalizedPhone since=${since.toIso8601String()}',
+    );
+
+    try {
+      var slugPhoneQuery = _client
+          .from(tableName)
+          .select('id, slug, phone_number, status, created_at');
+      if (normalizedSlug.isNotEmpty) {
+        slugPhoneQuery = slugPhoneQuery.eq('slug', normalizedSlug);
+      }
+      final withoutTime = List<Map<String, dynamic>>.from(
+        await slugPhoneQuery
+            .eq('phone_number', normalizedPhone)
+            .order('created_at', ascending: false)
+            .limit(5),
+      );
+      // ignore: avoid_print
+      print(
+        '[MyOrdersFilter] slug+phone بدون نافذة وقت: count=${withoutTime.length} '
+        'phones=${withoutTime.map((r) => r['phone_number']).toList()}',
+      );
+      if (withoutTime.isNotEmpty) {
+        // ignore: avoid_print
+        print(
+          '[MyOrdersFilter] سبب محتمل: الطلبات أقدم من 6 ساعات '
+          '(created_at=${withoutTime.first['created_at']})',
+        );
+        return;
+      }
+
+      final slugOnly = List<Map<String, dynamic>>.from(
+        await _client
+            .from(tableName)
+            .select('id, slug, phone_number, status, created_at')
+            .eq('slug', normalizedSlug)
+            .order('created_at', ascending: false)
+            .limit(5),
+      );
+      // ignore: avoid_print
+      print(
+        '[MyOrdersFilter] آخر طلبات slug=$normalizedSlug: count=${slugOnly.length} '
+        'dbPhones=${slugOnly.map((r) => r['phone_number']).toList()} '
+        'queryPhone=$normalizedPhone',
+      );
+      if (slugOnly.isEmpty) {
+        // ignore: avoid_print
+        print(
+          '[MyOrdersFilter] سبب محتمل: slug غير موجود في orders أو RLS يمنع SELECT',
+        );
+      } else {
+        // ignore: avoid_print
+        print(
+          '[MyOrdersFilter] سبب محتمل: phone_number في orders لا يطابق '
+          'SharedPreferences/queryPhone=$normalizedPhone',
+        );
+      }
+    } catch (e, stack) {
+      debugPrint('[MyOrdersFilter] diagnosis failed: $e\n$stack');
+    }
+  }
+
   /// سجلات تشخيص عند فتح «طلباتي» — مقارنة مسار الحفظ مع مسار الاستعلام.
   static Future<void> logMyOrdersOpenDiagnostics({
     required String slug,
     required String phoneNumber,
-    String? restaurantUuid,
   }) async {
     final normalizedSlug = _normalizeSlug(slug);
-    final normalizedPhone = IraqiPhoneValidator.normalize(phoneNumber);
+    final phone = phoneNumber.trim();
     final window = CustomerMyOrdersConfig.visibleOrdersWindow;
-    final windowStart = DateTime.now().toUtc().subtract(window);
+    final since = DateTime.now().toUtc().subtract(window);
+    final statuses = DeliveryOrderStatus.myOrdersTrackedStatuses.join(',');
 
-    debugPrint(
-      '[MyOrdersDiag] ── مقارنة مسار الحفظ ↔ الاستعلام ──\n'
-      '  SAVE (submit_customer_order RPC):\n'
-      '    p_slug=$normalizedSlug (lower+trim)\n'
-      '    p_phone_number=trim(customerPhone) — عمود orders.phone_number\n'
-      '    status=pending (ثم يحدّثها الكاشير)\n'
-      '  QUERY (fetchOrdersByPhone):\n'
-      '    slug=eq.$normalizedSlug\n'
-      '    phone_number=eq.$normalizedPhone\n'
-      '    restaurantUuid=${restaurantUuid ?? 'null'} (فلتر tenant client-side)\n'
-      '    timeWindow=${window.inHours}h since=${windowStart.toIso8601String()}\n'
-      '    statuses=${DeliveryOrderStatus.myOrdersTrackedStatuses.join(',')}',
-    );
+    debugPrint('[MyOrdersDiag] read phone_number=$phone slug=$normalizedSlug');
+    debugPrint('[MyOrdersDiag] since=${since.toIso8601String()} (${window.inHours}h)');
+    debugPrint('[MyOrdersDiag] statuses=$statuses');
 
     try {
       final visible = await fetchOrdersByPhone(
         slug: normalizedSlug,
-        phoneNumber: normalizedPhone,
-        restaurantUuid: restaurantUuid,
+        phoneNumber: phone,
       );
-      debugPrint(
-        '[MyOrdersDiag] نتيجة بعد فلترة tenant+وقت: '
-        'visibleOrders=${visible.length} '
-        'ids=${visible.map((o) => o.id).join(',')} '
-        'statuses=${visible.map((o) => o.status).join(',')}',
-      );
+      debugPrint('[MyOrdersDiag] visibleAfterFilter=${visible.length}');
 
       if (visible.isEmpty) {
+        await _logLastTenOrdersForSlug(normalizedSlug);
         await _logMyOrdersEmptyReason(
           normalizedSlug: normalizedSlug,
-          normalizedPhone: normalizedPhone,
-          restaurantUuid: restaurantUuid,
-          windowStart: windowStart,
+          normalizedPhone: phone,
+          windowStart: since,
         );
       }
     } catch (e, stack) {
@@ -557,10 +631,37 @@ abstract final class SupabaseOrderService {
     }
   }
 
+  /// آخر 10 طلبات لنفس [slug] — عند عدم ظهور أي طلب للزبون.
+  static Future<void> _logLastTenOrdersForSlug(String normalizedSlug) async {
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await _client
+            .from(tableName)
+            .select('id, phone_number, status, created_at')
+            .eq('slug', normalizedSlug)
+            .order('created_at', ascending: false)
+            .limit(10),
+      );
+      debugPrint(
+        '[MyOrdersDiag] last10ForSlug=$normalizedSlug count=${rows.length}',
+      );
+      for (final row in rows) {
+        debugPrint(
+          '[MyOrdersDiag] last10 '
+          'id=${row['id']} '
+          'customer_phone=${row['phone_number']} '
+          'status=${row['status']} '
+          'created_at=${row['created_at']}',
+        );
+      }
+    } catch (e, stack) {
+      debugPrint('[MyOrdersDiag] last10ForSlug failed: $e\n$stack');
+    }
+  }
+
   static Future<void> _logMyOrdersEmptyReason({
     required String normalizedSlug,
     required String normalizedPhone,
-    String? restaurantUuid,
     required DateTime windowStart,
   }) async {
     var query = _client
@@ -608,25 +709,18 @@ abstract final class SupabaseOrderService {
         continue;
       }
 
-      final tenantOk = _matchesOrderTenant(
-        parsed,
-        activeSlug: normalizedSlug,
-        restaurantUuid: restaurantUuid,
-      );
       final visibleOk = _includeCustomerPhoneOrder(parsed);
       final inWindow = CustomerMyOrdersConfig.isOrderVisibleToCustomer(
         parsed.createdAt,
       );
 
       debugPrint(
-        '[MyOrdersDiag] صف#$index id=${parsed.id} '
+        '[MyOrdersDiag] row#$index id=${parsed.id} '
         'status=${parsed.status} '
         'slug=${parsed.slug} restaurant_id=${parsed.restaurantId} '
         'phone=${parsed.customerPhone} created_at=${parsed.createdAt.toUtc()} '
-        'tenantMatch=$tenantOk visibility=$visibleOk in6hWindow=$inWindow '
-        '→ ${tenantOk && visibleOk ? 'يُفترض ظهوره' : 'مستبعد: '
-            '${!tenantOk ? 'tenant ' : ''}'
-            '${!visibleOk ? 'visibility(وقت/مرفوض) ' : ''}'}',
+        'visibility=$visibleOk inWindow=$inWindow '
+        '→ ${visibleOk ? 'يُفترض ظهوره' : 'مستبعد: visibility(وقت/مرفوض)'}',
       );
     }
   }
@@ -634,7 +728,6 @@ abstract final class SupabaseOrderService {
   static Stream<List<DeliveryOrder>> _watchOrdersByPhoneWithInitialFetch({
     required String normalizedSlug,
     required String normalizedPhone,
-    String? restaurantUuid,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
     return Stream<List<DeliveryOrder>>.multi((controller) {
@@ -649,7 +742,6 @@ abstract final class SupabaseOrderService {
           final orders = await fetchOrdersByPhone(
             slug: normalizedSlug,
             phoneNumber: normalizedPhone,
-            restaurantUuid: restaurantUuid,
           );
           if (!closed) {
             onHealthChanged?.call(StreamHealth.live);
@@ -679,12 +771,7 @@ abstract final class SupabaseOrderService {
       final realtimeStream = StabilityPhase1Flags.enablePhase1RealtimeHardening
           ? _resilientOrdersStream<List<DeliveryOrder>>(
               sourceFactory: () => _ordersByPhoneRowsStream(normalizedSlug),
-              transform: (rows) => filterOrdersByPhoneAndSlug(
-                rows: rows,
-                normalizedSlug: normalizedSlug,
-                normalizedPhone: normalizedPhone,
-                restaurantUuid: restaurantUuid,
-              ),
+              transform: (_) => const <DeliveryOrder>[],
               streamTag:
                   'watchOrdersByPhone(slug=$normalizedSlug,'
                   'serverFilter='
@@ -692,12 +779,7 @@ abstract final class SupabaseOrderService {
               onHealthChanged: onHealthChanged,
             )
           : _ordersByPhoneRowsStream(normalizedSlug).map(
-              (rows) => filterOrdersByPhoneAndSlug(
-                rows: rows,
-                normalizedSlug: normalizedSlug,
-                normalizedPhone: normalizedPhone,
-                restaurantUuid: restaurantUuid,
-              ),
+              (_) => const <DeliveryOrder>[],
             );
 
       streamSub = realtimeStream.listen(
@@ -780,8 +862,8 @@ abstract final class SupabaseOrderService {
     }
   }
 
-  /// طلبات «طلباتي»: ضمن نافذة 6 ساعات لكل الحالات ما عدا المرفوض/الملغي
-  /// (المرفوض يُعرض ضمن يوم العمل المفتوح).
+  /// طلبات «طلباتي»: نافذة الوقت فقط — لا فلتر status (accepted/preparing/… تظهر).
+  /// المرفوض/الملغي: نافذة الوقت أو يوم العمل المفتوح.
   static bool _includeCustomerPhoneOrder(DeliveryOrder order) {
     final status = order.status.trim().toLowerCase();
     if (status == DeliveryOrderStatus.rejected ||
@@ -1096,7 +1178,7 @@ abstract final class SupabaseOrderService {
     }
   }
 
-  static String _normalizeSlug(String slug) => slug.trim().toLowerCase();
+  static String _normalizeSlug(String slug) => normalizeRestaurantSlug(slug);
 
   /// Realtime rows stream لـ [watchPendingOrders] — `slug=eq.<slug>` إن أمكن.
   static Stream<List<Map<String, dynamic>>> _pendingOrdersRowsStream(
@@ -1275,16 +1357,14 @@ abstract final class SupabaseOrderService {
     );
   }
 
+  /// بعد فلترة Supabase (slug + phone_number): parse + نافذة الوقت فقط.
+  /// لا فلتر restaurant_id ولا إعادة فلترة phone client-side.
   @visibleForTesting
   static List<DeliveryOrder> filterOrdersByPhoneAndSlug({
     required List<Map<String, dynamic>> rows,
     required String normalizedSlug,
-    required String normalizedPhone,
-    String? restaurantUuid,
     bool logFilterBreakdown = false,
   }) {
-    var phoneMismatch = 0;
-    var tenantMismatch = 0;
     var visibilityExcluded = 0;
     var parseSkipped = 0;
 
@@ -1300,39 +1380,11 @@ abstract final class SupabaseOrderService {
         continue;
       }
 
-      final orderPhone = IraqiPhoneValidator.normalize(order.customerPhone);
-      if (orderPhone != normalizedPhone) {
-        phoneMismatch++;
-        if (logFilterBreakdown) {
-          debugPrint(
-            '[MyOrdersFilter] id=${order.id} مستبعد: phone '
-            'db=${order.customerPhone} query=$normalizedPhone',
-          );
-        }
-        continue;
-      }
-
-      if (!_matchesOrderTenant(
-        order,
-        activeSlug: normalizedSlug,
-        restaurantUuid: restaurantUuid,
-      )) {
-        tenantMismatch++;
-        if (logFilterBreakdown) {
-          debugPrint(
-            '[MyOrdersFilter] id=${order.id} مستبعد: tenant '
-            'orderSlug=${order.slug} orderRestaurantId=${order.restaurantId} '
-            'querySlug=$normalizedSlug queryUuid=${restaurantUuid ?? 'null'}',
-          );
-        }
-        continue;
-      }
-
       if (!_includeCustomerPhoneOrder(order)) {
         visibilityExcluded++;
         if (logFilterBreakdown) {
           debugPrint(
-            '[MyOrdersFilter] id=${order.id} مستبعد: visibility '
+            '[MyOrdersFilter] id=${order.id} excluded: visibility '
             'status=${order.status} created_at=${order.createdAt.toUtc()}',
           );
         }
@@ -1346,10 +1398,8 @@ abstract final class SupabaseOrderService {
 
     if (logFilterBreakdown) {
       debugPrint(
-        '[SupabaseOrderService] filterOrdersByPhoneAndSlug: '
-        '${rows.length} صف خام → ${orders.length} ظاهر '
-        '(phoneMismatch=$phoneMismatch tenantMismatch=$tenantMismatch '
-        'visibilityExcluded=$visibilityExcluded parseSkipped=$parseSkipped)',
+        '[MyOrdersFilter] supabaseRows=${rows.length} → visible=${orders.length} '
+        '(visibilityExcluded=$visibilityExcluded parseSkipped=$parseSkipped)',
       );
     }
 

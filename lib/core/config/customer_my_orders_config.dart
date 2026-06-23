@@ -5,6 +5,11 @@ abstract final class CustomerMyOrdersConfig {
   /// المدة الزمنية التي تظهر خلالها الطلبات للزبون (الأقدم يُخفى).
   static const Duration visibleOrdersWindow = Duration(hours: 6);
 
+  /// رسالة عدم وجود طلبات ضمن نافذة العرض.
+  static const String emptyOrdersMessage =
+      'لا توجد طلبات خلال آخر 6 ساعة لهذا الرقم.\n'
+      'الطلبات الأقدم لا تظهر هنا.';
+
   /// هل يُعرض الطلب للزبون وفق نافذة [visibleOrdersWindow]؟
   static bool isOrderVisibleToCustomer(
     DateTime createdAt, {
