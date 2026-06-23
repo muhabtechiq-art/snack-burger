@@ -446,8 +446,8 @@ abstract final class SupabaseOrderService {
     );
   }
 
-  /// جلب طلبات «طلباتي» — Supabase: slug + phone_number (+ نافذة الوقت).
-  /// لا فلتر restaurant_id — نفس مفاتيح الحفظ فقط.
+  /// جلب طلبات «طلباتي» — RPC [get_customer_orders_by_phone] (يتجاوز RLS).
+  /// لا فلتر restaurant_id — slug + phone_number فقط.
   static Future<List<DeliveryOrder>> fetchOrdersByPhone({
     required String slug,
     required String phoneNumber,
@@ -467,46 +467,46 @@ abstract final class SupabaseOrderService {
     );
 
     debugPrint(
-      '[MyOrdersRead] fetchOrdersByPhone phone_number=$normalizedPhone '
-      'slug=$normalizedSlug since=${since.toIso8601String()}',
+      '[MyOrdersRead] RPC get_customer_orders_by_phone '
+      'phone_number=$normalizedPhone slug=$normalizedSlug '
+      'since=${since.toIso8601String()}',
     );
 
     try {
       return await NetworkTimeouts.run(() async {
-        final queryLabel =
-            'SELECT * FROM orders WHERE slug=eq.$normalizedSlug '
-            'AND phone_number=eq.$normalizedPhone '
-            'AND created_at>=${since.toIso8601String()}';
+        debugPrint(
+          '[MyOrdersRead] query=RPC get_customer_orders_by_phone('
+          'p_slug=$normalizedSlug, p_phone_number=$normalizedPhone)',
+        );
 
-        debugPrint('[MyOrdersRead] query=$queryLabel');
-
-        var query = _client.from(tableName).select();
-
-        if (normalizedSlug.isNotEmpty) {
-          query = query.eq('slug', normalizedSlug);
-        }
-        query = query
-            .eq('phone_number', normalizedPhone)
-            .gte('created_at', since.toIso8601String());
+        final raw = await _client.rpc(
+          'get_customer_orders_by_phone',
+          params: <String, dynamic>{
+            'p_slug': normalizedSlug,
+            'p_phone_number': normalizedPhone,
+          },
+        );
 
         final rows = List<Map<String, dynamic>>.from(
-          await query
-              .order('created_at', ascending: false)
-              .limit(CustomerMyOrdersConfig.fetchRowCap),
+          (raw as List<dynamic>? ?? const <dynamic>[]).map(
+            (dynamic entry) => mapMyOrdersCustomerRpcRow(
+              Map<String, dynamic>.from(entry as Map),
+            ),
+          ),
         );
 
         // ignore: avoid_print
         print('[MY_ORDERS_RESULT] count=${rows.length} rows=$rows');
 
         if (rows.isEmpty) {
-          await _diagnoseMyOrdersZeroSupabaseRows(
+          _logMyOrdersRpcEmptyResult(
             normalizedSlug: normalizedSlug,
             normalizedPhone: normalizedPhone,
             since: since,
           );
         }
 
-        debugPrint('[MyOrdersRead] supabaseRowCount=${rows.length}');
+        debugPrint('[MyOrdersRead] rpcRowCount=${rows.length}');
 
         return filterOrdersByPhoneAndSlug(
           rows: rows,
@@ -526,74 +526,39 @@ abstract final class SupabaseOrderService {
     }
   }
 
-  /// تشخيص «طلباتي» عندما يعيد Supabase 0 صفوف قبل [filterOrdersByPhoneAndSlug].
-  static Future<void> _diagnoseMyOrdersZeroSupabaseRows({
+  /// يحوّل صف RPC إلى شكل [DeliveryOrder.fromSupabase] المتوقع.
+  @visibleForTesting
+  static Map<String, dynamic> mapMyOrdersCustomerRpcRow(
+    Map<String, dynamic> row,
+  ) {
+    return <String, dynamic>{
+      'id': row['id'],
+      'status': row['status'],
+      'total_price': row['total'],
+      'customer_name': row['customer_name'],
+      'phone_number': row['phone_number'],
+      'address': row['delivery_address'],
+      'created_at': row['created_at'],
+      'slug': row['slug'],
+      'order_items': row['items'],
+      'business_day_id': row['business_day_id'],
+      if (row['notes'] != null &&
+          row['notes'].toString().trim().isNotEmpty)
+        'rejection_reason': row['notes'],
+    };
+  }
+
+  static void _logMyOrdersRpcEmptyResult({
     required String normalizedSlug,
     required String normalizedPhone,
     required DateTime since,
-  }) async {
+  }) {
     // ignore: avoid_print
     print(
-      '[MyOrdersFilter] supabaseRows=0 — slug=$normalizedSlug '
-      'phone=$normalizedPhone since=${since.toIso8601String()}',
+      '[MyOrdersFilter] rpcRows=0 — slug=$normalizedSlug '
+      'phone=$normalizedPhone since=${since.toIso8601String()} '
+      '(لا طلبات في 6 ساعات أو RPC غير منشور في Supabase)',
     );
-
-    try {
-      var slugPhoneQuery = _client
-          .from(tableName)
-          .select('id, slug, phone_number, status, created_at');
-      if (normalizedSlug.isNotEmpty) {
-        slugPhoneQuery = slugPhoneQuery.eq('slug', normalizedSlug);
-      }
-      final withoutTime = List<Map<String, dynamic>>.from(
-        await slugPhoneQuery
-            .eq('phone_number', normalizedPhone)
-            .order('created_at', ascending: false)
-            .limit(5),
-      );
-      // ignore: avoid_print
-      print(
-        '[MyOrdersFilter] slug+phone بدون نافذة وقت: count=${withoutTime.length} '
-        'phones=${withoutTime.map((r) => r['phone_number']).toList()}',
-      );
-      if (withoutTime.isNotEmpty) {
-        // ignore: avoid_print
-        print(
-          '[MyOrdersFilter] سبب محتمل: الطلبات أقدم من 6 ساعات '
-          '(created_at=${withoutTime.first['created_at']})',
-        );
-        return;
-      }
-
-      final slugOnly = List<Map<String, dynamic>>.from(
-        await _client
-            .from(tableName)
-            .select('id, slug, phone_number, status, created_at')
-            .eq('slug', normalizedSlug)
-            .order('created_at', ascending: false)
-            .limit(5),
-      );
-      // ignore: avoid_print
-      print(
-        '[MyOrdersFilter] آخر طلبات slug=$normalizedSlug: count=${slugOnly.length} '
-        'dbPhones=${slugOnly.map((r) => r['phone_number']).toList()} '
-        'queryPhone=$normalizedPhone',
-      );
-      if (slugOnly.isEmpty) {
-        // ignore: avoid_print
-        print(
-          '[MyOrdersFilter] سبب محتمل: slug غير موجود في orders أو RLS يمنع SELECT',
-        );
-      } else {
-        // ignore: avoid_print
-        print(
-          '[MyOrdersFilter] سبب محتمل: phone_number في orders لا يطابق '
-          'SharedPreferences/queryPhone=$normalizedPhone',
-        );
-      }
-    } catch (e, stack) {
-      debugPrint('[MyOrdersFilter] diagnosis failed: $e\n$stack');
-    }
   }
 
   /// سجلات تشخيص عند فتح «طلباتي» — مقارنة مسار الحفظ مع مسار الاستعلام.
