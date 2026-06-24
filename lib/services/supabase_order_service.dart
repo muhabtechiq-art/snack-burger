@@ -139,7 +139,6 @@ abstract final class SupabaseOrderService {
       longitude: longitude,
     );
 
-    debugPrint('[MyOrdersSave] phone_number=${customerPhone.trim()} slug=$normalizedSlug');
     debugPrint('[SubmitOrder] scopedRestaurantId=$scopedRestaurantId');
     debugPrint(
       '[SupabaseOrderService] submitOrder RPC — '
@@ -434,11 +433,6 @@ abstract final class SupabaseOrderService {
       return const Stream<List<DeliveryOrder>>.empty();
     }
 
-    debugPrint(
-      '[MyOrdersRead] watchOrdersByPhone phone_number=$normalizedPhone '
-      'slug=$normalizedSlug',
-    );
-
     return _watchOrdersByPhoneWithInitialFetch(
       normalizedSlug: normalizedSlug,
       normalizedPhone: normalizedPhone,
@@ -456,29 +450,8 @@ abstract final class SupabaseOrderService {
     final normalizedPhone = phoneNumber.trim();
     if (normalizedPhone.isEmpty) return [];
 
-    final since = DateTime.now()
-        .toUtc()
-        .subtract(CustomerMyOrdersConfig.visibleOrdersWindow);
-
-    // ignore: avoid_print
-    print(
-      '[MY_ORDERS_QUERY] slug=$normalizedSlug phone=$normalizedPhone '
-      'since=${since.toIso8601String()}',
-    );
-
-    debugPrint(
-      '[MyOrdersRead] RPC get_customer_orders_by_phone '
-      'phone_number=$normalizedPhone slug=$normalizedSlug '
-      'since=${since.toIso8601String()}',
-    );
-
     try {
       return await NetworkTimeouts.run(() async {
-        debugPrint(
-          '[MyOrdersRead] query=RPC get_customer_orders_by_phone('
-          'p_slug=$normalizedSlug, p_phone_number=$normalizedPhone)',
-        );
-
         final raw = await _client.rpc(
           'get_customer_orders_by_phone',
           params: <String, dynamic>{
@@ -495,27 +468,13 @@ abstract final class SupabaseOrderService {
           ),
         );
 
-        // ignore: avoid_print
-        print('[MY_ORDERS_RESULT] count=${rows.length} rows=$rows');
-
-        if (rows.isEmpty) {
-          _logMyOrdersRpcEmptyResult(
-            normalizedSlug: normalizedSlug,
-            normalizedPhone: normalizedPhone,
-            since: since,
-          );
-        }
-
-        debugPrint('[MyOrdersRead] rpcRowCount=${rows.length}');
-
         return filterOrdersByPhoneAndSlug(
           rows: rows,
           normalizedSlug: normalizedSlug,
-          logFilterBreakdown: true,
         );
       });
     } catch (e, stack) {
-      debugPrint('[SupabaseOrderService] fetchOrdersByPhone فشل: $e\n$stack');
+      debugPrint('[MyOrders] failed to load customer orders: $e');
       reportSupabaseError(
         e,
         stack,
@@ -548,148 +507,6 @@ abstract final class SupabaseOrderService {
     };
   }
 
-  static void _logMyOrdersRpcEmptyResult({
-    required String normalizedSlug,
-    required String normalizedPhone,
-    required DateTime since,
-  }) {
-    // ignore: avoid_print
-    print(
-      '[MyOrdersFilter] rpcRows=0 — slug=$normalizedSlug '
-      'phone=$normalizedPhone since=${since.toIso8601String()} '
-      '(لا طلبات في 6 ساعات أو RPC غير منشور في Supabase)',
-    );
-  }
-
-  /// سجلات تشخيص عند فتح «طلباتي» — مقارنة مسار الحفظ مع مسار الاستعلام.
-  static Future<void> logMyOrdersOpenDiagnostics({
-    required String slug,
-    required String phoneNumber,
-  }) async {
-    final normalizedSlug = _normalizeSlug(slug);
-    final phone = phoneNumber.trim();
-    final window = CustomerMyOrdersConfig.visibleOrdersWindow;
-    final since = DateTime.now().toUtc().subtract(window);
-    final statuses = DeliveryOrderStatus.myOrdersTrackedStatuses.join(',');
-
-    debugPrint('[MyOrdersDiag] read phone_number=$phone slug=$normalizedSlug');
-    debugPrint('[MyOrdersDiag] since=${since.toIso8601String()} (${window.inHours}h)');
-    debugPrint('[MyOrdersDiag] statuses=$statuses');
-
-    try {
-      final visible = await fetchOrdersByPhone(
-        slug: normalizedSlug,
-        phoneNumber: phone,
-      );
-      debugPrint('[MyOrdersDiag] visibleAfterFilter=${visible.length}');
-
-      if (visible.isEmpty) {
-        await _logLastTenOrdersForSlug(normalizedSlug);
-        await _logMyOrdersEmptyReason(
-          normalizedSlug: normalizedSlug,
-          normalizedPhone: phone,
-          windowStart: since,
-        );
-      }
-    } catch (e, stack) {
-      debugPrint('[MyOrdersDiag] diagnostics failed: $e\n$stack');
-    }
-  }
-
-  /// آخر 10 طلبات لنفس [slug] — عند عدم ظهور أي طلب للزبون.
-  static Future<void> _logLastTenOrdersForSlug(String normalizedSlug) async {
-    try {
-      final rows = List<Map<String, dynamic>>.from(
-        await _client
-            .from(tableName)
-            .select('id, phone_number, status, created_at')
-            .eq('slug', normalizedSlug)
-            .order('created_at', ascending: false)
-            .limit(10),
-      );
-      debugPrint(
-        '[MyOrdersDiag] last10ForSlug=$normalizedSlug count=${rows.length}',
-      );
-      for (final row in rows) {
-        debugPrint(
-          '[MyOrdersDiag] last10 '
-          'id=${row['id']} '
-          'customer_phone=${row['phone_number']} '
-          'status=${row['status']} '
-          'created_at=${row['created_at']}',
-        );
-      }
-    } catch (e, stack) {
-      debugPrint('[MyOrdersDiag] last10ForSlug failed: $e\n$stack');
-    }
-  }
-
-  static Future<void> _logMyOrdersEmptyReason({
-    required String normalizedSlug,
-    required String normalizedPhone,
-    required DateTime windowStart,
-  }) async {
-    var query = _client
-        .from(tableName)
-        .select(
-          'id, slug, status, created_at, phone_number, restaurant_id',
-        );
-
-    if (normalizedSlug.isNotEmpty) {
-      query = query.eq('slug', normalizedSlug);
-    }
-    query = query.eq('phone_number', normalizedPhone);
-
-    final rows = List<Map<String, dynamic>>.from(
-      await query
-          .order('created_at', ascending: false)
-          .limit(CustomerMyOrdersConfig.fetchRowCap),
-    );
-
-    debugPrint(
-      '[MyOrdersDiag] صفوف Supabase بنفس slug+phone: ${rows.length}',
-    );
-
-    if (rows.isEmpty) {
-      debugPrint(
-        '[MyOrdersDiag] سبب محتمل: لا صف في orders بهذا slug+phone — '
-        'تحقق من [SubmitOrder] phone_number و normalizedSlug عند الإرسال، '
-        'أو RLS يمنع SELECT للزبون (anon).',
-      );
-      return;
-    }
-
-    var index = 0;
-    for (final row in rows.take(5)) {
-      index++;
-      final parsed = _tryParseOrderRow(
-        row,
-        rowIdForLog: row['id']?.toString(),
-        fallbackSlug: normalizedSlug,
-      );
-      if (parsed == null) {
-        debugPrint(
-          '[MyOrdersDiag] صف#$index id=${row['id']} → تخطي (parse فشل)',
-        );
-        continue;
-      }
-
-      final visibleOk = _includeCustomerPhoneOrder(parsed);
-      final inWindow = CustomerMyOrdersConfig.isOrderVisibleToCustomer(
-        parsed.createdAt,
-      );
-
-      debugPrint(
-        '[MyOrdersDiag] row#$index id=${parsed.id} '
-        'status=${parsed.status} '
-        'slug=${parsed.slug} restaurant_id=${parsed.restaurantId} '
-        'phone=${parsed.customerPhone} created_at=${parsed.createdAt.toUtc()} '
-        'visibility=$visibleOk inWindow=$inWindow '
-        '→ ${visibleOk ? 'يُفترض ظهوره' : 'مستبعد: visibility(وقت/مرفوض)'}',
-      );
-    }
-  }
-
   static Stream<List<DeliveryOrder>> _watchOrdersByPhoneWithInitialFetch({
     required String normalizedSlug,
     required String normalizedPhone,
@@ -712,15 +529,8 @@ abstract final class SupabaseOrderService {
             onHealthChanged?.call(StreamHealth.live);
             controller.add(orders);
           }
-          debugPrint(
-            '[SupabaseOrderService] watchOrdersByPhone($reason) → '
-            '${orders.length} طلب',
-          );
         } catch (e, stack) {
-          debugPrint(
-            '[SupabaseOrderService] watchOrdersByPhone($reason) error: '
-            '$e\n$stack',
-          );
+          debugPrint('[MyOrders] failed to load customer orders: $e');
           if (!closed) {
             onHealthChanged?.call(StreamHealth.error);
             controller.addError(e, stack);
@@ -750,10 +560,7 @@ abstract final class SupabaseOrderService {
       streamSub = realtimeStream.listen(
         (_) => unawaited(emitFetch(reason: 'realtime')),
         onError: (Object error, StackTrace stack) {
-          debugPrint(
-            '[SupabaseOrderService] watchOrdersByPhone realtime: '
-            '$error\n$stack',
-          );
+          debugPrint('[MyOrders] failed to load customer orders: $error');
           if (!closed) {
             controller.addError(error, stack);
           }
@@ -1328,31 +1135,18 @@ abstract final class SupabaseOrderService {
   static List<DeliveryOrder> filterOrdersByPhoneAndSlug({
     required List<Map<String, dynamic>> rows,
     required String normalizedSlug,
-    bool logFilterBreakdown = false,
   }) {
-    var visibilityExcluded = 0;
-    var parseSkipped = 0;
-
     final orders = <DeliveryOrder>[];
     for (final row in rows) {
       final order = _tryParseOrderRow(
         row,
-        rowIdForLog: logFilterBreakdown ? row['id']?.toString() : null,
         fallbackSlug: normalizedSlug,
       );
       if (order == null) {
-        parseSkipped++;
         continue;
       }
 
       if (!_includeCustomerPhoneOrder(order)) {
-        visibilityExcluded++;
-        if (logFilterBreakdown) {
-          debugPrint(
-            '[MyOrdersFilter] id=${order.id} excluded: visibility '
-            'status=${order.status} created_at=${order.createdAt.toUtc()}',
-          );
-        }
         continue;
       }
 
@@ -1360,13 +1154,6 @@ abstract final class SupabaseOrderService {
     }
 
     orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    if (logFilterBreakdown) {
-      debugPrint(
-        '[MyOrdersFilter] supabaseRows=${rows.length} → visible=${orders.length} '
-        '(visibilityExcluded=$visibilityExcluded parseSkipped=$parseSkipped)',
-      );
-    }
 
     return orders;
   }

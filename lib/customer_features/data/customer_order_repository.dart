@@ -43,16 +43,6 @@ class CustomerOrderRepository {
     );
   }
 
-  Future<void> logMyOrdersOpenDiagnostics({
-    required String slug,
-    required String phoneNumber,
-  }) {
-    return SupabaseOrderService.logMyOrdersOpenDiagnostics(
-      slug: slug,
-      phoneNumber: phoneNumber,
-    );
-  }
-
   Future<void> _persistSavedHomeIfRequested({
     required String restaurantId,
     required String customerPhone,

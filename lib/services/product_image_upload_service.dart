@@ -7,7 +7,7 @@ import '../core/utils/image_compressor.dart';
 import 'image_pick_upload_service.dart';
 import 'image_upload_exception.dart';
 
-/// نتيجة معالجة صورة المنتج خارج UI thread.
+/// نتيجة معالجة صورة المنتج.
 class ProductImageProcessResult {
   const ProductImageProcessResult({
     required this.file,
@@ -31,7 +31,7 @@ void _productImageLogError(String message, [Object? error, StackTrace? stack]) {
   }
 }
 
-/// يعالج مسار ملف على isolate منفصل (ضغط معاينة + رفع).
+/// يعالج مسار ملف (ضغط معاينة + رفع) — يُستدعى على isolate أو main حسب المنصة.
 Future<ProductImageProcessResult?> productImageProcessPathWorker(
   String path,
 ) async {
@@ -39,12 +39,14 @@ Future<ProductImageProcessResult?> productImageProcessPathWorker(
   if (trimmed.isEmpty) return null;
 
   Uint8List? uploadBytes = await ImageCompressor.compressFileForUpload(trimmed);
-  Uint8List? previewBytes = await ImageCompressor.compressFileForUpload(
-    trimmed,
-    minWidth: 1200,
-    minHeight: 1200,
-    quality: 72,
-  );
+  Uint8List? previewBytes = uploadBytes == null || uploadBytes.isEmpty
+      ? null
+      : await ImageCompressor.compressFileForUpload(
+          trimmed,
+          minWidth: 1200,
+          minHeight: 1200,
+          quality: 72,
+        );
 
   if (uploadBytes == null || uploadBytes.isEmpty) {
     return null;
@@ -59,25 +61,31 @@ Future<ProductImageProcessResult?> productImageProcessPathWorker(
   );
 }
 
-/// يعالج bytes خام على isolate منفصل.
+/// يعالج bytes خام — fallback عند غياب مسار الملف أو فشل الضغط من المسار.
 Future<ProductImageProcessResult?> productImageProcessBytesWorker(
   Uint8List raw,
 ) async {
   if (raw.isEmpty) return null;
 
   Uint8List? uploadBytes = await ImageCompressor.compressForUpload(raw);
-  Uint8List? previewBytes = await ImageCompressor.compressForUpload(
-    raw,
-    minWidth: 1200,
-    minHeight: 1200,
-    quality: 72,
-  );
+  Uint8List? previewBytes = uploadBytes == null || uploadBytes.isEmpty
+      ? null
+      : await ImageCompressor.compressForUpload(
+          raw,
+          minWidth: 1200,
+          minHeight: 1200,
+          quality: 72,
+        );
 
   uploadBytes ??= raw;
   if (uploadBytes.isEmpty) return null;
 
   return ProductImageProcessResult(
-    file: XFile.fromData(uploadBytes, name: 'product.jpg', mimeType: 'image/jpeg'),
+    file: XFile.fromData(
+      uploadBytes,
+      name: 'product.jpg',
+      mimeType: 'image/jpeg',
+    ),
     previewBytes: (previewBytes != null && previewBytes.isNotEmpty)
         ? previewBytes
         : uploadBytes,
@@ -85,15 +93,23 @@ Future<ProductImageProcessResult?> productImageProcessBytesWorker(
   );
 }
 
-/// اختيار وضغط ورفع صور المنتج — يمنع العمل الثقيل على UI thread.
+/// اختيار وضغط ورفع صور المنتج.
 class ProductImageUploadService {
   ProductImageUploadService({
     ImagePickUploadService? imageUploadService,
   }) : _imageUploadService = imageUploadService ?? ImagePickUploadService();
 
   static const Duration uploadTimeout = Duration(seconds: 30);
+  static const Duration processTimeout = Duration(seconds: 30);
 
   final ImagePickUploadService _imageUploadService;
+
+  /// `compute()` على Android/iOS فقط — Desktop/Web على main isolate.
+  static bool get _useComputeForImageProcessing {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   Future<XFile?> pickProductImageFromGallery() async {
     _productImageLog('picking image');
@@ -111,26 +127,17 @@ class ProductImageUploadService {
     }
   }
 
-  /// يقرأ ويضغط الصورة على isolate منفصل للمعاينة والرفع.
+  /// يقرأ ويضغط الصورة للمعاينة والرفع — timeout + fallback بدون تعليق.
   Future<ProductImageProcessResult?> processPickedImage(XFile file) async {
     _productImageLog('compress start');
     try {
-      final path = file.path.trim();
-      ProductImageProcessResult? result;
-
-      if (path.isNotEmpty) {
-        result = await compute(productImageProcessPathWorker, path);
-      }
-
-      if (result == null) {
-        final raw = await _imageUploadService.readFileBytes(file);
-        if (raw == null || raw.isEmpty) {
-          _productImageLogError('read bytes empty');
+      final result = await _processPickedImageCore(file).timeout(
+        processTimeout,
+        onTimeout: () {
+          _productImageLogError('compress timeout');
           return null;
-        }
-        result = await compute(productImageProcessBytesWorker, raw);
-      }
-
+        },
+      );
       _productImageLog(
         'compress end preview=${result?.previewBytes.length ?? 0}B '
         'upload=${result?.uploadBytes.length ?? 0}B',
@@ -140,6 +147,56 @@ class ProductImageUploadService {
       _productImageLogError('compress failed', e, st);
       rethrow;
     }
+  }
+
+  Future<ProductImageProcessResult?> _processPickedImageCore(XFile file) async {
+    final path = file.path.trim();
+    ProductImageProcessResult? result;
+
+    if (path.isNotEmpty) {
+      result = await _processPath(path);
+    }
+
+    if (result != null) return result;
+
+    final raw = await _imageUploadService.readFileBytes(file);
+    if (raw == null || raw.isEmpty) {
+      _productImageLogError('read bytes empty');
+      return null;
+    }
+
+    result = await _processBytes(raw);
+    return result ?? _fallbackFromRawBytes(file, raw);
+  }
+
+  Future<ProductImageProcessResult?> _processPath(String path) async {
+    if (_useComputeForImageProcessing) {
+      return compute(productImageProcessPathWorker, path);
+    }
+    return productImageProcessPathWorker(path);
+  }
+
+  Future<ProductImageProcessResult?> _processBytes(Uint8List raw) async {
+    if (_useComputeForImageProcessing) {
+      return compute(productImageProcessBytesWorker, raw);
+    }
+    return productImageProcessBytesWorker(raw);
+  }
+
+  ProductImageProcessResult _fallbackFromRawBytes(XFile file, Uint8List raw) {
+    _productImageLog('compress fallback using raw bytes (${raw.length}B)');
+    final resolvedFile = file.path.trim().isNotEmpty
+        ? file
+        : XFile.fromData(
+            raw,
+            name: file.name.trim().isNotEmpty ? file.name : 'product.jpg',
+            mimeType: 'image/jpeg',
+          );
+    return ProductImageProcessResult(
+      file: resolvedFile,
+      previewBytes: raw,
+      uploadBytes: raw,
+    );
   }
 
   Future<String> uploadProductImage({

@@ -98,16 +98,9 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
     if (mounted) {
       await context.read<ActiveRestaurantNotifier>().resolveSlug(widget.slug);
     }
-    final routeSlug = widget.slug;
-    final normalizedSlug = normalizeRestaurantSlug(routeSlug);
-    await CustomerOrderSession.logStoredPhoneDiagnostic(normalizedSlug);
+    final normalizedSlug = normalizeRestaurantSlug(widget.slug);
     final rawPhone = await CustomerOrderSession.getCustomerPhone(normalizedSlug);
     final phone = rawPhone?.trim();
-    // ignore: avoid_print
-    print(
-      '[MY_ORDERS_SCREEN_INPUT] routeSlug=$routeSlug '
-      'normalizedSlug=$normalizedSlug phone=$phone',
-    );
     if (!mounted) return;
     setState(() {
       _phone = phone;
@@ -139,8 +132,8 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
           _streamError = null;
         });
       }
-    } catch (error, stack) {
-      debugPrint('MyOrdersScreen initial fetch: $error\n$stack');
+    } catch (error, _) {
+      debugPrint('[MyOrders] failed to load customer orders: $error');
       if (mounted) {
         setState(() {
           _streamError = error;
@@ -163,8 +156,8 @@ class _MyOrdersScreenState extends State<_MyOrdersBody> {
           _waitingFirstEvent = false;
         });
       },
-      onError: (Object error, StackTrace stack) {
-        debugPrint('MyOrdersScreen stream: $error\n$stack');
+      onError: (Object error, _) {
+        debugPrint('[MyOrders] failed to load customer orders: $error');
         if (!mounted) return;
         setState(() {
           _streamError = error;

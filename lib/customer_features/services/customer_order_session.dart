@@ -67,19 +67,6 @@ abstract final class CustomerOrderSession {
     await prefs.remove(_orderKey(slug));
   }
 
-  static Future<void> logStoredPhoneDiagnostic(String slug) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _phoneKey(slug);
-    final stored = prefs.getString(key);
-    final legacyKey = _legacyPhoneKey(slug);
-    final legacy = legacyKey != key ? prefs.getString(legacyKey) : null;
-    // ignore: avoid_print
-    print(
-      '[MY_ORDERS_PHONE] prefsKey=$key storedPhone=$stored '
-      'legacyKey=$legacyKey legacyPhone=$legacy',
-    );
-  }
-
   static Future<void> clearCustomerPhone(String slug) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_phoneKey(slug));

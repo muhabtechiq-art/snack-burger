@@ -260,33 +260,25 @@ class ProductFormController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// يختار صورة من المعرض ويحدّث المعاينة (ضغط على isolate منفصل).
+  static const Duration _pickImageOperationTimeout = Duration(seconds: 90);
+
+  /// يختار صورة من المعرض ويحدّث المعاينة.
   Future<void> pickFromGallery() async {
     if (_pickingImage || _uploadingImage || _disposed) return;
 
     _setPickingImage(true);
     try {
-      final file = await _productImageUploadService.pickProductImageFromGallery();
-      if (_disposed) return;
-
-      if (file == null) {
-        return;
+      await _pickFromGalleryCore().timeout(
+        _pickImageOperationTimeout,
+        onTimeout: () {
+          throw TimeoutException('image pick/process timed out');
+        },
+      );
+    } on TimeoutException catch (e, st) {
+      debugPrint('[ProductImageUpload][ERROR] pickFromGallery timeout: $e\n$st');
+      if (!_disposed) {
+        _setError('انتهت مهلة اختيار الصورة. حاول مرة أخرى');
       }
-
-      final processed = await _productImageUploadService.processPickedImage(file);
-      if (_disposed) return;
-
-      if (processed == null) {
-        _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
-        return;
-      }
-
-      _pickedImageFile = processed.file;
-      _webImage = processed.previewBytes;
-      _uploadBytes = processed.uploadBytes;
-      _existingImageUrl = null;
-      clearError();
-      notifyListeners();
     } on ImageUploadException catch (e, st) {
       debugPrint('[ProductImageUpload][ERROR] pickFromGallery: $e\n$st');
       if (!_disposed) {
@@ -300,6 +292,30 @@ class ProductFormController extends ChangeNotifier {
     } finally {
       if (!_disposed) _setPickingImage(false);
     }
+  }
+
+  Future<void> _pickFromGalleryCore() async {
+    final file = await _productImageUploadService.pickProductImageFromGallery();
+    if (_disposed) return;
+
+    if (file == null) {
+      return;
+    }
+
+    final processed = await _productImageUploadService.processPickedImage(file);
+    if (_disposed) return;
+
+    if (processed == null) {
+      _setError('تعذّر قراءة ملف الصورة. جرّب صورة أخرى');
+      return;
+    }
+
+    _pickedImageFile = processed.file;
+    _webImage = processed.previewBytes;
+    _uploadBytes = processed.uploadBytes;
+    _existingImageUrl = null;
+    clearError();
+    notifyListeners();
   }
 
   /// يزيل الصورة المختارة أو المعروضة حالياً.
