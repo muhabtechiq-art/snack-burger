@@ -75,13 +75,54 @@ class AppSettingsNotifier extends ChangeNotifier {
   }
 
   Future<AppSettingsModel> saveSettings(AppSettingsModel next) async {
-    final saved = await SupabaseAppSettingsService.save(
-      next,
+    return saveSettingsPatch(next.toUpdateMap());
+  }
+
+  /// حفظ جزئي — لا يكتب إلا الحقول المحددة في [patch].
+  Future<AppSettingsModel> saveSettingsPatch(
+    Map<String, dynamic> patch,
+  ) async {
+    final saved = await SupabaseAppSettingsService.savePatch(
+      patch,
       restaurantId: _restaurantId,
     );
     if (_disposed) return saved;
     _applySettings(saved, clearEmergency: saved.maintenanceMode);
     return saved;
+  }
+
+  Future<AppSettingsModel> saveMaintenanceSettings({
+    required bool maintenanceMode,
+    required String maintenanceTitle,
+    required String maintenanceMessage,
+    required String phone1,
+    required String phone2,
+  }) {
+    return saveSettingsPatch(<String, dynamic>{
+      'maintenance_mode': maintenanceMode,
+      'maintenance_title': maintenanceTitle.trim(),
+      'maintenance_message': maintenanceMessage.trim(),
+      'phone_1': phone1.trim(),
+      'phone_2': phone2.trim(),
+    });
+  }
+
+  Future<AppSettingsModel> saveDailySoundSettings({
+    required bool dailySoundEnabled,
+    required String dailySoundUrl,
+    required String dailySoundTitle,
+    required double dailySoundVolume,
+    required bool dailySoundLoop,
+  }) {
+    return saveSettingsPatch(<String, dynamic>{
+      'daily_sound_enabled': dailySoundEnabled,
+      'daily_sound_url':
+          dailySoundUrl.trim().isEmpty ? null : dailySoundUrl.trim(),
+      'daily_sound_title':
+          dailySoundTitle.trim().isEmpty ? null : dailySoundTitle.trim(),
+      'daily_sound_volume': dailySoundVolume.clamp(0.0, 1.0),
+      'daily_sound_loop': dailySoundLoop,
+    });
   }
 
   void activateEmergencyFallback() {

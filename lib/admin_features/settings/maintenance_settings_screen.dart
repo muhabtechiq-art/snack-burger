@@ -52,16 +52,6 @@ class _MaintenanceSettingsScreenState extends State<MaintenanceSettingsScreen> {
     _phone2Controller.text = settings.phone2;
   }
 
-  AppSettingsModel _buildFromForm(AppSettingsModel current) {
-    return current.copyWith(
-      maintenanceMode: _maintenanceMode,
-      maintenanceTitle: _titleController.text.trim(),
-      maintenanceMessage: _messageController.text.trim(),
-      phone1: _phone1Controller.text.trim(),
-      phone2: _phone2Controller.text.trim(),
-    );
-  }
-
   Future<void> _save({bool? maintenanceMode}) async {
     if (_saving) return;
     if (maintenanceMode != null) {
@@ -71,8 +61,12 @@ class _MaintenanceSettingsScreenState extends State<MaintenanceSettingsScreen> {
     setState(() => _saving = true);
     try {
       final notifier = context.read<AppSettingsNotifier>();
-      final saved = await notifier.saveSettings(
-        _buildFromForm(notifier.settings),
+      final saved = await notifier.saveMaintenanceSettings(
+        maintenanceMode: _maintenanceMode,
+        maintenanceTitle: _titleController.text,
+        maintenanceMessage: _messageController.text,
+        phone1: _phone1Controller.text,
+        phone2: _phone2Controller.text,
       );
       if (!mounted) return;
       _applyToForm(saved);

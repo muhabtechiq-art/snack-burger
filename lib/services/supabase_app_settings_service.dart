@@ -93,9 +93,25 @@ abstract final class SupabaseAppSettingsService {
     AppSettingsModel settings, {
     String? restaurantId,
   }) async {
+    return savePatch(settings.toUpdateMap(), restaurantId: restaurantId);
+  }
+
+  /// تحديث جزئي — يرسل [partialUpdate] فقط دون مسح حقول شاشات أخرى.
+  static Future<AppSettingsModel> savePatch(
+    Map<String, dynamic> partialUpdate, {
+    String? restaurantId,
+  }) async {
+    if (partialUpdate.isEmpty) {
+      return fetch(restaurantId: restaurantId);
+    }
+
     final scopedId = restaurantId?.trim() ?? '';
     final writeId = scopedId.isEmpty ? globalId : scopedId;
-    final payload = <String, dynamic>{'id': writeId, ...settings.toUpdateMap()};
+    final payload = <String, dynamic>{
+      'id': writeId,
+      ...partialUpdate,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
 
     try {
       final row = await _client
@@ -106,13 +122,15 @@ abstract final class SupabaseAppSettingsService {
 
       final saved = AppSettingsModel.fromMap(Map<String, dynamic>.from(row));
       debugPrint(
-        '[SupabaseAppSettingsService] saved maintenanceMode='
-        '${saved.maintenanceMode}',
+        '[SupabaseAppSettingsService] savePatch id=$writeId '
+        'keys=${partialUpdate.keys.join(',')} '
+        'maintenanceMode=${saved.maintenanceMode} '
+        'dailySoundEnabled=${saved.dailySoundEnabled}',
       );
       return saved;
     } on PostgrestException catch (e, stack) {
-      debugPrint('[SupabaseAppSettingsService] save failed: ${e.message}');
-      reportSupabaseError(e, stack, operation: 'saveAppSettings');
+      debugPrint('[SupabaseAppSettingsService] savePatch failed: ${e.message}');
+      reportSupabaseError(e, stack, operation: 'saveAppSettingsPatch');
       rethrow;
     }
   }

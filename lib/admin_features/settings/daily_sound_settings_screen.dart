@@ -59,16 +59,6 @@ class _DailySoundSettingsScreenState extends State<DailySoundSettingsScreen> {
     _pendingDeleteUrl = null;
   }
 
-  AppSettingsModel _buildFromForm(AppSettingsModel current) {
-    return current.copyWith(
-      dailySoundEnabled: _enabled,
-      dailySoundLoop: _loop,
-      dailySoundVolume: _volumePercent / 100,
-      dailySoundUrl: _soundUrl,
-      dailySoundTitle: _soundTitle,
-    );
-  }
-
   Future<void> _pickAndUpload() async {
     if (_uploading || _saving) return;
 
@@ -156,8 +146,13 @@ class _DailySoundSettingsScreenState extends State<DailySoundSettingsScreen> {
     setState(() => _saving = true);
     try {
       final notifier = context.read<AppSettingsNotifier>();
-      final current = notifier.settings;
-      final saved = await notifier.saveSettings(_buildFromForm(current));
+      final saved = await notifier.saveDailySoundSettings(
+        dailySoundEnabled: _enabled,
+        dailySoundUrl: _soundUrl,
+        dailySoundTitle: _soundTitle,
+        dailySoundVolume: _volumePercent / 100,
+        dailySoundLoop: _loop,
+      );
 
       final deleteUrl = _pendingDeleteUrl;
       if (deleteUrl != null && deleteUrl.isNotEmpty) {
