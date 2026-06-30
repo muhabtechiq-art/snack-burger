@@ -3,7 +3,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/promo_banner_model.dart';
-import 'banner_image_diag_log.dart';
 import 'banner_image_upload_service.dart';
 import 'product_repository.dart';
 import 'public_catalog_service.dart';
@@ -154,22 +153,12 @@ class BannerRepository {
         throw StateError('صورة البانر الجديدة فارغة أو تالفة');
       }
 
-      bannerImageDiag('upload_start', detail: 'repository id=${banner.id}');
-      debugPrint(
-        '[BannerRepository] banner_edit_image_upload_start '
-        '${DateTime.now().toIso8601String()} id=${banner.id}',
-      );
       final uploadedUrl = await _imageUploadService.uploadBannerImage(
         restaurantId: banner.restaurantId,
         bannerId: banner.id,
         bytes: pickedImageBytes,
       );
       imageUrl = BannerImageUploadService.publicUrlWithCacheBust(uploadedUrl);
-      bannerImageDiag('upload_done', detail: 'repository id=${banner.id}');
-      debugPrint(
-        '[BannerRepository] banner_edit_image_upload_done '
-        '${DateTime.now().toIso8601String()} url=$imageUrl',
-      );
     }
 
     final updated = banner.copyWith(
@@ -179,17 +168,7 @@ class BannerRepository {
       imageUrl: imageUrl,
     );
 
-    bannerImageDiag('db_update_start', detail: 'id=${banner.id}');
-    debugPrint(
-      '[BannerRepository] banner_edit_save_start '
-      '${DateTime.now().toIso8601String()} id=${banner.id}',
-    );
     final saved = await SupabaseBannerService.updateBanner(updated);
-    bannerImageDiag('db_update_done', detail: 'id=${saved.id}');
-    debugPrint(
-      '[BannerRepository] banner_edit_save_done '
-      '${DateTime.now().toIso8601String()} id=${saved.id}',
-    );
 
     if (imageChanged && saved.imageUrl.trim().isEmpty) {
       throw StateError('لم يُحفظ رابط الصورة الجديد في قاعدة البيانات');

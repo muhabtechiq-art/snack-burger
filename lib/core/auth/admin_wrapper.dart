@@ -8,16 +8,13 @@ import '../../admin_features/orders/admin_order_notification_controller.dart';
 import '../../admin_features/orders/order_notification_player.dart';
 import '../../admin_features/shell/admin_panel_colors.dart';
 import '../../state/active_restaurant_notifier.dart';
+import '../../state/app_settings_notifier.dart';
 import '../../state/business_day_notifier.dart';
 import 'auth_notifier.dart';
 
 /// يغلّف شاشات الإدارة — Loading أثناء التحميل، خطأ إن فشل profile.
 class AdminWrapper extends StatefulWidget {
-  const AdminWrapper({
-    super.key,
-    required this.slug,
-    required this.child,
-  });
+  const AdminWrapper({super.key, required this.slug, required this.child});
 
   final String slug;
   final Widget child;
@@ -84,9 +81,9 @@ class _AdminWrapperState extends State<AdminWrapper> {
 
     final businessDayNotifier = context.read<BusinessDayNotifier>();
     await businessDayNotifier.ensureScope(
-          restaurantId: restaurant.id,
-          slug: widget.slug,
-        );
+      restaurantId: restaurant.id,
+      slug: widget.slug,
+    );
     if (!mounted) return;
 
     await AdminOrderNotificationController.instance.ensureListening(
@@ -101,15 +98,11 @@ class _AdminWrapperState extends State<AdminWrapper> {
     final auth = context.watch<AuthNotifier>();
 
     if (auth.isAuthResolving) {
-      return const _AdminGateScaffold(
-        message: 'جاري التحقق من الصلاحيات...',
-      );
+      return const _AdminGateScaffold(message: 'جاري التحقق من الصلاحيات...');
     }
 
     if (!auth.isAuthenticated) {
-      return const _AdminGateScaffold(
-        message: 'جاري التوجيه...',
-      );
+      return const _AdminGateScaffold(message: 'جاري التوجيه...');
     }
 
     if (!auth.hasAdminProfile) {
@@ -135,6 +128,7 @@ class _AdminWrapperState extends State<AdminWrapper> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppSettingsNotifier>().bindRestaurant(widget.slug);
       unawaited(_syncOrderSoundListener());
     });
 

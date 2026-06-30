@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -113,9 +114,17 @@ class ImagePickUploadService {
     return trimmed;
   }
 
+  /// Windows: نتجنّب image_picker لأنه يتجمّد قبل فتح نافذة الاختيار،
+  /// ونستخدم file_picker (متوفّر مسبقاً في pubspec ويدعم Windows أصلاً).
+  static bool get _isWindows =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   Future<XFile?> pickProductImageFromGallery() async {
+    if (_isWindows) {
+      return _pickImageOnWindows();
+    }
     try {
-      return await _picker
+      final result = await _picker
           .pickImage(
             source: ImageSource.gallery,
             imageQuality: 85,
@@ -129,8 +138,32 @@ class ImagePickUploadService {
               return null;
             },
           );
+      return result;
     } catch (e, st) {
       _log('pickProductImageFromGallery', 'failed', error: e, stack: st);
+      return null;
+    }
+  }
+
+  Future<XFile?> _pickImageOnWindows() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const <String>['jpg', 'jpeg', 'png', 'webp'],
+        withData: false,
+      );
+      if (result == null || result.files.isEmpty) {
+        return null;
+      }
+      final picked = result.files.single;
+      final path = picked.path;
+      if (path == null || path.trim().isEmpty) {
+        _log('pickProductImageFromGallery', 'windows: empty path');
+        return null;
+      }
+      return XFile(path, name: picked.name);
+    } catch (e, st) {
+      _log('pickProductImageFromGallery', 'windows failed', error: e, stack: st);
       return null;
     }
   }

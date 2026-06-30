@@ -42,10 +42,7 @@ void main() {
   });
 
   test('hasDailySound is false when disabled or url empty', () {
-    expect(
-      AppSettingsModel.defaults().hasDailySound,
-      isFalse,
-    );
+    expect(AppSettingsModel.defaults().hasDailySound, isFalse);
     expect(
       AppSettingsModel.defaults()
           .copyWith(dailySoundEnabled: true)
@@ -61,6 +58,32 @@ void main() {
           .hasDailySound,
       isTrue,
     );
+  });
+
+  test('defaults id equals AppSettingsDefaults.settingsId', () {
+    expect(AppSettingsModel.defaults().id, AppSettingsDefaults.settingsId);
+  });
+
+  test('fromMap preserves a tenant-scoped id', () {
+    final settings = AppSettingsModel.fromMap({
+      'id': 'snack_burger',
+      'maintenance_mode': false,
+      'phone_1': '07700000000',
+      'phone_2': '07800000000',
+    });
+
+    expect(settings.id, 'snack_burger');
+  });
+
+  test('fromMap falls back to settingsId when id is missing or blank', () {
+    final missingId = AppSettingsModel.fromMap({'maintenance_mode': false});
+    final blankId = AppSettingsModel.fromMap({
+      'id': '   ',
+      'maintenance_mode': false,
+    });
+
+    expect(missingId.id, AppSettingsDefaults.settingsId);
+    expect(blankId.id, AppSettingsDefaults.settingsId);
   });
 
   test('toUpdateMap includes daily sound fields', () {

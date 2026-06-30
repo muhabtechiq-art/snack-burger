@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../models/promo_banner_model.dart';
 import '../../services/banner_image_upload_service.dart';
-import '../../services/banner_image_diag_log.dart';
+import '../../services/image_upload_exception.dart';
 import '../shell/admin_panel_colors.dart';
 
 /// نتيجة نموذج إضافة/تعديل البانر.
@@ -126,17 +126,7 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
   }
 
   Future<void> _loadPreviewBytes(XFile file) async {
-    bannerImageDiag('compress_start', detail: 'preview');
-    debugPrint(
-      '[BannerFormDialog] banner_image_compress_start '
-      '${DateTime.now().toIso8601String()}',
-    );
     final result = await widget.uploadService.prepareBannerImagePreview(file);
-    bannerImageDiag('compress_done', detail: 'preview');
-    debugPrint(
-      '[BannerFormDialog] banner_image_compress_done '
-      '${DateTime.now().toIso8601String()}',
-    );
     if (!mounted) return;
 
     if (result == null || result.previewBytes.isEmpty) {
@@ -150,50 +140,24 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
       );
     }
 
-    bannerImageDiag(
-      'preview_set_start',
-      detail: 'bytes=${result.previewBytes.length}',
-    );
     setState(() {
       _previewBytes = result.previewBytes;
       _uploadBytes = null;
     });
-    bannerImageDiag(
-      'preview_set_done',
-      detail: 'bytes=${result.previewBytes.length}',
-    );
-
-    debugPrint(
-      '[BannerFormDialog] banner_image_preview_ready '
-      '${DateTime.now().toIso8601String()} '
-      'bytes=${result.previewBytes.length}',
-    );
   }
 
   Future<void> _pickNewImage() async {
     if (_saving || _pickingImage) return;
 
-    bannerImageDiag('button_pressed', detail: 'change_image');
     _setPickingImage(true);
     try {
-      bannerImageDiag('pick_start');
-      debugPrint(
-        '[BannerFormDialog] banner_image_pick_start '
-        '${DateTime.now().toIso8601String()}',
-      );
       final picked = await widget.uploadService.pickBannerImageFromGallery();
-      bannerImageDiag('pick_done', detail: 'selected=${picked != null}');
-      debugPrint(
-        '[BannerFormDialog] banner_image_pick_done '
-        '${DateTime.now().toIso8601String()}',
-      );
       if (!mounted) return;
 
       if (picked == null) {
         return;
       }
 
-      bannerImageDiag('preview_set_start', detail: 'picked_file');
       setState(() {
         _pickedImage = picked;
         _imageChanged = true;
@@ -201,14 +165,12 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
         _uploadBytes = null;
         _errorMessage = null;
       });
-      bannerImageDiag('preview_set_done', detail: 'picked_file');
-
-      debugPrint(
-        '[BannerFormDialog] banner_edit_image_selected '
-        '${DateTime.now().toIso8601String()}',
-      );
 
       await _loadPreviewBytes(picked);
+    } on ImageUploadException catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = e.message);
+      }
     } catch (e, st) {
       debugPrint('BannerFormDialog._pickNewImage: $e\n$st');
       if (mounted) {
@@ -236,17 +198,7 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
       Uint8List? bytes = _uploadBytes;
       if (_imageChanged && _pickedImage != null) {
         if (bytes == null || bytes.isEmpty) {
-          bannerImageDiag('compress_start', detail: 'upload');
-          debugPrint(
-            '[BannerFormDialog] banner_image_compress_start '
-            '${DateTime.now().toIso8601String()} (upload)',
-          );
           bytes = await widget.uploadService.readAndCompress(_pickedImage!);
-          bannerImageDiag('compress_done', detail: 'upload');
-          debugPrint(
-            '[BannerFormDialog] banner_image_compress_done '
-            '${DateTime.now().toIso8601String()} (upload)',
-          );
           if (!mounted) return;
           if (bytes == null || bytes.isEmpty) {
             throw StateError('تعذّر قراءة أو ضغط الصورة');
@@ -266,6 +218,12 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
           imageChanged: _imageChanged,
         ),
       );
+    } on ImageUploadException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _errorMessage = e.message;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -420,10 +378,6 @@ class _BannerFormDialogState extends State<_BannerFormDialog> {
 
   Widget _buildImagePreview(PromoBannerModel? banner) {
     if (_previewBytes != null && _previewBytes!.isNotEmpty) {
-      bannerImageDiag(
-        'image_memory_build',
-        detail: 'bytes=${_previewBytes!.length}',
-      );
       return Image.memory(
         _previewBytes!,
         fit: BoxFit.cover,

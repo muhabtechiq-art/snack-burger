@@ -105,7 +105,7 @@ final class AdminOrderNotificationController {
 
   void _onPendingOrdersRealtime(List<DeliveryOrder> orders) {
     _lastStreamEventAt = DateTime.now();
-    _coordinator.onOrdersBatch(orders, source: 'realtime');
+    unawaited(_coordinator.onOrdersBatch(orders, source: 'realtime'));
   }
 
   void _onStreamHealth(StreamHealth health) {
@@ -172,7 +172,7 @@ final class AdminOrderNotificationController {
         businessDayId: businessDayId,
         after: startedAt,
       );
-      _coordinator.onOrdersBatch(orders, source: 'polling');
+      await _coordinator.onOrdersBatch(orders, source: 'polling');
     } catch (error, stack) {
       debugPrint('[QA][OrderSound] polling failed error=$error\n$stack');
     }

@@ -116,7 +116,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
 
     _orderChangesSubscription = _orderRepository
         .watchOrdersForBusinessDay(businessDayId: businessDayId)
-        .listen((_) => _scheduleRealtimeReportRefresh());
+        .listen(
+          (_) => _scheduleRealtimeReportRefresh(),
+          onError: (Object error, StackTrace stack) {
+            debugPrint('[AdminHomeScreen] order watch error: $error');
+          },
+          cancelOnError: false,
+        );
   }
 
   void _scheduleRealtimeReportRefresh() {

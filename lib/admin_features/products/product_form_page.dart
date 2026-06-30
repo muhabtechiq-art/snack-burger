@@ -270,6 +270,30 @@ class _ProductFormBodyState extends State<_ProductFormBody> {
                   onClear: controller.clearPickedImage,
                   onExistingImageFailed: controller.clearBrokenExistingImage,
                 ),
+                if (controller.errorMessage != null &&
+                    controller.errorMessage!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Text(
+                      controller.errorMessage!,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: controller.nameController,

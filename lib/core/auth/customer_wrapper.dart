@@ -7,11 +7,7 @@ import 'auth_notifier.dart';
 
 /// يغلّف شاشات الزبون — يحجب المنيو أثناء الصيانة أو الخطأ الحرج.
 class CustomerWrapper extends StatelessWidget {
-  const CustomerWrapper({
-    super.key,
-    required this.slug,
-    required this.child,
-  });
+  const CustomerWrapper({super.key, required this.slug, required this.child});
 
   final String slug;
   final Widget child;
@@ -21,29 +17,27 @@ class CustomerWrapper extends StatelessWidget {
     final auth = context.watch<AuthNotifier>();
     final appSettings = context.watch<AppSettingsNotifier>();
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppSettingsNotifier>().bindRestaurant(slug);
+    });
+
     if (auth.isAuthResolving) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (auth.isAdminAuthorized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (appSettings.isLoading && !appSettings.shouldBlockCustomerApp) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (appSettings.shouldBlockCustomerApp) {
       return MaintenanceScreen(
         settings: appSettings.settings,
-        isEmergencyFallback: appSettings.emergencyFallback &&
-            !appSettings.maintenanceMode,
+        isEmergencyFallback:
+            appSettings.emergencyFallback && !appSettings.maintenanceMode,
       );
     }
 

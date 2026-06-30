@@ -14,9 +14,40 @@ abstract final class SupabaseAppSettingsService {
 
   static SupabaseClient get _client => Supabase.instance.client;
 
-  /// جلب الإعدادات العامة — يُرجع الافتراضيات عند غياب الجدول أو الصف.
-  static Future<AppSettingsModel> fetch() async {
+  /// جلب الإعدادات — صف المطعم [restaurantId] أولاً ثم fallback إلى [globalId]
+  /// ثم الافتراضيات. يبقى متوافقاً رجعياً: `fetch()` بلا وسيط = المسار العالمي.
+  static Future<AppSettingsModel> fetch({String? restaurantId}) async {
     try {
+      final scopedId = restaurantId?.trim() ?? '';
+
+      if (scopedId.isNotEmpty) {
+        final scopedRow = await _client
+            .from(tableName)
+            .select()
+            .eq('id', scopedId)
+            .maybeSingle();
+
+        if (scopedRow != null) {
+          final scopedSettings = AppSettingsModel.fromMap(
+            Map<String, dynamic>.from(scopedRow),
+          );
+          if (kDebugMode) {
+            debugPrint(
+              '[SupabaseAppSettingsService] fetch id=$scopedId '
+              'maintenanceMode=${scopedSettings.maintenanceMode}',
+            );
+          }
+          return scopedSettings;
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+            '[SupabaseAppSettingsService] fetch id=$scopedId not found — '
+            'falling back to $globalId',
+          );
+        }
+      }
+
       final row = await _client
           .from(tableName)
           .select()
@@ -30,8 +61,7 @@ abstract final class SupabaseAppSettingsService {
         return AppSettingsModel.defaults();
       }
 
-      final settings =
-          AppSettingsModel.fromMap(Map<String, dynamic>.from(row));
+      final settings = AppSettingsModel.fromMap(Map<String, dynamic>.from(row));
       if (kDebugMode) {
         debugPrint(
           '[SupabaseAppSettingsService] fetch maintenanceMode='
@@ -58,11 +88,14 @@ abstract final class SupabaseAppSettingsService {
   }
 
   /// تحديث الإعدادات — يتطلب جلسة إدارة (authenticated).
-  static Future<AppSettingsModel> save(AppSettingsModel settings) async {
-    final payload = <String, dynamic>{
-      'id': globalId,
-      ...settings.toUpdateMap(),
-    };
+  /// يكتب صف [restaurantId] عند توفّره، وإلا الصف العالمي [globalId].
+  static Future<AppSettingsModel> save(
+    AppSettingsModel settings, {
+    String? restaurantId,
+  }) async {
+    final scopedId = restaurantId?.trim() ?? '';
+    final writeId = scopedId.isEmpty ? globalId : scopedId;
+    final payload = <String, dynamic>{'id': writeId, ...settings.toUpdateMap()};
 
     try {
       final row = await _client
@@ -71,8 +104,7 @@ abstract final class SupabaseAppSettingsService {
           .select()
           .single();
 
-      final saved =
-          AppSettingsModel.fromMap(Map<String, dynamic>.from(row));
+      final saved = AppSettingsModel.fromMap(Map<String, dynamic>.from(row));
       debugPrint(
         '[SupabaseAppSettingsService] saved maintenanceMode='
         '${saved.maintenanceMode}',
@@ -85,18 +117,26 @@ abstract final class SupabaseAppSettingsService {
     }
   }
 
-  /// بث خفيف لصف الإعدادات الوحيد — لا يمس بث الطلبات أو المنتجات.
-  static Stream<AppSettingsModel> watchGlobalSettings() {
+  /// بث إعدادات مطعم محدد عبر [restaurantId]، أو الصف العالمي عند غيابه.
+  /// لا يمسّ بث الطلبات أو المنتجات.
+  static Stream<AppSettingsModel> watchSettings({String? restaurantId}) {
+    final scopedId = restaurantId?.trim() ?? '';
+    final watchId = scopedId.isEmpty ? globalId : scopedId;
     return _client
         .from(tableName)
         .stream(primaryKey: const ['id'])
-        .eq('id', globalId)
+        .eq('id', watchId)
         .map((rows) {
-      if (rows.isEmpty) return AppSettingsModel.defaults();
-      return AppSettingsModel.fromMap(
-        Map<String, dynamic>.from(rows.first),
-      );
-    });
+          if (rows.isEmpty) return AppSettingsModel.defaults();
+          return AppSettingsModel.fromMap(
+            Map<String, dynamic>.from(rows.first),
+          );
+        });
+  }
+
+  /// بث خفيف لصف الإعدادات العالمي — متوافق رجعياً عبر [watchSettings].
+  static Stream<AppSettingsModel> watchGlobalSettings() {
+    return watchSettings();
   }
 
   static bool _isMissingTable(PostgrestException error) {

@@ -287,55 +287,43 @@ abstract final class SupabaseOrderService {
   }
 
   /// بث الطلبات المعلقة ليوم عمل محدد — للوحة الإدارة والتنبيه.
+  ///
+  /// مدعوم بـ RPC SECURITY DEFINER (يتجاوز RLS) + Realtime كمُحفّز فقط.
   static Stream<List<DeliveryOrder>> watchPendingOrdersForBusinessDay({
     required String businessDayId,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchPendingOrdersForBusinessDay(businessDayId: businessDayId);
-    }
-    final normalizedDayId = businessDayId.trim();
-
-    return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) =>
-            order.status == DeliveryOrderStatus.pending &&
-            order.businessDayId?.trim() == normalizedDayId,
-        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
-        logParseErrors: true,
-      ),
-      streamTag: 'watchPendingOrdersForBusinessDay(day=$normalizedDayId)',
-      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    return _rpcBackedBusinessDayOrdersStream(
+      businessDayId: businessDayId,
+      include: (order) => order.status == DeliveryOrderStatus.pending,
+      compare: (a, b) => a.createdAt.compareTo(b.createdAt),
+      onHealthChanged: onHealthChanged,
     );
   }
 
   /// جلب الطلبات المعلقة ليوم عمل بعد وقت محدد — polling احتياطي.
+  ///
+  /// مدعوم بـ RPC SECURITY DEFINER (يتجاوز RLS) ثم فلترة pending + createdAfter.
   static Future<List<DeliveryOrder>> fetchPendingOrdersForBusinessDayCreatedAfter({
     required String businessDayId,
     required DateTime after,
   }) async {
     final normalizedDayId = businessDayId.trim();
+    final afterUtc = after.toUtc();
     try {
       return await NetworkTimeouts.run(() async {
-        final rows = await _client
-            .from(tableName)
-            .select()
-            .eq('business_day_id', normalizedDayId)
-            .eq('status', DeliveryOrderStatus.pending)
-            .gte('created_at', after.toUtc().toIso8601String())
-            .order('created_at', ascending: false);
-
-        return _mapRowsToOrders(
-          rows: List<Map<String, dynamic>>.from(rows),
-          include: (order) =>
-              order.status == DeliveryOrderStatus.pending &&
-              order.businessDayId?.trim() == normalizedDayId,
-          compare: (a, b) => b.createdAt.compareTo(a.createdAt),
-          logParseErrors: false,
+        final all = await _fetchKitchenDashboardOrdersForBusinessDayRpc(
+          normalizedDayId,
         );
+        final filtered = all
+            .where(
+              (order) =>
+                  order.status == DeliveryOrderStatus.pending &&
+                  !order.createdAt.toUtc().isBefore(afterUtc),
+            )
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return filtered;
       });
     } catch (e, stack) {
       debugPrint(
@@ -668,41 +656,152 @@ abstract final class SupabaseOrderService {
     return false;
   }
 
-  /// لوحة الإدارة: معلّق أو مرفوض ضمن نفس يوم العمل.
-  static bool _includeKitchenDashboardOrderForBusinessDay(
-    DeliveryOrder order,
+  /// جلب طلبات يوم العمل عبر RPC SECURITY DEFINER (يتجاوز RLS).
+  ///
+  /// يُرجِع pending + rejected لليوم المحدد فقط (business_day_id).
+  /// لا يستخدم [_mapRowsToOrders]؛ يحوّل الصفوف عبر [_tryParseOrderRow] مباشرة.
+  static Future<List<DeliveryOrder>>
+      _fetchKitchenDashboardOrdersForBusinessDayRpc(
     String businessDayId,
-  ) {
-    if (order.businessDayId?.trim() != businessDayId.trim()) return false;
-    if (order.isPending) return true;
-    if (order.isRejected) return true;
-    return false;
+  ) async {
+    final normalizedDayId = businessDayId.trim();
+    final raw = await _client.rpc<dynamic>(
+      'get_kitchen_dashboard_orders_for_business_day',
+      params: <String, dynamic>{'p_business_day_id': normalizedDayId},
+    );
+
+    final rows = List<Map<String, dynamic>>.from(
+      (raw as List<dynamic>? ?? const <dynamic>[]).map(
+        (dynamic entry) => Map<String, dynamic>.from(entry as Map),
+      ),
+    );
+
+    final orders = <DeliveryOrder>[];
+    for (final row in rows) {
+      final order = _tryParseOrderRow(row, rowIdForLog: row['id']?.toString());
+      if (order != null) orders.add(order);
+    }
+    orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return orders;
   }
 
-  /// بث طلبات المطبخ ليوم عمل محدد: معلّقة + مرفوضة.
+  /// بناء بث مدعوم بـ RPC ليوم عمل: initial fetch + Realtime كمُحفّز فقط.
+  ///
+  /// المصدر الموثوق هو [_fetchKitchenDashboardOrdersForBusinessDayRpc]
+  /// (SECURITY DEFINER يتجاوز RLS)؛ rows البث مُتجاهَلة — تُستخدم فقط للتحفيز.
+  static Stream<List<DeliveryOrder>> _rpcBackedBusinessDayOrdersStream({
+    required String businessDayId,
+    required bool Function(DeliveryOrder order) include,
+    int Function(DeliveryOrder a, DeliveryOrder b)? compare,
+    ValueChanged<StreamHealth>? onHealthChanged,
+  }) {
+    final normalizedDayId = businessDayId.trim();
+
+    return Stream<List<DeliveryOrder>>.multi((controller) {
+      StreamSubscription<List<Map<String, dynamic>>>? triggerSub;
+      Timer? pollTimer;
+      bool closed = false;
+      bool inFlight = false;
+      bool refetchQueued = false;
+      bool firstTriggerEvent = true;
+      int pollTick = 0;
+      String? lastSignature;
+
+      Future<void> emitFetch() async {
+        if (closed) return;
+        if (inFlight) {
+          refetchQueued = true;
+          return;
+        }
+        inFlight = true;
+        try {
+          final all = await _fetchKitchenDashboardOrdersForBusinessDayRpc(
+            normalizedDayId,
+          );
+          final filtered = all.where(include).toList();
+          if (compare != null) filtered.sort(compare);
+          if (!closed) {
+            onHealthChanged?.call(StreamHealth.live);
+            // إصدار صامت: لا نُعيد دفع نفس القائمة إن لم تتغيّر، حتى لا يومض
+            // الـ UI أو يظهر مؤشر تحديث مع كل دورة polling احتياطية.
+            final signature = filtered
+                .map((o) => '${o.id}|${o.status}|${o.rejectionReason ?? ''}')
+                .join(',');
+            if (signature != lastSignature) {
+              lastSignature = signature;
+              controller.add(filtered);
+            }
+          }
+        } catch (e, stack) {
+          debugPrint('[BusinessDayOrdersRpc] fetch failed: $e\n$stack');
+          if (!closed) {
+            onHealthChanged?.call(StreamHealth.error);
+            controller.addError(e, stack);
+          }
+        } finally {
+          inFlight = false;
+          if (!closed && refetchQueued) {
+            refetchQueued = false;
+            unawaited(emitFetch());
+          }
+        }
+      }
+
+      onHealthChanged?.call(StreamHealth.connecting);
+      unawaited(emitFetch());
+
+      // polling احتياطي هادئ: إن لم تصل أحداث Realtime (RLS)، نُعيد الجلب
+      // من RPC كل 3 ثوانٍ بالضبط. coalescing الحالي (inFlight + refetchQueued)
+      // يمنع تراكب الطلبات، والإصدار الصامت يمنع وميض الـ UI.
+      // يُلغى المؤقت في onCancel لتفادي التسريب. اللوج نادر (كل 10 دورات).
+      pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+        if (closed) return;
+        pollTick++;
+        if (kDebugMode && pollTick % 10 == 0) {
+          debugPrint(
+            '[RPC STREAM POLL] businessDayId=$normalizedDayId tick=$pollTick',
+          );
+        }
+        unawaited(emitFetch());
+      });
+
+      // Realtime trigger فقط — نتجاهل rows القادمة ونُعيد الجلب من RPC.
+      // نتجاهل أول إصدار (اللقطة الأولية) لأن initial fetch أعلاه يغطيه،
+      // حتى لا يُستدعى emitFetch مرتين عند إنشاء الـ stream.
+      triggerSub =
+          _client.from(tableName).stream(primaryKey: const ['id']).listen(
+        (_) {
+          if (firstTriggerEvent) {
+            firstTriggerEvent = false;
+            return;
+          }
+          unawaited(emitFetch());
+        },
+        onError: (Object error, StackTrace stack) {
+          debugPrint('[BusinessDayOrdersRpc] trigger error (ignored): $error');
+        },
+        cancelOnError: false,
+      );
+
+      controller.onCancel = () async {
+        closed = true;
+        pollTimer?.cancel();
+        await triggerSub?.cancel();
+        onHealthChanged?.call(StreamHealth.disposed);
+      };
+    });
+  }
+
+  /// بث طلبات لوحة الكاشير ليوم عمل محدد عبر RPC (pending + rejected).
   static Stream<List<DeliveryOrder>> watchKitchenDashboardOrdersForBusinessDay({
     required String businessDayId,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchKitchenDashboardOrdersForBusinessDay(
-        businessDayId: businessDayId,
-      );
-    }
-    final normalizedDayId = businessDayId.trim();
-
-    return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) =>
-            _includeKitchenDashboardOrderForBusinessDay(order, normalizedDayId),
-        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
-      ),
-      streamTag:
-          'watchKitchenDashboardOrdersForBusinessDay(day=$normalizedDayId)',
-      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    return _rpcBackedBusinessDayOrdersStream(
+      businessDayId: businessDayId,
+      include: (_) => true,
+      compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      onHealthChanged: onHealthChanged,
     );
   }
 
@@ -742,20 +841,45 @@ abstract final class SupabaseOrderService {
     );
   }
 
+  /// جلب كل طلبات يوم العمل (كل الحالات) عبر RPC SECURITY DEFINER (يتجاوز RLS).
+  ///
+  /// للإحصائيات الإدارية والتقرير الختامي — بلا فلتر status على جانب Flutter.
+  /// نفس أسلوب parsing المستخدم في [_fetchKitchenDashboardOrdersForBusinessDayRpc].
+  static Future<List<DeliveryOrder>> _fetchAdminBusinessDayOrdersRpc(
+    String businessDayId,
+  ) async {
+    final normalizedDayId = businessDayId.trim();
+    debugPrint('[ADMIN RPC ACTIVE] businessDayId=$normalizedDayId');
+    final raw = await _client.rpc<dynamic>(
+      'get_business_day_orders_for_admin',
+      params: <String, dynamic>{'p_business_day_id': normalizedDayId},
+    );
+
+    final rows = List<Map<String, dynamic>>.from(
+      (raw as List<dynamic>? ?? const <dynamic>[]).map(
+        (dynamic entry) => Map<String, dynamic>.from(entry as Map),
+      ),
+    );
+    debugPrint('[ADMIN RPC ACTIVE] rows=${rows.length}');
+
+    final orders = <DeliveryOrder>[];
+    for (final row in rows) {
+      final order = _tryParseOrderRow(row, rowIdForLog: row['id']?.toString());
+      if (order != null) orders.add(order);
+    }
+    orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return orders;
+  }
+
+  /// طلبات يوم العمل عبر RPC SECURITY DEFINER (يتجاوز RLS).
+  ///
+  /// يستخدم get_business_day_orders_for_admin (كل الحالات) للإحصائيات والتقرير
+  /// الختامي — وليس kitchen RPC المحصور بـ pending/rejected.
   static Future<List<DeliveryOrder>> _fetchAllOrdersForBusinessDay(
     String businessDayId,
   ) async {
-    final rows = await _client
-        .from(tableName)
-        .select()
-        .eq('business_day_id', businessDayId)
-        .order('created_at', ascending: false);
-
-    return _mapRowsToOrders(
-      rows: List<Map<String, dynamic>>.from(rows),
-      include: (_) => true,
-      logParseErrors: true,
-    );
+    debugPrint('[CALL] _fetchAllOrdersForBusinessDay');
+    return _fetchAdminBusinessDayOrdersRpc(businessDayId);
   }
 
   static List<ClosingProductLine> _buildClosingProductLines(
@@ -795,6 +919,7 @@ abstract final class SupabaseOrderService {
     required String businessDayId,
     BusinessDayModel? businessDay,
   }) async {
+    debugPrint('[CALL] fetchBusinessDayOrderStats');
     final day = businessDay ??
         await SupabaseBusinessDayService.fetchById(businessDayId);
     if (day == null) {
@@ -830,6 +955,7 @@ abstract final class SupabaseOrderService {
     String? slug,
     BusinessDayModel? businessDay,
   }) async {
+    debugPrint('[CALL] fetchClosingReport');
     final day = businessDay ??
         await SupabaseBusinessDayService.fetchById(businessDayId);
     if (day == null) {
@@ -865,27 +991,19 @@ abstract final class SupabaseOrderService {
     }
   }
 
-  /// بث كل الطلبات المرتبطة بيوم عمل — للتحديث الفوري في لوحة التحكم.
+  /// بث طلبات يوم العمل — للتحديث الفوري في لوحة التحكم.
+  ///
+  /// مدعوم بـ RPC SECURITY DEFINER (يتجاوز RLS) + Realtime كمُحفّز فقط.
+  /// ملاحظة: يُرجِع pending + rejected فقط (نطاق RPC).
   static Stream<List<DeliveryOrder>> watchOrdersForBusinessDay({
     required String businessDayId,
     ValueChanged<StreamHealth>? onHealthChanged,
   }) {
-    if (!StabilityPhase1Flags.enablePhase1RealtimeHardening) {
-      return _legacyWatchOrdersForBusinessDay(businessDayId: businessDayId);
-    }
-    final normalizedDayId = businessDayId.trim();
-
-    return _resilientOrdersStream(
-      sourceFactory: () =>
-          _client.from(tableName).stream(primaryKey: const ['id']),
-      transform: (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) => order.businessDayId?.trim() == normalizedDayId,
-        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
-        logParseErrors: true,
-      ),
-      streamTag: 'watchOrdersForBusinessDay(day=$normalizedDayId)',
-      onHealthChanged: _streamHealthCallback(onHealthChanged),
+    return _rpcBackedBusinessDayOrdersStream(
+      businessDayId: businessDayId,
+      include: (_) => true,
+      compare: (a, b) => b.createdAt.compareTo(a.createdAt),
+      onHealthChanged: onHealthChanged,
     );
   }
 
@@ -896,9 +1014,17 @@ abstract final class SupabaseOrderService {
   }) async {
     final correlationId = AppTelemetry.newCorrelationId(scope: 'order_status');
     try {
-      await _client.from(tableName).update({
-        'status': status,
-      }).eq('id', orderId);
+      final raw = await _client.rpc<dynamic>(
+        'admin_update_order_status',
+        params: <String, dynamic>{
+          'p_order_id': orderId,
+          'p_status': status,
+        },
+      );
+      final rows = List<dynamic>.from(raw as List<dynamic>? ?? const <dynamic>[]);
+      if (rows.isEmpty) {
+        throw StateError('order_status_update_no_rows');
+      }
       debugPrint('[SupabaseOrderService] تحديث حالة $orderId → $status');
       AppTelemetry.logEvent(
         'order_status_updated',
@@ -936,9 +1062,17 @@ abstract final class SupabaseOrderService {
       throw ArgumentError('معرّف الطلب فارغ');
     }
     try {
-      await _client.from(tableName).update({
-        'rejection_reason': trimmedReason.isEmpty ? null : trimmedReason,
-      }).eq('id', normalizedId);
+      final raw = await _client.rpc<dynamic>(
+        'admin_update_order_rejection_reason',
+        params: <String, dynamic>{
+          'p_order_id': normalizedId,
+          'p_rejection_reason': reason,
+        },
+      );
+      final rows = List<dynamic>.from(raw as List<dynamic>? ?? const <dynamic>[]);
+      if (rows.isEmpty) {
+        throw StateError('order_rejection_reason_update_no_rows');
+      }
       debugPrint(
         '[SupabaseOrderService] سبب الرفض $normalizedId → '
         '${trimmedReason.isEmpty ? "(فارغ)" : trimmedReason}',
@@ -1275,36 +1409,6 @@ abstract final class SupabaseOrderService {
     return 'unknown';
   }
 
-  /// Legacy path kept as strict rollback target.
-  static Stream<List<DeliveryOrder>> _legacyWatchPendingOrdersForBusinessDay({
-    required String businessDayId,
-  }) {
-    final normalizedDayId = businessDayId.trim();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
-      (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) =>
-            order.status == DeliveryOrderStatus.pending &&
-            order.businessDayId?.trim() == normalizedDayId,
-        compare: (a, b) => a.createdAt.compareTo(b.createdAt),
-      ),
-    );
-  }
-
-  static Stream<List<DeliveryOrder>> _legacyWatchKitchenDashboardOrdersForBusinessDay({
-    required String businessDayId,
-  }) {
-    final normalizedDayId = businessDayId.trim();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
-      (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) =>
-            _includeKitchenDashboardOrderForBusinessDay(order, normalizedDayId),
-        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
-      ),
-    );
-  }
-
   /// Legacy path kept as strict rollback target — نفس فلتر slug server-side.
   static Stream<List<DeliveryOrder>> _legacyWatchPendingOrders({
     required String slug,
@@ -1363,20 +1467,6 @@ abstract final class SupabaseOrderService {
         ),
         compare: (a, b) => b.createdAt.compareTo(a.createdAt),
         fallbackSlug: normalized,
-      ),
-    );
-  }
-
-  /// Legacy path kept as strict rollback target.
-  static Stream<List<DeliveryOrder>> _legacyWatchOrdersForBusinessDay({
-    required String businessDayId,
-  }) {
-    final normalizedDayId = businessDayId.trim();
-    return _client.from(tableName).stream(primaryKey: const ['id']).map(
-      (rows) => _mapRowsToOrders(
-        rows: rows,
-        include: (order) => order.businessDayId?.trim() == normalizedDayId,
-        compare: (a, b) => b.createdAt.compareTo(a.createdAt),
       ),
     );
   }

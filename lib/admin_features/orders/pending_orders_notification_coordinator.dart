@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -41,7 +40,10 @@ class PendingOrdersNotificationCoordinator {
   }
 
   /// يُستدعى عند كل حدث Realtime أو دورة Polling.
-  void onOrdersBatch(List<DeliveryOrder> orders, {required String source}) {
+  Future<void> onOrdersBatch(
+    List<DeliveryOrder> orders, {
+    required String source,
+  }) async {
     final pending = orders.where((o) => o.isPending).toList(growable: false);
 
     for (final order in pending) {
@@ -67,6 +69,7 @@ class PendingOrdersNotificationCoordinator {
     for (final order in pending) {
       if (!_isEligibleNewOrder(order, startedAt)) continue;
 
+      // order.id هو مفتاح منع التكرار الوحيد (ليس الهاتف ولا الاسم).
       final alreadyNotified = _notifiedOrderIds.contains(order.id);
       debugPrint(
         '[QA][OrderSound] pending insert detected orderId=${order.id}',
@@ -77,28 +80,39 @@ class PendingOrdersNotificationCoordinator {
 
       if (alreadyNotified) continue;
 
-      _rememberNotified(order.id);
-
+      // على Android/iOS يملك التنبيهَ OrderRealtimeNotificationService؛
+      // نعلّمه هنا لتجنّب الازدواج، بلا تشغيل صوت داخل الـ coordinator.
       if (OrderRealtimeNotificationService.instance.handlesAlerts) {
+        _rememberNotified(order.id);
         continue;
       }
 
-      unawaited(_playSoundForOrder(order.id));
+      // لا نعلّم الطلب notified إلا بعد نجاح تشغيل الصوت، حتى تُعاد المحاولة
+      // في الدفعة التالية إذا فشل التشغيل (جهاز صوت مشغول/استثناء).
+      final played = await _playSoundForOrder(order.id);
+      if (played) {
+        _rememberNotified(order.id);
+      }
     }
   }
 
   bool _isEligibleNewOrder(DeliveryOrder order, DateTime startedAt) {
-    final grace = startedAt.subtract(const Duration(seconds: 2));
+    // المعيار الأساسي للجدّة هو order.id عبر baseline + _notifiedOrderIds؛
+    // grace واسعة (30s) تمنع إسقاط طلب جديد بصمت بسبب فرق ساعة بسيط.
+    final grace = startedAt.subtract(const Duration(seconds: 30));
     return !order.createdAt.toUtc().isBefore(grace);
   }
 
-  Future<void> _playSoundForOrder(String orderId) async {
+  /// يُرجِع true عند نجاح تشغيل الصوت فقط.
+  Future<bool> _playSoundForOrder(String orderId) async {
     try {
       await OrderNotificationPlayer.playNewPendingOrder();
+      return true;
     } catch (error, stack) {
       debugPrint(
         '[QA][OrderSound] playing sound failed error=$error\n$stack',
       );
+      return false;
     }
   }
 

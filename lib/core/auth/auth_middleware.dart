@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../utils/restaurant_slug_utils.dart';
 import 'admin_profile_session.dart';
 import 'auth_notifier.dart';
 
@@ -25,8 +26,7 @@ abstract final class AuthMiddleware {
     final location = state.uri.path;
     final slug = state.pathParameters['slug'] ?? 'snack_burger';
 
-    final needsProfile =
-        isAdminPath(location) && !isAdminLoginPath(location);
+    final needsProfile = isAdminPath(location) && !isAdminLoginPath(location);
 
     await auth.ensureReadyForRouting(needsAdminProfile: needsProfile);
 
@@ -60,11 +60,27 @@ abstract final class AuthMiddleware {
       return null;
     }
 
+    final normalizedRouteSlug = normalizeRestaurantSlug(slug);
+    final normalizedProfileRestaurantId = normalizeRestaurantSlug(
+      AdminProfileSession.restaurantId ?? '',
+    );
+
     if (isAdminPath(location)) {
       // الطرد لصفحة الدخول فقط إذا auth = null بعد انتهاء التحميل.
       if (!auth.isAuthenticated) {
         debugPrint('[AuthMiddleware] → no session after load → login');
         return '/$slug/admin/login';
+      }
+
+      // حارس tenant — أدمن لا يفتح لوحة مطعم آخر عبر تعديل الرابط.
+      if (auth.hasAdminProfile &&
+          normalizedProfileRestaurantId.isNotEmpty &&
+          normalizedRouteSlug != normalizedProfileRestaurantId) {
+        debugPrint(
+          '[AuthMiddleware] → slug mismatch (route=$normalizedRouteSlug '
+          'profile=$normalizedProfileRestaurantId) → own admin',
+        );
+        return '/$normalizedProfileRestaurantId/admin';
       }
 
       // جلسة موجودة — ابقَ على المسار (حتى لو فشل profile: AdminWrapper يعرض خطأ).
@@ -73,8 +89,11 @@ abstract final class AuthMiddleware {
     }
 
     if (auth.isAdminAuthorized && !isAdminPath(location)) {
-      debugPrint('[AuthMiddleware] → customer path but authorized → dashboard');
-      return '/$slug/admin';
+      final target = normalizedProfileRestaurantId.isEmpty
+          ? '/$slug/admin'
+          : '/$normalizedProfileRestaurantId/admin';
+      debugPrint('[AuthMiddleware] → customer path but authorized → $target');
+      return target;
     }
 
     debugPrint('[AuthMiddleware] → stay on customer path');

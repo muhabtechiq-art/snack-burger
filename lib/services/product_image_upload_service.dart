@@ -102,6 +102,9 @@ class ProductImageUploadService {
   static const Duration uploadTimeout = Duration(seconds: 30);
   static const Duration processTimeout = Duration(seconds: 30);
 
+  /// أقصى حجم مقبول للصورة على Windows (حيث لا يتوفر ضغط داخل التطبيق).
+  static const int maxWindowsImageBytes = 2 * 1024 * 1024;
+
   final ImagePickUploadService _imageUploadService;
 
   /// `compute()` على Android/iOS فقط — Desktop/Web على main isolate.
@@ -110,6 +113,10 @@ class ProductImageUploadService {
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
   }
+
+  /// Windows لا يدعم flutter_image_compress — نتجنّب استدعاءه ونتحقق من الحجم فقط.
+  static bool get _isWindows =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   Future<XFile?> pickProductImageFromGallery() async {
     _productImageLog('picking image');
@@ -150,6 +157,11 @@ class ProductImageUploadService {
   }
 
   Future<ProductImageProcessResult?> _processPickedImageCore(XFile file) async {
+    // Windows: لا نستدعي flutter_image_compress إطلاقاً (غير مدعوم ويسبب تجمّد).
+    if (_isWindows) {
+      return _processWindowsImageWithoutCompression(file);
+    }
+
     final path = file.path.trim();
     ProductImageProcessResult? result;
 
@@ -167,6 +179,42 @@ class ProductImageUploadService {
 
     result = await _processBytes(raw);
     return result ?? _fallbackFromRawBytes(file, raw);
+  }
+
+  /// مسار Windows الآمن: قراءة bytes الأصلية + فحص الحجم فقط بدون أي plugin.
+  Future<ProductImageProcessResult?> _processWindowsImageWithoutCompression(
+    XFile file,
+  ) async {
+    debugPrint(
+      '[ProductImageUpload] Windows compression unavailable; '
+      'validating original image bytes',
+    );
+
+    final raw = await _imageUploadService.readFileBytes(file);
+    if (raw == null || raw.isEmpty) {
+      _productImageLogError('read bytes empty (windows)');
+      return null;
+    }
+
+    if (raw.length > maxWindowsImageBytes) {
+      throw const ImageUploadException(
+        'الصورة كبيرة جدًا. اختر صورة أصغر من 2MB.',
+      );
+    }
+
+    final resolvedFile = file.path.trim().isNotEmpty
+        ? file
+        : XFile.fromData(
+            raw,
+            name: file.name.trim().isNotEmpty ? file.name : 'product.jpg',
+            mimeType: 'image/jpeg',
+          );
+
+    return ProductImageProcessResult(
+      file: resolvedFile,
+      previewBytes: raw,
+      uploadBytes: raw,
+    );
   }
 
   Future<ProductImageProcessResult?> _processPath(String path) async {
