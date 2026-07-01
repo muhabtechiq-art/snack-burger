@@ -123,9 +123,7 @@ abstract final class SupabaseOrderService {
       throw StateError(maintenanceBlockedCode);
     }
 
-    final resolvedRestaurantUuid =
-        _resolveRestaurantUuid(restaurantId) ??
-        _resolveRestaurantUuid(RestaurantIds.snackBurgerUuid ?? '');
+    final resolvedRestaurantUuid = _resolveRestaurantUuid(restaurantId);
     final normalizedSlug = normalizeRestaurantSlug(slug);
     final scopedRestaurantId = resolvedRestaurantUuid ??
         (restaurantId.trim().isNotEmpty
