@@ -1,5 +1,4 @@
 import '../core/config/location_feature_flags.dart';
-import '../core/config/restaurant_ids.dart';
 import '../core/utils/delivery_coordinates.dart';
 import '../core/utils/model_parse_validation.dart';
 import '../core/utils/order_tenant_match.dart';
@@ -158,14 +157,6 @@ class DeliveryOrder {
     final restaurantId = fallbackRestaurantId?.trim();
     if (restaurantId != null && restaurantId.isNotEmpty) {
       data['restaurant_id'] = restaurantId;
-    }
-
-    if (!ModelParseValidation.hasAnyValue(data, [
-      'restaurant_id',
-      'restaurantId',
-      'slug',
-    ])) {
-      data['slug'] = RestaurantIds.snackBurgerSlug;
     }
   }
 
