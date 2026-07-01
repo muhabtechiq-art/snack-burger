@@ -1226,7 +1226,7 @@ abstract final class SupabaseOrderService {
     final resolvedFallbackSlug =
         fallbackSlug?.trim().isNotEmpty == true
             ? fallbackSlug!.trim().toLowerCase()
-            : RestaurantIds.snackBurgerSlug;
+            : '';
     final orders = <DeliveryOrder>[];
     for (final row in rows) {
       final order = _tryParseOrderRow(
