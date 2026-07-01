@@ -6,7 +6,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/utils/price_utils.dart';
-import '../core/config/restaurant_ids.dart';
 import '../models/delivery_order_model.dart';
 import '../models/delivery_order_status.dart';
 import 'supabase_order_service.dart';
@@ -173,11 +172,19 @@ final class OrderRealtimeNotificationService {
     final record = payload.newRecord;
     if (record.isEmpty) return;
 
+    final activeSlug = _activeSlug;
+    if (activeSlug == null || activeSlug.trim().isEmpty) {
+      debugPrint(
+        '[OrderRealtimeNotificationService] INSERT ignored — no active slug',
+      );
+      return;
+    }
+
     DeliveryOrder? order;
     try {
       order = DeliveryOrder.fromSupabase(
         Map<String, dynamic>.from(record),
-        fallbackSlug: _activeSlug ?? RestaurantIds.snackBurgerSlug,
+        fallbackSlug: activeSlug,
       );
     } catch (e, stack) {
       debugPrint(
@@ -193,10 +200,9 @@ final class OrderRealtimeNotificationService {
       return;
     }
 
-    final slug = _activeSlug ?? RestaurantIds.snackBurgerSlug;
     if (!SupabaseOrderService.orderMatchesSlug(
       order,
-      slug,
+      activeSlug,
       restaurantUuid: _activeRestaurantUuid,
     )) {
       return;
