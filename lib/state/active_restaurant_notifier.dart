@@ -15,6 +15,22 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
   String? get resolvedSlug => _resolvedSlug;
   bool get isLoading => _loading;
 
+  /// slug المستأجر النشط — من النموذج المحمّل أو من آخر resolve.
+  String? get tenantSlug => _restaurant?.slug ?? _resolvedSlug;
+
+  /// UUID المستأجر من Supabase إن وُجد في النموذج المحمّل.
+  String? get tenantRestaurantUuid => _restaurant?.restaurantUuid;
+
+  bool get hasResolvedTenant {
+    final slug = tenantSlug;
+    return slug != null && slug.isNotEmpty;
+  }
+
+  bool get hasResolvedTenantUuid {
+    final uuid = tenantRestaurantUuid;
+    return uuid != null && uuid.isNotEmpty;
+  }
+
   static const Duration _foregroundRefreshDebounce = Duration(seconds: 2);
 
   DateTime? _lastForegroundRefreshAt;
