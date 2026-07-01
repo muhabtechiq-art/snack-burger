@@ -77,7 +77,7 @@ final class OrderRealtimeNotificationService {
   /// Server-side: `slug=eq.<activeSlug>` عبر [PostgresChangeFilter].
   /// Client-side: [SupabaseOrderService.orderMatchesSlug] كطبقة حماية ثانية.
   Future<void> start({
-    String slug = RestaurantIds.snackBurgerSlug,
+    required String slug,
     String? restaurantUuid,
   }) async {
     if (!handlesAlerts) return;
