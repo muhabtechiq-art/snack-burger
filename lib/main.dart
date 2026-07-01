@@ -123,15 +123,14 @@ Future<void> _startOrderRealtimeNotificationsIfAdmin(
 
   Future<void> sync() async {
     if (authNotifier.isAdminAuthorized) {
-      final slug = RestaurantIds.snackBurgerSlug;
-      if (tenantNotifier.restaurant == null ||
-          tenantNotifier.restaurant!.slug != slug) {
+      final slug = tenantNotifier.tenantSlug ?? RestaurantIds.snackBurgerSlug;
+      if (!tenantNotifier.hasResolvedTenant ||
+          tenantNotifier.tenantSlug != slug) {
         await tenantNotifier.resolveSlug(slug);
       }
-      final restaurant = tenantNotifier.restaurant;
       await service.start(
-        slug: restaurant?.slug ?? slug,
-        restaurantUuid: restaurant?.restaurantUuid,
+        slug: tenantNotifier.tenantSlug ?? slug,
+        restaurantUuid: tenantNotifier.tenantRestaurantUuid,
       );
     } else {
       await service.stop();
