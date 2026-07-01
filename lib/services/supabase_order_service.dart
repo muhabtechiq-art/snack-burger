@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/customer_my_orders_config.dart';
 import '../core/config/location_feature_flags.dart';
 import '../core/config/rejected_orders_config.dart';
-import '../core/config/restaurant_ids.dart';
 import '../core/config/stability_phase1_flags.dart';
 import '../core/network/network_timeout.dart';
 import '../core/observability/app_telemetry.dart';
@@ -1197,7 +1196,7 @@ abstract final class SupabaseOrderService {
     try {
       return DeliveryOrder.fromSupabase(
         Map<String, dynamic>.from(row),
-        fallbackSlug: fallbackSlug ?? RestaurantIds.snackBurgerSlug,
+        fallbackSlug: fallbackSlug ?? '',
         fallbackRestaurantId: fallbackRestaurantId,
       );
     } catch (e, st) {
