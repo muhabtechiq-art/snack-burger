@@ -24,7 +24,8 @@ abstract final class AuthMiddleware {
   ) async {
     final auth = context.read<AuthNotifier>();
     final location = state.uri.path;
-    final slug = state.pathParameters['slug'] ?? 'snack_burger';
+    final rawSlug = state.pathParameters['slug'];
+    final slug = normalizeRestaurantSlug(rawSlug ?? '');
 
     final needsProfile = isAdminPath(location) && !isAdminLoginPath(location);
 
@@ -46,9 +47,15 @@ abstract final class AuthMiddleware {
     }
 
     if (location == '/' || location.isEmpty) {
-      final target = auth.isAdminAuthorized ? '/$slug/admin' : '/$slug';
+      final target =
+          auth.isAdminAuthorized ? '/snack_burger/admin' : '/snack_burger';
       debugPrint('[AuthMiddleware] → root redirect $target');
       return target;
+    }
+
+    if (slug.isEmpty) {
+      debugPrint('[AuthMiddleware] → empty slug on non-root path → stay');
+      return null;
     }
 
     if (isAdminLoginPath(location)) {
