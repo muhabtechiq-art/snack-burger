@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/auth/admin_profile_session.dart';
-import '../../core/config/restaurant_ids.dart';
 import '../../models/business_day_model.dart';
 import '../../models/business_day_order_stats.dart';
 import '../../models/delivery_order_model.dart';
@@ -23,10 +22,6 @@ class AdminOrderRepository {
       return sessionRestaurantId.toLowerCase();
     }
 
-    final uuid = RestaurantIds.snackBurgerUuid;
-    if (uuid != null && uuid.trim().isNotEmpty) {
-      return uuid.trim().toLowerCase();
-    }
     final trimmed = restaurantId.trim();
     if (trimmed.isNotEmpty) return trimmed.toLowerCase();
     return slug.trim().toLowerCase();
