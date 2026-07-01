@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import '../core/auth/admin_profile_session.dart';
 import '../core/config/business_day_runtime.dart';
-import '../core/config/restaurant_ids.dart';
 import '../models/business_day_model.dart';
 import '../services/supabase_business_day_service.dart';
 
@@ -157,11 +156,6 @@ class BusinessDayNotifier extends ChangeNotifier {
     final sessionRestaurantId = AdminProfileSession.restaurantId?.trim();
     if (sessionRestaurantId != null && sessionRestaurantId.isNotEmpty) {
       return sessionRestaurantId.toLowerCase();
-    }
-
-    final uuid = RestaurantIds.snackBurgerUuid;
-    if (uuid != null && uuid.trim().isNotEmpty) {
-      return uuid.trim().toLowerCase();
     }
 
     final trimmed = restaurantId.trim();
