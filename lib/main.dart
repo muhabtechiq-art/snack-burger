@@ -13,8 +13,8 @@ import 'core/config/app_env_loader.dart';
 import 'core/config/supabase_env.dart';
 import 'core/observability/app_telemetry.dart';
 import 'core/router/app_router.dart';
+import 'core/utils/restaurant_slug_utils.dart';
 import 'dev/snack_burger_product_seeder.dart';
-import 'core/config/restaurant_ids.dart';
 import 'services/order_realtime_notification_service.dart';
 import 'services/windows_printer_bridge.dart';
 import 'state/active_restaurant_notifier.dart';
@@ -123,7 +123,12 @@ Future<void> _startOrderRealtimeNotificationsIfAdmin(
 
   Future<void> sync() async {
     if (authNotifier.isAdminAuthorized) {
-      final slug = tenantNotifier.tenantSlug ?? RestaurantIds.snackBurgerSlug;
+      final slug = tenantNotifier.tenantSlug ??
+          normalizeRestaurantSlug(AdminProfileSession.restaurantId ?? '');
+      if (slug.isEmpty) {
+        await service.stop();
+        return;
+      }
       if (!tenantNotifier.hasResolvedTenant ||
           tenantNotifier.tenantSlug != slug) {
         await tenantNotifier.resolveSlug(slug);
