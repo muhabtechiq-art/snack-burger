@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/delivery_order_model.dart';
 import '../../models/order_model.dart';
@@ -8,6 +9,7 @@ import '../../services/printer_preferences.dart';
 import '../../services/receipt_escpos_builder.dart';
 import '../../services/win32_raw_printer.dart';
 import '../../services/windows_printer_bridge.dart';
+import '../../state/active_restaurant_notifier.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
 
@@ -76,6 +78,13 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       createdAt: DateTime.now(),
       businessDayOrderNumber: 1,
     );
+  }
+
+  String? _restaurantDisplayNameFrom(BuildContext context) {
+    final name =
+        context.read<ActiveRestaurantNotifier>().restaurant?.name.trim();
+    if (name == null || name.isEmpty) return null;
+    return name;
   }
 
   String? _pickInstalledName(List<String> names, String preferred) {
@@ -162,8 +171,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
     try {
       const tag = '[PrinterSettingsPage] cashierTest';
+      final restaurantDisplayName = _restaurantDisplayNameFrom(context);
       final bytes = await ReceiptEscPosBuilder.buildCashierReceiptBytes(
         _sampleTestOrder(),
+        restaurantDisplayName: restaurantDisplayName,
       );
       debugPrint('$tag bytes.length=${bytes.length} → "$printer"');
       await Win32RawPrinter.printRawBytes(bytes, printerName: printer);
@@ -194,8 +205,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
     try {
       const tag = '[PrinterSettingsPage] kitchenTest';
+      final restaurantDisplayName = _restaurantDisplayNameFrom(context);
       final bytes = await ReceiptEscPosBuilder.buildKitchenReceiptBytes(
         _sampleTestOrder(),
+        restaurantDisplayName: restaurantDisplayName,
       );
       debugPrint('$tag bytes.length=${bytes.length} → "$printer"');
       await Win32RawPrinter.printRawBytes(bytes, printerName: printer);
