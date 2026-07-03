@@ -98,7 +98,10 @@ abstract final class ReceiptEscPosBuilder {
     String? restaurantDisplayName,
   }) async {
     if (PrinterConfig.useRasterReceipt) {
-      return buildCashierReceiptRasterBytes(order);
+      return buildCashierReceiptRasterBytes(
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      );
     }
     return buildCashierReceiptTextBytes(
       order,
@@ -112,7 +115,10 @@ abstract final class ReceiptEscPosBuilder {
     String? restaurantDisplayName,
   }) async {
     if (PrinterConfig.useRasterReceipt) {
-      return buildKitchenReceiptRasterBytes(order);
+      return buildKitchenReceiptRasterBytes(
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      );
     }
     return buildKitchenReceiptTextBytes(
       order,
@@ -185,20 +191,28 @@ abstract final class ReceiptEscPosBuilder {
   }
 
   static Future<List<int>> buildCashierReceiptRasterBytes(
-    DeliveryOrder order,
-  ) async {
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     final generator = await _newGenerator();
-    final cashier = await ReceiptRasterBuilder.buildCashierImage(order);
+    final cashier = await ReceiptRasterBuilder.buildCashierImage(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
     final bytes = _rasterPageBytes(generator, cashier);
     _logRaster('raster cashier', cashier, bytes);
     return bytes;
   }
 
   static Future<List<int>> buildKitchenReceiptRasterBytes(
-    DeliveryOrder order,
-  ) async {
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     final generator = await _newGenerator();
-    final kitchen = await ReceiptRasterBuilder.buildKitchenImage(order);
+    final kitchen = await ReceiptRasterBuilder.buildKitchenImage(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
     final bytes = _rasterPageBytes(generator, kitchen);
     _logRaster('raster kitchen', kitchen, bytes);
     return bytes;

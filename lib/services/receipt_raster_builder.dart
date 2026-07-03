@@ -37,8 +37,14 @@ abstract final class ReceiptRasterBuilder {
     ]);
   }
 
-  static Future<img.Image> buildCashierImage(DeliveryOrder order) async {
-    final plan = ReceiptCashierLayout.buildPrintPlan(order);
+  static Future<img.Image> buildCashierImage(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
+    final plan = ReceiptCashierLayout.buildPrintPlan(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
     return _renderImage(
       _planLinesToRaster(plan.beforeQr),
       qrData: order.googleMapsUrl,
@@ -47,9 +53,12 @@ abstract final class ReceiptRasterBuilder {
     );
   }
 
-  static Future<img.Image> buildKitchenImage(DeliveryOrder order) async {
+  static Future<img.Image> buildKitchenImage(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     return _renderImage(
-      _kitchenLines(order),
+      _kitchenLines(order, restaurantDisplayName: restaurantDisplayName),
       qrData: order.googleMapsUrl,
     );
   }
@@ -167,12 +176,19 @@ abstract final class ReceiptRasterBuilder {
     );
   }
 
-  static List<_RasterLine> _kitchenLines(DeliveryOrder order) {
+  static List<_RasterLine> _kitchenLines(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) {
     final local = order.createdAt.toLocal();
+    final trimmed = restaurantDisplayName?.trim();
+    final headerName = (trimmed != null && trimmed.isNotEmpty)
+        ? trimmed
+        : PrinterConfig.restaurantDisplayName;
 
     final lines = <_RasterLine>[
       _RasterLine(
-        PrinterConfig.restaurantDisplayName,
+        headerName,
         fontSize: 28,
         bold: true,
         align: TextAlign.center,
