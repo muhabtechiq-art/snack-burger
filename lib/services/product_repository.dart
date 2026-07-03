@@ -71,8 +71,7 @@ class ProductRepository {
     if (resolution.source == RestaurantDocIdSource.legacyFallback) {
       debugPrint(
         '[ProductRepository] WARNING legacy tenant fallback: restaurantId and '
-        'slug both empty — using ${SupabaseProductService.defaultRestaurantId} '
-        '(temporary; pass explicit tenant scope)',
+        'slug both empty — docId will be empty; pass explicit tenant scope',
       );
     }
     return resolution.docId;
