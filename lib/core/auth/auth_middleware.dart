@@ -47,8 +47,14 @@ abstract final class AuthMiddleware {
     }
 
     if (location == '/' || location.isEmpty) {
-      final target =
-          auth.isAdminAuthorized ? '/snack_burger/admin' : '/snack_burger';
+      final normalizedProfileRestaurantId = normalizeRestaurantSlug(
+        AdminProfileSession.restaurantId ?? '',
+      );
+      final target = auth.isAdminAuthorized
+          ? (normalizedProfileRestaurantId.isNotEmpty
+              ? '/$normalizedProfileRestaurantId/admin'
+              : '/snack_burger/admin')
+          : '/snack_burger';
       debugPrint('[AuthMiddleware] → root redirect $target');
       return target;
     }
