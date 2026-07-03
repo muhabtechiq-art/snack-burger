@@ -199,6 +199,7 @@ abstract final class ReceiptEscPosPrinter {
   static Future<void> printOrderReceipt(
     DeliveryOrder order, {
     OrderReceiptPrintScope scope = OrderReceiptPrintScope.both,
+    String? restaurantDisplayName,
   }) async {
     final printCashier = printsCashier(scope);
     final printKitchen = printsKitchen(scope);
@@ -215,7 +216,10 @@ abstract final class ReceiptEscPosPrinter {
     if (printCashier) {
       debugPrint('$_logTag: Printing cashier to: ${targets.cashier}');
       await _printBuiltBytes(
-        () => ReceiptEscPosBuilder.buildCashierReceiptBytes(order),
+        () => ReceiptEscPosBuilder.buildCashierReceiptBytes(
+          order,
+          restaurantDisplayName: restaurantDisplayName,
+        ),
         printerName: targets.cashier,
       );
     }
@@ -224,7 +228,10 @@ abstract final class ReceiptEscPosPrinter {
       debugPrint('$_logTag: Printing kitchen to: ${targets.kitchen}');
       try {
         await _printBuiltBytes(
-          () => ReceiptEscPosBuilder.buildKitchenReceiptBytes(order),
+          () => ReceiptEscPosBuilder.buildKitchenReceiptBytes(
+            order,
+            restaurantDisplayName: restaurantDisplayName,
+          ),
           printerName: targets.kitchen,
         );
       } catch (error, stack) {

@@ -8,7 +8,10 @@ import 'receipt_escpos_printer.dart';
 import 'thermal_printer_service.dart';
 
 /// طباعة الفاتورة — Windows: ESC/POS CP864 | غير ذلك: مسار قديم.
-Future<bool> printOrderInvoice(DeliveryOrder order) async {
+Future<bool> printOrderInvoice(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) async {
   return safeExecuteVoid(
     () async {
       if (kIsWeb) {
@@ -16,7 +19,10 @@ Future<bool> printOrderInvoice(DeliveryOrder order) async {
       }
 
       if (Platform.isWindows) {
-        await ReceiptEscPosPrinter.printOrderReceipt(order);
+        await ReceiptEscPosPrinter.printOrderReceipt(
+          order,
+          restaurantDisplayName: restaurantDisplayName,
+        );
         return;
       }
 

@@ -3,7 +3,10 @@ import '../models/delivery_order_model.dart';
 import 'web_invoice_printer.dart';
 
 /// طباعة الفاتورة من Flutter Web.
-Future<bool> printOrderInvoice(DeliveryOrder order) async {
+Future<bool> printOrderInvoice(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) async {
   return safeExecuteVoid(
     () => printWebInvoice(order),
     tag: 'printOrderInvoice',

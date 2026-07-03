@@ -4,5 +4,11 @@ import 'order_invoice_printer_stub.dart'
 
 /// واجهة موحّدة للطباعة — ويب أو أندroid حسب المنصة.
 /// يُرجع `true` عند نجاح الإرسال للطباعة.
-Future<bool> printOrderInvoice(DeliveryOrder order) =>
-    impl.printOrderInvoice(order);
+Future<bool> printOrderInvoice(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) =>
+    impl.printOrderInvoice(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );

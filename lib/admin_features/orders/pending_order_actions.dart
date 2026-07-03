@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/theme/tenant_palette.dart';
 import '../../../core/utils/safe_execute.dart';
 import '../../../models/delivery_order_model.dart';
 import '../../../models/delivery_order_status.dart';
 import '../../../services/order_invoice_printer.dart';
+import '../../../state/active_restaurant_notifier.dart';
 import '../data/admin_repositories.dart';
 import 'widgets/cashier_order_alert_dialog.dart';
 
@@ -39,6 +41,13 @@ class PendingOrderActions {
     required BuildContext context,
     required DeliveryOrder order,
   }) async {
+    final restaurantName =
+        context.read<ActiveRestaurantNotifier>().restaurant?.name.trim();
+    final restaurantDisplayName =
+        (restaurantName != null && restaurantName.isNotEmpty)
+            ? restaurantName
+            : null;
+
     await _orderRepository.updateOrderStatus(
       orderId: order.id,
       status: DeliveryOrderStatus.accepted,
@@ -50,12 +59,23 @@ class PendingOrderActions {
       );
     }
 
-    unawaited(_printSilently(order));
+    unawaited(
+      _printSilently(
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
+    );
   }
 
-  Future<void> _printSilently(DeliveryOrder order) async {
+  Future<void> _printSilently(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     await safeExecuteVoid(
-      () => printOrderInvoice(order),
+      () => printOrderInvoice(
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
       tag: 'PendingOrderActions.print',
     );
   }
