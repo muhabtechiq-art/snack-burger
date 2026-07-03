@@ -271,7 +271,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _DashboardWelcomeHeader(),
+                    _DashboardWelcomeHeader(
+                      restaurantName: restaurant.name,
+                      restaurantSlug: restaurant.slug,
+                    ),
                     const SizedBox(height: 14),
                     _DashboardStatsGrid(
                       pendingCount: _pendingOrderCount,
@@ -303,7 +306,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with RouteAware {
 }
 
 class _DashboardWelcomeHeader extends StatelessWidget {
-  const _DashboardWelcomeHeader();
+  const _DashboardWelcomeHeader({
+    required this.restaurantName,
+    required this.restaurantSlug,
+  });
+
+  final String restaurantName;
+  final String restaurantSlug;
+
+  String get _displayName {
+    final name = restaurantName.trim();
+    if (name.isNotEmpty) return name;
+    final slug = restaurantSlug.trim();
+    if (slug.isNotEmpty) return slug;
+    return 'Restaurant';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -351,7 +368,7 @@ class _DashboardWelcomeHeader extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Snack Burger',
+          _displayName,
           textAlign: TextAlign.right,
           style: TextStyle(
             color: AdminPanelColors.gold,
