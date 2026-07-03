@@ -114,6 +114,14 @@ class _DrawerHeaderSection extends StatelessWidget {
   final RestaurantModel restaurant;
   final TenantPalette palette;
 
+  String get _displayName {
+    final name = restaurant.name.trim();
+    if (name.isNotEmpty) return name;
+    final slug = restaurant.slug.trim();
+    if (slug.isNotEmpty) return slug;
+    return 'Restaurant';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -133,7 +141,7 @@ class _DrawerHeaderSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            restaurant.name.trim().isNotEmpty ? restaurant.name : 'Snack Burger',
+            _displayName,
             textAlign: TextAlign.right,
             style: TextStyle(
               color: palette.onPrimary,
