@@ -140,10 +140,13 @@ abstract final class ReceiptCashierLayout {
 
   // ── Section builders ────────────────────────────────────────────────────
 
-  static List<ReceiptCashierLine> buildHeader() {
+  static List<ReceiptCashierLine> buildHeader({String? restaurantDisplayName}) {
+    final title = restaurantDisplayName?.trim().isNotEmpty == true
+        ? restaurantDisplayName!.trim().toUpperCase()
+        : headerTitle;
     return [
       ReceiptCashierLine.text(
-        headerTitle,
+        title,
         style: ReceiptLineStyle.brandTitle,
         center: true,
       ),
@@ -285,9 +288,12 @@ abstract final class ReceiptCashierLayout {
   }
 
   /// خطة الطباعة الكاملة — QR يُدرج بين beforeQr و afterQr في Raster.
-  static ReceiptCashierPrintPlan buildPrintPlan(DeliveryOrder order) {
+  static ReceiptCashierPrintPlan buildPrintPlan(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) {
     final beforeQr = <ReceiptCashierLine>[
-      ...buildHeader(),
+      ...buildHeader(restaurantDisplayName: restaurantDisplayName),
       ...buildOrderHero(order),
       ...buildCustomerSection(order),
       ReceiptCashierLine.text(

@@ -86,20 +86,38 @@ abstract final class ReceiptEscPosBuilder {
     ];
   }
 
+  static String _kitchenHeaderName(String? restaurantDisplayName) {
+    final trimmed = restaurantDisplayName?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    return PrinterConfig.restaurantDisplayName;
+  }
+
   /// بايتات فاتورة الكاشير فقط — ESC/POS أو raster حسب [PrinterConfig.useRasterReceipt].
-  static Future<List<int>> buildCashierReceiptBytes(DeliveryOrder order) async {
+  static Future<List<int>> buildCashierReceiptBytes(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     if (PrinterConfig.useRasterReceipt) {
       return buildCashierReceiptRasterBytes(order);
     }
-    return buildCashierReceiptTextBytes(order);
+    return buildCashierReceiptTextBytes(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
   }
 
   /// بايتات بون المطبخ فقط — ESC/POS أو raster حسب [PrinterConfig.useRasterReceipt].
-  static Future<List<int>> buildKitchenReceiptBytes(DeliveryOrder order) async {
+  static Future<List<int>> buildKitchenReceiptBytes(
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     if (PrinterConfig.useRasterReceipt) {
       return buildKitchenReceiptRasterBytes(order);
     }
-    return buildKitchenReceiptTextBytes(order);
+    return buildKitchenReceiptTextBytes(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
   }
 
   static Future<List<int>> buildOrderReceiptTextBytes(
@@ -112,30 +130,40 @@ abstract final class ReceiptEscPosBuilder {
   }
 
   static Future<List<int>> buildCashierReceiptTextBytes(
-    DeliveryOrder order,
-  ) async {
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     final ctx = await _loadPrintContext();
     final generator = Generator(PaperSize.mm80, ctx.profile);
     const codePageId = PrinterConfig.arabicCodePageId;
 
     return <int>[
       ..._beginReceipt(generator, codePageId),
-      ...await buildCashierTicket(generator, order),
+      ...await buildCashierTicket(
+        generator,
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
       ...generator.feed(2),
       ...generator.cut(),
     ];
   }
 
   static Future<List<int>> buildKitchenReceiptTextBytes(
-    DeliveryOrder order,
-  ) async {
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     final ctx = await _loadPrintContext();
     final generator = Generator(PaperSize.mm80, ctx.profile);
     const codePageId = PrinterConfig.arabicCodePageId;
 
     return <int>[
       ..._beginReceipt(generator, codePageId),
-      ...await buildKitchenTicket(generator, order),
+      ...await buildKitchenTicket(
+        generator,
+        order,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
       ...generator.feed(2),
       ...generator.cut(),
     ];
@@ -260,9 +288,13 @@ abstract final class ReceiptEscPosBuilder {
 
   static Future<List<int>> buildCashierTicket(
     Generator generator,
-    DeliveryOrder order,
-  ) async {
-    final plan = ReceiptCashierLayout.buildPrintPlan(order);
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
+    final plan = ReceiptCashierLayout.buildPrintPlan(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    );
     final bytes = <int>[];
 
     for (final line in plan.beforeQr) {
@@ -312,13 +344,15 @@ abstract final class ReceiptEscPosBuilder {
 
   static Future<List<int>> buildKitchenTicket(
     Generator generator,
-    DeliveryOrder order,
-  ) async {
+    DeliveryOrder order, {
+    String? restaurantDisplayName,
+  }) async {
     final local = order.createdAt.toLocal();
     final bytes = <int>[];
+    final headerName = _kitchenHeaderName(restaurantDisplayName);
 
     bytes
-      ..addAll(await _lineRaw(generator, PrinterConfig.restaurantDisplayName))
+      ..addAll(await _lineRaw(generator, headerName))
       ..addAll(await _lineRaw(generator, 'بون المطبخ'))
       ..addAll(await _lineRaw(generator, ReceiptCashierLayout.separator()))
       ..addAll(
