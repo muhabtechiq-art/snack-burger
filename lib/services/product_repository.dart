@@ -45,7 +45,7 @@ class ProductRepository {
     }
 
     return (
-      docId: SupabaseProductService.defaultRestaurantId,
+      docId: '',
       source: RestaurantDocIdSource.legacyFallback,
     );
   }

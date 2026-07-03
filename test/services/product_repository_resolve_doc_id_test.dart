@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:snack_burger/services/product_repository.dart';
-import 'package:snack_burger/services/supabase_product_service.dart';
 
 void main() {
   group('ProductRepository.resolveRestaurantDocIdWithSource', () {
@@ -38,7 +37,7 @@ void main() {
         slug: '',
       );
 
-      expect(resolution.docId, SupabaseProductService.defaultRestaurantId);
+      expect(resolution.docId, '');
       expect(resolution.source, RestaurantDocIdSource.legacyFallback);
       expect(
         ProductRepository.restaurantDocIdSourceLabel(resolution.source),
@@ -68,7 +67,7 @@ void main() {
           restaurantId: '',
           slug: '',
         ),
-        SupabaseProductService.defaultRestaurantId,
+        '',
       );
     });
   });
