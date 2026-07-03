@@ -1,3 +1,4 @@
+import '../core/config/printer_config.dart';
 import '../core/utils/price_utils.dart';
 import '../models/delivery_order_model.dart';
 import '../models/order_model.dart';
@@ -77,7 +78,8 @@ abstract final class ReceiptCashierLayout {
   static const int qtyCol = 4;
   static const int priceCol = 10;
 
-  static const String headerTitle = 'SNACK BURGER';
+  static final String headerTitle =
+      PrinterConfig.restaurantDisplayName.toUpperCase();
   static const String subtitle = 'فاتورة كاشير • توصيل';
   static const String thanksLine1 = 'شكراً لزيارتكم';
   static const String thanksLine2 = 'صحتين وعافية';
