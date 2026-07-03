@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/tenant_palette.dart';
 import '../../core/utils/safe_execute.dart';
 import '../../models/delivery_order_model.dart';
 import '../../services/receipt_escpos_printer.dart';
+import '../../state/active_restaurant_notifier.dart';
 
 /// يعيد طباعة جزء من فاتورة الطلب (كاشير / مطبخ / الاثنين).
 Future<bool> reprintOrderInvoice({
@@ -18,6 +20,13 @@ Future<bool> reprintOrderInvoice({
     '[QA][Reprint] reprint requested orderId=${order.id} scope=$scope',
   );
 
+  final restaurantName =
+      context.read<ActiveRestaurantNotifier>().restaurant?.name.trim();
+  final restaurantDisplayName =
+      (restaurantName != null && restaurantName.isNotEmpty)
+          ? restaurantName
+          : null;
+
   final ok = await safeExecuteVoid(
     () async {
       if (kIsWeb) {
@@ -26,7 +35,11 @@ Future<bool> reprintOrderInvoice({
       if (!Platform.isWindows) {
         throw UnsupportedError('إعادة الطباعة متاحة على Windows فقط');
       }
-      await ReceiptEscPosPrinter.printOrderReceipt(order, scope: scope);
+      await ReceiptEscPosPrinter.printOrderReceipt(
+        order,
+        scope: scope,
+        restaurantDisplayName: restaurantDisplayName,
+      );
     },
     tag: 'reprintOrderInvoice',
   );
