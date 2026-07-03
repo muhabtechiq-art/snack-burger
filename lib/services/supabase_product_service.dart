@@ -552,7 +552,7 @@ abstract final class SupabaseProductService {
     }
 
     return (
-      restaurantId: defaultRestaurantId,
+      restaurantId: '',
       source: ProductSaveRestaurantIdSource.legacyFallback,
     );
   }
@@ -584,7 +584,8 @@ abstract final class SupabaseProductService {
         debugPrint(
           '[SupabaseProductService] WARNING legacy tenant fallback on '
           'saveProduct: product.restaurantId and caller tenant both empty — '
-          'using $defaultRestaurantId (temporary; pass explicit tenant scope)',
+          'no explicit tenant scope; save will be refused if restaurant_id '
+          'remains empty (pass explicit tenant scope)',
         );
         return;
     }
@@ -1426,7 +1427,7 @@ abstract final class SupabaseProductService {
     return ProductModel(
       id: id,
       restaurantId:
-          rowRestaurantId.isNotEmpty ? rowRestaurantId : defaultRestaurantId,
+          rowRestaurantId.isNotEmpty ? rowRestaurantId : '',
       name: name,
       description: _nullableString(normalized['description']),
       price: _readDouble(normalized['price']),

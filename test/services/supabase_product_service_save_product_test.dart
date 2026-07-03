@@ -50,10 +50,7 @@ void main() {
         tenantRestaurantId: '   ',
       );
 
-      expect(
-        resolution.restaurantId,
-        SupabaseProductService.defaultRestaurantId,
-      );
+      expect(resolution.restaurantId, '');
       expect(resolution.source, ProductSaveRestaurantIdSource.legacyFallback);
       expect(
         SupabaseProductService.saveProductRestaurantIdSourceLabel(
@@ -63,12 +60,13 @@ void main() {
       );
     });
 
-    test('never returns empty restaurant id', () {
+    test('legacy fallback returns empty restaurant id without explicit tenant', () {
       final resolution = SupabaseProductService.resolveSaveProductRestaurantId(
         product: product(),
       );
 
-      expect(resolution.restaurantId, isNotEmpty);
+      expect(resolution.restaurantId, isEmpty);
+      expect(resolution.source, ProductSaveRestaurantIdSource.legacyFallback);
     });
   });
 }
