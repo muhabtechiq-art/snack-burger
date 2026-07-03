@@ -104,20 +104,6 @@ class ActiveRestaurantNotifier extends ChangeNotifier {
 
   /// Fallback محلي حتى يُنشأ جدول `restaurants` أو يُضاف slug جديد.
   RestaurantModel _restaurantFromSlug(String slug) {
-    if (slug == 'snack_burger') {
-      return const RestaurantModel(
-        id: 'snack_burger',
-        slug: 'snack_burger',
-        name: 'Snack Burger',
-        logoUrl: null,
-        primaryColorHex: '#8B0000',
-        accentColorHex: '#E1AD01',
-        whatsappNumber: '9647XXXXXXXXX',
-        orderRoutingMode: 'whatsapp',
-        isActive: true,
-      );
-    }
-
     final title = slug.replaceAll('_', ' ');
     final displayName = title.isEmpty
         ? 'Restaurant'
