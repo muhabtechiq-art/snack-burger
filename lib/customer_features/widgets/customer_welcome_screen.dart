@@ -18,6 +18,14 @@ class CustomerWelcomeScreen extends StatelessWidget {
 
   static const double _horizontalPadding = 24;
 
+  String get _displayName {
+    final name = restaurant.name.trim();
+    if (name.isNotEmpty) return name;
+    final slug = restaurant.slug.trim();
+    if (slug.isNotEmpty) return slug;
+    return 'Restaurant';
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -45,8 +53,8 @@ class CustomerWelcomeScreen extends StatelessWidget {
                     const SizedBox(height: 32),
                     _LogoSection(logoSize: logoSize),
                     const SizedBox(height: 20),
-                    const Text(
-                      'Snack Burger',
+                    Text(
+                      _displayName,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 38,
