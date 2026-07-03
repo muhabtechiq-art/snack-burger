@@ -13,7 +13,6 @@ abstract final class SupabaseBannerService {
   SupabaseBannerService._();
 
   static const String tableName = 'banners';
-  static const String defaultRestaurantId = 'snack_burger';
 
   static const Duration _streamReconnectBaseDelay = Duration(seconds: 1);
   static const Duration _streamReconnectMaxDelay = Duration(seconds: 20);
