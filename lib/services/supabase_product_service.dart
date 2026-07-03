@@ -28,8 +28,6 @@ abstract final class SupabaseProductService {
   static const String addonsTableName = 'product_addons';
   static const String variantsTableName = 'product_variants';
 
-  static const String defaultRestaurantId = 'snack_burger';
-
   static const Duration _streamReconnectBaseDelay = Duration(seconds: 1);
   static const Duration _streamReconnectMaxDelay = Duration(seconds: 20);
 

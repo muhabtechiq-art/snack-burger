@@ -33,6 +33,8 @@ abstract final class SnackBurgerProductSeeder {
   static const String _completedPrefsKey =
       'snack_burger_product_seed_completed_v1';
 
+  static const String _seedRestaurantId = 'snack_burger';
+
   /// معرّفات ثابتة لتجنّب التصادم مع المنتجات اليدوية.
   static const int _seedIdBase = 910_000_001;
 
@@ -85,7 +87,7 @@ abstract final class SnackBurgerProductSeeder {
   @visibleForTesting
   static Future<void> seedProducts() async {
     final client = Supabase.instance.client;
-    final restaurantId = SupabaseProductService.defaultRestaurantId;
+    final restaurantId = _seedRestaurantId;
     final existingNames = await _loadExistingProductNames(
       client: client,
       restaurantId: restaurantId,
