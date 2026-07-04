@@ -117,13 +117,15 @@ abstract final class SupabaseOrderService {
     required List<CartItem> items,
     required double totalPrice,
   }) async {
-    final settings = await SupabaseAppSettingsService.fetch();
+    final normalizedSlug = normalizeRestaurantSlug(slug);
+    final settings = await SupabaseAppSettingsService.fetch(
+      restaurantId: normalizedSlug,
+    );
     if (settings.maintenanceMode) {
       throw StateError(maintenanceBlockedCode);
     }
 
     final resolvedRestaurantUuid = _resolveRestaurantUuid(restaurantId);
-    final normalizedSlug = normalizeRestaurantSlug(slug);
     final scopedRestaurantId = resolvedRestaurantUuid ??
         (restaurantId.trim().isNotEmpty
             ? restaurantId.trim().toLowerCase()
