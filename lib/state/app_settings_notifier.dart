@@ -82,9 +82,17 @@ class AppSettingsNotifier extends ChangeNotifier {
   Future<AppSettingsModel> saveSettingsPatch(
     Map<String, dynamic> patch,
   ) async {
+    final scopedRestaurantId = _restaurantId?.trim();
+    if (scopedRestaurantId == null || scopedRestaurantId.isEmpty) {
+      debugPrint(
+        '[AppSettingsNotifier] refused to save settings without restaurant scope',
+      );
+      throw StateError('app_settings_save_requires_restaurant_scope');
+    }
+
     final saved = await SupabaseAppSettingsService.savePatch(
       patch,
-      restaurantId: _restaurantId,
+      restaurantId: scopedRestaurantId,
     );
     if (_disposed) return saved;
     _applySettings(saved, clearEmergency: saved.maintenanceMode);
