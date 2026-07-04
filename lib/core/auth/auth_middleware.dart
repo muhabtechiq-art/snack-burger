@@ -50,11 +50,17 @@ abstract final class AuthMiddleware {
       final normalizedProfileRestaurantId = normalizeRestaurantSlug(
         AdminProfileSession.restaurantId ?? '',
       );
-      final target = auth.isAdminAuthorized
-          ? (normalizedProfileRestaurantId.isNotEmpty
-              ? '/$normalizedProfileRestaurantId/admin'
-              : '/snack_burger/admin')
-          : '/snack_burger';
+      if (auth.isAdminAuthorized) {
+        // Admin without a tenant profile must not be sent to a default tenant.
+        if (normalizedProfileRestaurantId.isEmpty) {
+          debugPrint('[AuthMiddleware] → root stay (admin, no tenant profile)');
+          return null;
+        }
+        final target = '/$normalizedProfileRestaurantId/admin';
+        debugPrint('[AuthMiddleware] → root redirect $target');
+        return target;
+      }
+      const target = '/snack_burger';
       debugPrint('[AuthMiddleware] → root redirect $target');
       return target;
     }
