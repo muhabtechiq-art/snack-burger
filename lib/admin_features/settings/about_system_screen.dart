@@ -3,8 +3,10 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
 
 import '../../services/product_repository.dart';
+import '../../state/active_restaurant_notifier.dart';
 import '../shell/admin_page_scaffold.dart';
 import '../shell/admin_panel_colors.dart';
 import '../widgets/admin_restaurant_logo_image.dart';
@@ -28,6 +30,8 @@ class _AboutSystemScreenState extends State<AboutSystemScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final restaurant = context.watch<ActiveRestaurantNotifier>().restaurant;
+
     return AdminPageScaffold(
       slug: widget.slug,
       title: 'حول النظام',
@@ -40,6 +44,19 @@ class _AboutSystemScreenState extends State<AboutSystemScreen> {
             future: _metadataFuture,
             builder: (context, snapshot) {
               final metadata = snapshot.data ?? AboutSystemMetadata.fallback();
+              final restaurantName = restaurant?.name.trim() ?? '';
+              final restaurantSlug = restaurant?.slug.trim() ?? '';
+              final routeSlug = widget.slug.trim();
+              final packageAppName = metadata.appName.trim();
+              final displayName = restaurantName.isNotEmpty
+                  ? restaurantName
+                  : restaurantSlug.isNotEmpty
+                      ? restaurantSlug
+                      : routeSlug.isNotEmpty
+                          ? routeSlug
+                          : packageAppName.isNotEmpty
+                              ? packageAppName
+                              : 'Restaurant';
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -50,9 +67,15 @@ class _AboutSystemScreenState extends State<AboutSystemScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _AboutMainCard(metadata: metadata),
+                        _AboutMainCard(
+                          metadata: metadata,
+                          displayName: displayName,
+                        ),
                         const SizedBox(height: 16),
-                        _SystemInfoCard(metadata: metadata),
+                        _SystemInfoCard(
+                          metadata: metadata,
+                          displayName: displayName,
+                        ),
                         if (kDebugMode) ...[
                           const SizedBox(height: 16),
                           _DebugMaintenanceCard(slug: widget.slug),
@@ -88,7 +111,7 @@ class AboutSystemMetadata {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       return AboutSystemMetadata(
-        appName: _nonEmpty(packageInfo.appName) ?? 'Snack Burger',
+        appName: _nonEmpty(packageInfo.appName) ?? 'Restaurant',
         version: _nonEmpty(packageInfo.version) ?? '—',
         buildNumber: _nonEmpty(packageInfo.buildNumber) ?? '—',
         platformLabel: detectPlatformLabel(),
@@ -101,7 +124,7 @@ class AboutSystemMetadata {
 
   factory AboutSystemMetadata.fallback() {
     return AboutSystemMetadata(
-      appName: 'Snack Burger',
+      appName: 'Restaurant',
       version: '—',
       buildNumber: '—',
       platformLabel: detectPlatformLabel(),
@@ -129,9 +152,13 @@ class AboutSystemMetadata {
 }
 
 class _AboutMainCard extends StatelessWidget {
-  const _AboutMainCard({required this.metadata});
+  const _AboutMainCard({
+    required this.metadata,
+    required this.displayName,
+  });
 
   final AboutSystemMetadata metadata;
+  final String displayName;
 
   static const double _logoCircleSize = 88;
   static const double _logoImageSize = 80;
@@ -186,7 +213,7 @@ class _AboutMainCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            metadata.appName,
+            displayName,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AdminPanelColors.charcoal,
@@ -276,9 +303,13 @@ class _AboutMainCard extends StatelessWidget {
 }
 
 class _SystemInfoCard extends StatelessWidget {
-  const _SystemInfoCard({required this.metadata});
+  const _SystemInfoCard({
+    required this.metadata,
+    required this.displayName,
+  });
 
   final AboutSystemMetadata metadata;
+  final String displayName;
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +333,7 @@ class _SystemInfoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _SystemInfoRow(label: 'اسم التطبيق', value: metadata.appName),
+          _SystemInfoRow(label: 'اسم التطبيق', value: displayName),
           _SystemInfoRow(label: 'إصدار التطبيق', value: metadata.version),
           _SystemInfoRow(label: 'رقم البناء', value: metadata.buildNumber),
           _SystemInfoRow(label: 'المنصة', value: metadata.platformLabel),
