@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/auth/auth_notifier.dart';
-import '../../../core/config/printer_config.dart';
 import '../../../core/theme/tenant_palette.dart';
 import '../../../models/delivery_order_model.dart';
 import '../../../models/restaurant_model.dart';
@@ -55,9 +54,16 @@ class _AdminDrawerState extends State<AdminDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = widget.restaurant.name.isNotEmpty
-        ? widget.restaurant.name
-        : PrinterConfig.restaurantDisplayName;
+    final restaurantName = widget.restaurant.name.trim();
+    final restaurantSlug = widget.restaurant.slug.trim();
+    final routeSlug = widget.slug.trim();
+    final displayName = restaurantName.isNotEmpty
+        ? restaurantName
+        : restaurantSlug.isNotEmpty
+            ? restaurantSlug
+            : routeSlug.isNotEmpty
+                ? routeSlug
+                : 'Restaurant';
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -186,7 +192,7 @@ class _AdminDrawerState extends State<AdminDrawer> {
                           _AdminSubItem(
                             icon: Icons.info_outline_rounded,
                             title: 'حول النظام',
-                            subtitle: 'Snack Burger — أنظمة المهاب',
+                            subtitle: '$displayName — أنظمة المهاب',
                             onTap: () => _navigate('/${widget.slug}/admin/about'),
                           ),
                           if (!kIsWeb && Platform.isWindows)
