@@ -63,11 +63,24 @@ abstract final class ReceiptRasterBuilder {
     );
   }
 
-  static Future<img.Image> buildEndOfDayImage(EndOfDayReport report) async {
-    return _renderImage(_endOfDayLines(report));
+  static Future<img.Image> buildEndOfDayImage(
+    EndOfDayReport report, {
+    String? restaurantDisplayName,
+  }) async {
+    return _renderImage(
+      _endOfDayLines(report, restaurantDisplayName: restaurantDisplayName),
+    );
   }
 
-  static List<_RasterLine> _endOfDayLines(EndOfDayReport report) {
+  static List<_RasterLine> _endOfDayLines(
+    EndOfDayReport report, {
+    String? restaurantDisplayName,
+  }) {
+    final trimmed = restaurantDisplayName?.trim();
+    final headerName = (trimmed != null && trimmed.isNotEmpty)
+        ? trimmed
+        : PrinterConfig.restaurantDisplayName;
+
     final local = report.reportDate.toLocal();
     final dateStr =
         '${local.year}-${local.month.toString().padLeft(2, '0')}-'
@@ -75,7 +88,7 @@ abstract final class ReceiptRasterBuilder {
 
     final lines = <_RasterLine>[
       _RasterLine(
-        PrinterConfig.restaurantDisplayName,
+        headerName,
         fontSize: 28,
         bold: true,
         align: TextAlign.center,

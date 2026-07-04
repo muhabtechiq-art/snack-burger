@@ -218,9 +218,15 @@ abstract final class ReceiptEscPosBuilder {
     return bytes;
   }
 
-  static Future<List<int>> buildEndOfDayReceiptBytes(EndOfDayReport report) async {
+  static Future<List<int>> buildEndOfDayReceiptBytes(
+    EndOfDayReport report, {
+    String? restaurantDisplayName,
+  }) async {
     if (PrinterConfig.useRasterReceipt) {
-      return buildEndOfDayReceiptRasterBytes(report);
+      return buildEndOfDayReceiptRasterBytes(
+        report,
+        restaurantDisplayName: restaurantDisplayName,
+      );
     }
     throw UnsupportedError(
       'تقرير الإغلاق يتطلب الطباعة كصورة (useRasterReceipt).',
@@ -228,10 +234,14 @@ abstract final class ReceiptEscPosBuilder {
   }
 
   static Future<List<int>> buildEndOfDayReceiptRasterBytes(
-    EndOfDayReport report,
-  ) async {
+    EndOfDayReport report, {
+    String? restaurantDisplayName,
+  }) async {
     final generator = await _newGenerator();
-    final image = await ReceiptRasterBuilder.buildEndOfDayImage(report);
+    final image = await ReceiptRasterBuilder.buildEndOfDayImage(
+      report,
+      restaurantDisplayName: restaurantDisplayName,
+    );
 
     final bytes = _rasterPageBytes(generator, image);
     _logRaster('raster EOD', image, bytes);

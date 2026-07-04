@@ -251,9 +251,15 @@ abstract final class ReceiptEscPosPrinter {
     );
   }
 
-  static Future<void> printEndOfDayReport(EndOfDayReport report) async {
+  static Future<void> printEndOfDayReport(
+    EndOfDayReport report, {
+    String? restaurantDisplayName,
+  }) async {
     await _printBuiltBytes(
-      () => ReceiptEscPosBuilder.buildEndOfDayReceiptBytes(report),
+      () => ReceiptEscPosBuilder.buildEndOfDayReceiptBytes(
+        report,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
     );
   }
 }

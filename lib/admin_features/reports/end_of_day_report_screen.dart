@@ -119,9 +119,19 @@ class _EndOfDayReportScreenState extends State<EndOfDayReportScreen> {
       return;
     }
 
+    final restaurantName =
+        context.read<ActiveRestaurantNotifier>().restaurant?.name.trim();
+    final restaurantDisplayName =
+        (restaurantName != null && restaurantName.isNotEmpty)
+            ? restaurantName
+            : null;
+
     setState(() => _printing = true);
     final printed = await safeExecuteVoid(
-      () => ReceiptEscPosPrinter.printEndOfDayReport(report),
+      () => ReceiptEscPosPrinter.printEndOfDayReport(
+        report,
+        restaurantDisplayName: restaurantDisplayName,
+      ),
       tag: 'printEndOfDayReport',
     );
     if (!mounted) return;
