@@ -10,8 +10,14 @@ const _postLoadDelay = Duration(milliseconds: 400);
 const _cleanupDelay = Duration(seconds: 2);
 
 /// يرسم الفاتورة على Canvas كـ PNG ثم يطبع iframe يحتوي <img> فقط.
-Future<void> printWebInvoice(DeliveryOrder order) async {
-  final pngDataUrl = renderReceiptPngDataUrl(order);
+Future<void> printWebInvoice(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) async {
+  final pngDataUrl = renderReceiptPngDataUrl(
+    order,
+    restaurantDisplayName: restaurantDisplayName,
+  );
 
   final iframe = web.document.createElement('iframe') as web.HTMLIFrameElement;
   iframe.style.display = 'none';

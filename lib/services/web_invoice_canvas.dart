@@ -12,7 +12,15 @@ const double _pad = 18;
 const double _scale = 2;
 
 /// يرسم الفاتورة كرسوميات نقطية ويعيد data:image/png;base64,...
-String renderReceiptPngDataUrl(DeliveryOrder order) {
+String renderReceiptPngDataUrl(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) {
+  final trimmedName = restaurantDisplayName?.trim();
+  final headerName = (trimmedName != null && trimmedName.isNotEmpty)
+      ? trimmedName
+      : PrinterConfig.restaurantDisplayName;
+
   final local = order.createdAt.toLocal();
   final dateStr =
       '${local.year}-${local.month.toString().padLeft(2, '0')}-'
@@ -54,7 +62,7 @@ String renderReceiptPngDataUrl(DeliveryOrder order) {
 
   ctx.font = 'bold 32px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(PrinterConfig.restaurantDisplayName, _receiptWidth / 2, y);
+  ctx.fillText(headerName, _receiptWidth / 2, y);
   y += 34;
 
   ctx.font = 'bold 18px Arial';

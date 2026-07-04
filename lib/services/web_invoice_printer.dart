@@ -5,11 +5,17 @@ import 'web_invoice_printer_stub.dart'
     if (dart.library.html) 'web_invoice_printer_web.dart' as impl;
 
 /// طباعة فاتورة HTML من Flutter Web (Generic / Text Only عبر نافذة المتصفح).
-Future<void> printWebInvoice(DeliveryOrder order) async {
+Future<void> printWebInvoice(
+  DeliveryOrder order, {
+  String? restaurantDisplayName,
+}) async {
   if (!kIsWeb) {
     throw UnsupportedError(
       'printWebInvoice is only supported on Flutter Web',
     );
   }
-  await impl.printWebInvoice(order);
+  await impl.printWebInvoice(
+    order,
+    restaurantDisplayName: restaurantDisplayName,
+  );
 }

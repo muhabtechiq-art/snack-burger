@@ -8,7 +8,10 @@ Future<bool> printOrderInvoice(
   String? restaurantDisplayName,
 }) async {
   return safeExecuteVoid(
-    () => printWebInvoice(order),
+    () => printWebInvoice(
+      order,
+      restaurantDisplayName: restaurantDisplayName,
+    ),
     tag: 'printOrderInvoice',
   );
 }
