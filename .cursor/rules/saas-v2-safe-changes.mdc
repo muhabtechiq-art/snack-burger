@@ -1,0 +1,74 @@
+---
+description: Safe workflow rules for Snack Burger SaaS v2 work
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# SaaS v2 Safe Changes Workflow
+
+These rules apply to all work on the `saas-v2` branch of the Snack Burger project.
+
+## Core workflow
+
+- Start with investigation before editing when the requested change affects routing, tenant identity, printing, Supabase, auth, business day, orders, or shared services.
+- Prefer small, isolated changes.
+- Do not modify more files than necessary.
+- Do not create broad refactors unless explicitly requested.
+- After code changes, run:
+  - `flutter analyze`
+  - `flutter test`
+- Return a concise summary, the diff, and the analyze/test results.
+- Do not commit unless the user explicitly asks to commit.
+- Do not push unless the user explicitly asks to push.
+
+## Tenant and branding rules
+
+- Do not introduce hardcoded runtime fallback to:
+  - `Snack Burger`
+  - `snack_burger`
+  - `/snack_burger`
+- For visible tenant names, prefer this fallback order:
+  1. `restaurant.name.trim()`
+  2. `restaurant.slug.trim()` or route slug
+  3. `'Restaurant'`
+- `PrinterConfig.restaurantDisplayName` may remain only as a legacy/fallback printer default, not as the first choice when tenant name is available.
+- If a receipt, invoice, or report can access the current tenant name, pass it as `restaurantDisplayName`.
+
+## Routing and auth rules
+
+- Do not route an authenticated admin without a resolved tenant profile to a default tenant.
+- Do not add `/snack_burger/admin` as an admin fallback.
+- Treat root route `/` → `/snack_burger` as a temporary legacy customer entry only. Do not change it unless explicitly requested.
+- Do not introduce a new tenant default without a clear product decision.
+
+## Supabase and data safety
+
+- Do not weaken RLS policies.
+- Do not bypass tenant checks.
+- Do not change RPC signatures or database assumptions without investigation first.
+- Do not modify production SQL migrations unless explicitly requested.
+- Tenant identity must come from resolved restaurant/profile/slug, not from hardcoded constants.
+
+## Printing rules
+
+- Keep Windows ESC/POS and raster printing stable.
+- Do not change printer byte generation, page width, font sizes, alignment, or cut/feed behavior unless explicitly requested.
+- For order receipts, kitchen tickets, web invoice, printer tests, and end-of-day reports, pass tenant display name when available.
+- New print parameters should be optional to avoid breaking old call sites.
+
+## Stable version protection
+
+- Work only on `saas-v2` unless the user explicitly says otherwise.
+- Do not assume changes affect the delivered stable client version until it is merged/released/deployed.
+- Keep commits small and descriptive.
+
+## Response expectations
+
+- When asked for investigation, do not edit files and do not generate a diff.
+- When asked for changes, edit only the allowed files.
+- Report:
+  - summary
+  - diff
+  - `flutter analyze` result
+  - `flutter test` result
